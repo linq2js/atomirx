@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { select } from "./select";
+import { select, AllAtomsRejectedError } from "./select";
 import { atom } from "./atom";
 
 describe("select", () => {
@@ -287,6 +287,416 @@ describe("select", () => {
       // After resolve - uses actual value
       const result2 = select(asyncAtom, (get) => get() * 2);
       expect(result2.value).toBe(42);
+    });
+  });
+
+  // ============================================================================
+  // Context API Tests
+  // ============================================================================
+
+  describe("context API", () => {
+    describe("get()", () => {
+      it("should compute value using get()", () => {
+        const a = atom(1);
+        const b = atom(2);
+
+        const result = select(({ get }) => get(a) + get(b));
+
+        expect(result.value).toBe(3);
+        expect(result.error).toBeUndefined();
+        expect(result.promise).toBeUndefined();
+        expect(result.dependencies.has(a)).toBe(true);
+        expect(result.dependencies.has(b)).toBe(true);
+      });
+
+      it("should track only accessed dependencies with get()", () => {
+        const flag = atom(true);
+        const a = atom(1);
+        const b = atom(2);
+
+        const result = select(({ get }) => (get(flag) ? get(a) : get(b)));
+
+        expect(result.value).toBe(1);
+        expect(result.dependencies.has(flag)).toBe(true);
+        expect(result.dependencies.has(a)).toBe(true);
+        expect(result.dependencies.has(b)).toBe(false);
+      });
+
+      it("should throw promise for loading atom", () => {
+        const asyncAtom = atom(Promise.resolve(10));
+
+        const result = select(({ get }) => get(asyncAtom) * 2);
+
+        expect(result.value).toBeUndefined();
+        expect(result.promise).toBe(asyncAtom);
+        expect(result.dependencies.has(asyncAtom)).toBe(true);
+      });
+
+      it("should throw error for errored atom", async () => {
+        const error = new Error("Test error");
+        let reject: (e: Error) => void;
+        const asyncAtom = atom(
+          new Promise<number>((_, r) => {
+            reject = r;
+          })
+        );
+
+        asyncAtom.loading;
+        reject!(error);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const result = select(({ get }) => get(asyncAtom) * 2);
+
+        expect(result.error).toBe(error);
+        expect(result.value).toBeUndefined();
+      });
+
+      it("should return fallback for stale atom", () => {
+        const asyncAtom = atom(
+          new Promise<number>((resolve) => setTimeout(() => resolve(42), 100)),
+          { fallback: 0 }
+        );
+
+        const result = select(({ get }) => get(asyncAtom) * 2);
+
+        expect(result.value).toBe(0);
+        expect(result.promise).toBeUndefined();
+      });
+    });
+
+    describe("all()", () => {
+      it("should return array of values when all resolved (array form)", () => {
+        const a = atom(1);
+        const b = atom(2);
+        const c = atom(3);
+
+        const result = select(({ all }) => {
+          const [x, y, z] = all([a, b, c]);
+          return x + y + z;
+        });
+
+        expect(result.value).toBe(6);
+      });
+
+      it("should return object of values when all resolved (object form)", () => {
+        const a = atom(1);
+        const b = atom(2);
+
+        const result = select(({ all }) => {
+          const { first, second } = all({ first: a, second: b });
+          return first + second;
+        });
+
+        expect(result.value).toBe(3);
+      });
+
+      it("should throw promise when any atom is loading", () => {
+        const syncAtom = atom(1);
+        const asyncAtom = atom(Promise.resolve(2));
+
+        const result = select(({ all }) => {
+          const [x, y] = all([syncAtom, asyncAtom]);
+          return x + y;
+        });
+
+        expect(result.promise).toBeDefined();
+        expect(result.value).toBeUndefined();
+      });
+
+      it("should throw error when any atom has error", async () => {
+        const error = new Error("Test error");
+        let reject: (e: Error) => void;
+        const syncAtom = atom(1);
+        const asyncAtom = atom(
+          new Promise<number>((_, r) => {
+            reject = r;
+          })
+        );
+
+        asyncAtom.loading;
+        reject!(error);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const result = select(({ all }) => {
+          const [x, y] = all([syncAtom, asyncAtom]);
+          return x + y;
+        });
+
+        expect(result.error).toBe(error);
+      });
+
+      it("should track all atoms as dependencies", () => {
+        const a = atom(1);
+        const b = atom(2);
+        const c = atom(3);
+
+        const result = select(({ all }) => {
+          const [x, y, z] = all([a, b, c]);
+          return x + y + z;
+        });
+
+        expect(result.dependencies.has(a)).toBe(true);
+        expect(result.dependencies.has(b)).toBe(true);
+        expect(result.dependencies.has(c)).toBe(true);
+      });
+
+      it("should return empty array for empty input", () => {
+        const result = select(({ all }) => all([]));
+
+        expect(result.value).toEqual([]);
+      });
+    });
+
+    describe("any()", () => {
+      it("should return first resolved atom", () => {
+        const a = atom(1);
+        const b = atom(2);
+
+        const result = select(({ any }) => {
+          const [key, value] = any({ first: a, second: b });
+          return { key, value };
+        });
+
+        expect(result.value).toEqual({ key: "first", value: 1 });
+      });
+
+      it("should skip errored atoms and return first resolved", async () => {
+        const error = new Error("Test error");
+        let reject: (e: Error) => void;
+        const errorAtom = atom(
+          new Promise<number>((_, r) => {
+            reject = r;
+          })
+        );
+        const syncAtom = atom(42);
+
+        errorAtom.loading;
+        reject!(error);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const result = select(({ any }) => {
+          const [key, value] = any({ errored: errorAtom, sync: syncAtom });
+          return { key, value };
+        });
+
+        expect(result.value).toEqual({ key: "sync", value: 42 });
+      });
+
+      it("should throw AllAtomsRejectedError when all atoms have errors", async () => {
+        const error1 = new Error("Error 1");
+        const error2 = new Error("Error 2");
+        let reject1: (e: Error) => void;
+        let reject2: (e: Error) => void;
+
+        const atom1 = atom(
+          new Promise<number>((_, r) => {
+            reject1 = r;
+          })
+        );
+        const atom2 = atom(
+          new Promise<number>((_, r) => {
+            reject2 = r;
+          })
+        );
+
+        atom1.loading;
+        atom2.loading;
+        reject1!(error1);
+        reject2!(error2);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const result = select(({ any }) => {
+          const [key, value] = any({ a: atom1, b: atom2 });
+          return { key, value };
+        });
+
+        expect(result.error).toBeInstanceOf(AllAtomsRejectedError);
+      });
+
+      it("should throw promise when some loading and rest errored", async () => {
+        const error = new Error("Test error");
+        let reject: (e: Error) => void;
+
+        const errorAtom = atom(
+          new Promise<number>((_, r) => {
+            reject = r;
+          })
+        );
+        const loadingAtom = atom(Promise.resolve(42));
+
+        errorAtom.loading;
+        reject!(error);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const result = select(({ any }) => {
+          const [key, value] = any({ errored: errorAtom, loading: loadingAtom });
+          return { key, value };
+        });
+
+        expect(result.promise).toBeDefined();
+      });
+    });
+
+    describe("race()", () => {
+      it("should return first settled (resolved) atom", () => {
+        const a = atom(1);
+        const b = atom(2);
+
+        const result = select(({ race }) => {
+          const [key, value] = race({ first: a, second: b });
+          return { key, value };
+        });
+
+        expect(result.value).toEqual({ key: "first", value: 1 });
+      });
+
+      it("should throw error for first settled (errored) atom", async () => {
+        const error = new Error("Test error");
+        let reject: (e: Error) => void;
+
+        const errorAtom = atom(
+          new Promise<number>((_, r) => {
+            reject = r;
+          })
+        );
+
+        errorAtom.loading;
+        reject!(error);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const loadingAtom = atom(
+          new Promise<number>(() => {}) // Never resolves
+        );
+
+        const result = select(({ race }) => {
+          const [key, value] = race({ errored: errorAtom, loading: loadingAtom });
+          return { key, value };
+        });
+
+        expect(result.error).toBe(error);
+      });
+
+      it("should throw promise when all atoms are loading", () => {
+        const a = atom(Promise.resolve(1));
+        const b = atom(Promise.resolve(2));
+
+        const result = select(({ race }) => {
+          const [key, value] = race({ first: a, second: b });
+          return { key, value };
+        });
+
+        expect(result.promise).toBeDefined();
+      });
+    });
+
+    describe("settled()", () => {
+      it("should return array of settled results (array form)", async () => {
+        const syncAtom = atom(1);
+        const error = new Error("Test error");
+        let reject: (e: Error) => void;
+        const errorAtom = atom(
+          new Promise<number>((_, r) => {
+            reject = r;
+          })
+        );
+
+        errorAtom.loading;
+        reject!(error);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const result = select(({ settled }) => {
+          return settled([syncAtom, errorAtom]);
+        });
+
+        expect(result.value).toEqual([
+          { status: "resolved", value: 1 },
+          { status: "rejected", error },
+        ]);
+      });
+
+      it("should return object of settled results (object form)", async () => {
+        const syncAtom = atom(42);
+        const error = new Error("Test error");
+        let reject: (e: Error) => void;
+        const errorAtom = atom(
+          new Promise<number>((_, r) => {
+            reject = r;
+          })
+        );
+
+        errorAtom.loading;
+        reject!(error);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const result = select(({ settled }) => {
+          return settled({ success: syncAtom, failure: errorAtom });
+        });
+
+        expect(result.value).toEqual({
+          success: { status: "resolved", value: 42 },
+          failure: { status: "rejected", error },
+        });
+      });
+
+      it("should throw promise when any atom is loading", () => {
+        const syncAtom = atom(1);
+        const asyncAtom = atom(Promise.resolve(2));
+
+        const result = select(({ settled }) => {
+          return settled([syncAtom, asyncAtom]);
+        });
+
+        expect(result.promise).toBeDefined();
+      });
+
+      it("should return empty array for empty input", () => {
+        const result = select(({ settled }) => settled([]));
+
+        expect(result.value).toEqual([]);
+      });
+    });
+
+    describe("combined usage", () => {
+      it("should work with get() and all() together", () => {
+        const flag = atom(true);
+        const a = atom(1);
+        const b = atom(2);
+        const c = atom(3);
+
+        const result = select(({ get, all }) => {
+          if (get(flag)) {
+            const [x, y] = all([a, b]);
+            return x + y;
+          }
+          return get(c);
+        });
+
+        expect(result.value).toBe(3);
+        expect(result.dependencies.has(flag)).toBe(true);
+        expect(result.dependencies.has(a)).toBe(true);
+        expect(result.dependencies.has(b)).toBe(true);
+        expect(result.dependencies.has(c)).toBe(false);
+      });
+
+      it("should track dependencies from all utilities", () => {
+        const a = atom(1);
+        const b = atom(2);
+        const c = atom(3);
+        const d = atom(4);
+
+        const result = select(({ get, all }) => {
+          const x = get(a);
+          const [y, z] = all([b, c]);
+          const w = get(d);
+          return x + y + z + w;
+        });
+
+        expect(result.value).toBe(10);
+        expect(result.dependencies.has(a)).toBe(true);
+        expect(result.dependencies.has(b)).toBe(true);
+        expect(result.dependencies.has(c)).toBe(true);
+        expect(result.dependencies.has(d)).toBe(true);
+      });
     });
   });
 });

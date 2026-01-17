@@ -12,7 +12,7 @@ export { define } from "./core/define";
 export { derived } from "./core/derived";
 export { emitter } from "./core/emitter";
 export { isAtom } from "./core/isAtom";
-export { select } from "./core/select";
+export { select, AllAtomsRejectedError } from "./core/select";
 
 export type {
   Atom,
@@ -26,4 +26,8 @@ export type {
 } from "./core/types";
 
 export type { GetterStatusResult, SettledResult } from "./core/async";
-export type { SelectResult } from "./core/select";
+export type {
+  SelectContext,
+  SelectResult,
+  SettledResult as SelectSettledResult,
+} from "./core/select";
