@@ -1,0 +1,51 @@
+{
+  "name": "atomirx",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/atomirx.umd.cjs",
+  "module": "./dist/atomirx.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/atomirx.js",
+      "require": "./dist/atomirx.umd.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./react": {
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.cjs",
+      "types": "./dist/react/index.d.ts"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest --no-watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lodash": "^4.17.21"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@testing-library/react": "^14.0.0",
+    "@types/lodash": "^4.17.14",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitest/coverage-v8": "^1.6.1",
+    "jsdom": "^24.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
