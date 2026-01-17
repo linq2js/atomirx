@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useRef, memo } from "react";
 import { atom } from "atomirx";
 import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
-import { LogPanel, useLogger } from "../components/LogPanel";
+import { useEventLog } from "../App";
 import { Eye, RefreshCw, Layers } from "lucide-react";
 
 // Create atoms for demo
@@ -38,7 +38,7 @@ function RenderCounter({ name }: { name: string }) {
 
 // Component that selects only name - memoized to prevent parent re-renders
 const UserNameDisplay = memo(function UserNameDisplay() {
-  const name = useSelector(userAtom, (get) => get().name);
+  const name = useSelector(({ get }) => get(userAtom).name);
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -55,7 +55,7 @@ const UserNameDisplay = memo(function UserNameDisplay() {
 
 // Component that selects only email - memoized to prevent parent re-renders
 const UserEmailDisplay = memo(function UserEmailDisplay() {
-  const email = useSelector(userAtom, (get) => get().email);
+  const email = useSelector(({ get }) => get(userAtom).email);
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -72,7 +72,7 @@ const UserEmailDisplay = memo(function UserEmailDisplay() {
 
 // Component that selects entire user - memoized to prevent parent re-renders
 const FullUserDisplay = memo(function FullUserDisplay() {
-  const user = useSelector(userAtom);
+  const user = useSelector(({ get }) => get(userAtom));
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -90,13 +90,10 @@ const FullUserDisplay = memo(function FullUserDisplay() {
 
 // Multi-source selector component - memoized to prevent parent re-renders
 const CombinedDisplay = memo(function CombinedDisplay() {
-  const combined = useSelector(
-    [userAtom, settingsAtom],
-    (getUser, getSettings) => ({
-      userName: getUser().name,
-      theme: getSettings().theme,
-    })
-  );
+  const combined = useSelector(({ get }) => ({
+    userName: get(userAtom).name,
+    theme: get(settingsAtom).theme,
+  }));
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -114,20 +111,9 @@ const CombinedDisplay = memo(function CombinedDisplay() {
 });
 
 export function UseSelectorDemo() {
+  // Shorthand: pass atom directly to get its value
   const counter = useSelector(counterAtom);
-  const [logs, setLogs] = useState<
-    {
-      id: number;
-      message: string;
-      timestamp: Date;
-      type?: "info" | "success" | "error" | "warning";
-    }[]
-  >([]);
-  const { log, clear, setSetLogs } = useLogger();
-
-  useEffect(() => {
-    setSetLogs(setLogs);
-  }, [setSetLogs]);
+  const { log } = useEventLog();
 
   const updateName = () => {
     const names = ["John Doe", "Jane Smith", "Bob Wilson", "Alice Brown"];
@@ -145,7 +131,7 @@ export function UseSelectorDemo() {
 
   const updateAge = () => {
     const newAge = Math.floor(Math.random() * 50) + 20;
-    log(`Updating age to: ${newAge} (not displayed, no re-render)`);
+    log(`Updating age to: ${newAge} (not displayed, only Full re-renders)`);
     userAtom.set((prev) => ({ ...prev, age: newAge }));
   };
 
@@ -177,23 +163,20 @@ export function UseSelectorDemo() {
         code={`
 import { useSelector } from "atomirx/react";
 
-// Select entire atom value
+// Shorthand: pass atom directly to get its value
 const user = useSelector(userAtom);
 
 // Select with transformation (only re-render when name changes)
-const name = useSelector(userAtom, (get) => get().name);
+const name = useSelector(({ get }) => get(userAtom).name);
 
 // Multiple atoms
-const combined = useSelector(
-  [userAtom, settingsAtom],
-  (getUser, getSettings) => ({
-    userName: getUser().name,
-    theme: getSettings().theme,
-  })
-);
+const combined = useSelector(({ get }) => ({
+  userName: get(userAtom).name,
+  theme: get(settingsAtom).theme,
+}));
 
 // With equals option
-const data = useSelector(atom, (get) => get().data, "shallow");
+const data = useSelector(({ get }) => get(atom).data, "shallow");
         `}
       />
 
@@ -242,9 +225,9 @@ const data = useSelector(atom, (get) => get().data, "shallow");
           </div>
 
           <p className="text-sm text-surface-400">
-            Notice how updating "age" doesn't cause any re-renders since no
-            component selects it. Each component only re-renders when its
-            specific selection changes.
+            Notice how updating "age" only re-renders "Full user object" (which
+            selects the entire atom), but not "Name only", "Email only", or
+            "Combined" (which select specific properties).
           </p>
         </div>
       </DemoSection>
@@ -266,20 +249,10 @@ const data = useSelector(atom, (get) => get().data, "shallow");
 
           <CodeBlock
             code={`
-// Equivalent to: useSelector(counterAtom, (get) => get())
+// Shorthand: pass atom directly
 const counter = useSelector(counterAtom);
             `}
           />
-        </div>
-      </DemoSection>
-
-      {/* Event Log */}
-      <DemoSection title="Event Log">
-        <div className="space-y-3">
-          <LogPanel logs={logs} />
-          <button onClick={clear} className="btn-secondary text-sm">
-            Clear Logs
-          </button>
         </div>
       </DemoSection>
 

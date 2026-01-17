@@ -4,6 +4,7 @@ import { rx } from "./rx";
 import { atom } from "../core/atom";
 import { scheduleNotifyHook } from "../core/scheduleNotifyHook";
 import { wrappers } from "./strictModeTest";
+import { SelectContext } from "../core/select";
 
 describe.each(wrappers)("rx - $mode", ({ render }) => {
   beforeEach(() => {
@@ -12,20 +13,22 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
   });
 
   describe("basic usage", () => {
-    it("should render value from single atom with selector", () => {
-      const count = atom(5);
-
-      render(<div data-testid="result">{rx(count, (get) => get() * 2)}</div>);
-
-      expect(screen.getByTestId("result").textContent).toBe("10");
-    });
-
-    it("should render atom value directly when no selector provided", () => {
+    it("should render value from single atom (shorthand)", () => {
       const count = atom(42);
 
       render(<div data-testid="result">{rx(count)}</div>);
 
       expect(screen.getByTestId("result").textContent).toBe("42");
+    });
+
+    it("should render derived value with context selector", () => {
+      const count = atom(5);
+
+      render(
+        <div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>
+      );
+
+      expect(screen.getByTestId("result").textContent).toBe("10");
     });
 
     it("should render string values", () => {
@@ -53,14 +56,14 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
     });
   });
 
-  describe("multiple atoms (array form)", () => {
+  describe("multiple atoms with context selector", () => {
     it("should render derived value from multiple atoms", () => {
       const firstName = atom("John");
       const lastName = atom("Doe");
 
       render(
         <div data-testid="result">
-          {rx([firstName, lastName], (first, last) => `${first()} ${last()}`)}
+          {rx(({ get }) => `${get(firstName)} ${get(lastName)}`)}
         </div>
       );
 
@@ -74,7 +77,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
 
       render(
         <div data-testid="result">
-          {rx([a, b, c], (getA, getB, getC) => getA() + getB() + getC())}
+          {rx(({ get }) => get(a) + get(b) + get(c))}
         </div>
       );
 
@@ -83,10 +86,26 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
   });
 
   describe("reactivity", () => {
-    it("should update when source atom changes", () => {
+    it("should update when source atom changes (shorthand)", () => {
       const count = atom(5);
 
-      render(<div data-testid="result">{rx(count, (get) => get() * 2)}</div>);
+      render(<div data-testid="result">{rx(count)}</div>);
+
+      expect(screen.getByTestId("result").textContent).toBe("5");
+
+      act(() => {
+        count.set(10);
+      });
+
+      expect(screen.getByTestId("result").textContent).toBe("10");
+    });
+
+    it("should update when source atom changes (context selector)", () => {
+      const count = atom(5);
+
+      render(
+        <div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>
+      );
 
       expect(screen.getByTestId("result").textContent).toBe("10");
 
@@ -97,28 +116,12 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       expect(screen.getByTestId("result").textContent).toBe("20");
     });
 
-    it("should update when atom changes (no selector)", () => {
-      const count = atom(1);
-
-      render(<div data-testid="result">{rx(count)}</div>);
-
-      expect(screen.getByTestId("result").textContent).toBe("1");
-
-      act(() => {
-        count.set(99);
-      });
-
-      expect(screen.getByTestId("result").textContent).toBe("99");
-    });
-
-    it("should update when any dependency changes (array form)", () => {
+    it("should update when any dependency changes", () => {
       const a = atom(1);
       const b = atom(2);
 
       render(
-        <div data-testid="result">
-          {rx([a, b], (getA, getB) => getA() + getB())}
-        </div>
+        <div data-testid="result">{rx(({ get }) => get(a) + get(b))}</div>
       );
 
       expect(screen.getByTestId("result").textContent).toBe("3");
@@ -143,12 +146,11 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const a = atom(1);
       const b = atom(2);
 
-      const selectorFn = vi.fn(
-        (getFlag: () => boolean, getA: () => number, getB: () => number) =>
-          getFlag() ? getA() : getB()
+      const selectorFn = vi.fn(({ get }: SelectContext) =>
+        get(flag) ? get(a) : get(b)
       );
 
-      render(<div data-testid="result">{rx([flag, a, b], selectorFn)}</div>);
+      render(<div data-testid="result">{rx(selectorFn)}</div>);
 
       expect(screen.getByTestId("result").textContent).toBe("1");
       const callCount = selectorFn.mock.calls.length;
@@ -170,9 +172,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
 
       render(
         <div data-testid="result">
-          {rx([flag, a, b], (getFlag, getA, getB) =>
-            getFlag() ? getA() : getB()
-          )}
+          {rx(({ get }) => (get(flag) ? get(a) : get(b)))}
         </div>
       );
 
@@ -203,7 +203,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
         renderCount.current++;
         return (
           <div data-testid="result">
-            {rx(user, (get) => JSON.stringify(get()))}
+            {rx(({ get }) => JSON.stringify(get(user)))}
           </div>
         );
       };
@@ -227,12 +227,12 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const user = atom({ name: "John", age: 30 });
       const selectorCallCount = { current: 0 };
 
-      const selector = (get: () => { name: string; age: number }) => {
+      const selector = ({ get }: SelectContext) => {
         selectorCallCount.current++;
-        return JSON.stringify(get());
+        return JSON.stringify(get(user));
       };
 
-      render(<div data-testid="result">{rx(user, selector, "strict")}</div>);
+      render(<div data-testid="result">{rx(selector, "strict")}</div>);
 
       expect(screen.getByTestId("result").textContent).toBe(
         '{"name":"John","age":30}'
@@ -258,8 +258,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
         return (
           <div data-testid="result">
             {rx(
-              user,
-              (get) => JSON.stringify(get()),
+              ({ get }) => JSON.stringify(get(user)),
               (a, b) => a === b // Compare stringified values
             )}
           </div>
@@ -289,7 +288,9 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
 
       const Parent = () => {
         parentRenderCount.current++;
-        return <div data-testid="result">{rx(count, (get) => get() * 2)}</div>;
+        return (
+          <div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>
+        );
       };
 
       render(<Parent />);
@@ -320,7 +321,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const flag = atom(false);
 
       render(
-        <div data-testid="result">{rx(flag, (get) => String(get()))}</div>
+        <div data-testid="result">{rx(({ get }) => String(get(flag)))}</div>
       );
 
       expect(screen.getByTestId("result").textContent).toBe("false");
@@ -355,9 +356,9 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
 
       render(
         <div data-testid="result">
-          {rx(asyncAtom, (get) => {
+          {rx(({ get }) => {
             try {
-              return get() * 2;
+              return get(asyncAtom) * 2;
             } catch {
               return "loading";
             }
@@ -378,9 +379,9 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
 
       render(
         <div data-testid="result">
-          {rx(asyncAtom, (get) => {
+          {rx(({ get }) => {
             try {
-              return get() * 2;
+              return get(asyncAtom) * 2;
             } catch {
               return "loading";
             }
@@ -396,6 +397,36 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       });
 
       expect(screen.getByTestId("result").textContent).toBe("10");
+    });
+  });
+
+  describe("async utilities", () => {
+    it("should support all() for multiple async atoms", async () => {
+      const a = atom(Promise.resolve(1));
+      const b = atom(Promise.resolve(2));
+
+      render(
+        <div data-testid="result">
+          {rx(({ all }) => {
+            try {
+              const [valA, valB] = all([a, b]);
+              return valA + valB;
+            } catch {
+              return "loading";
+            }
+          })}
+        </div>
+      );
+
+      // Initially loading
+      expect(screen.getByTestId("result").textContent).toBe("loading");
+
+      // Wait for resolution
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(screen.getByTestId("result").textContent).toBe("3");
     });
   });
 });

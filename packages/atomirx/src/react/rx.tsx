@@ -1,7 +1,9 @@
 import { memo } from "react";
-import { AnyFunc, Atom, Equality, Getter } from "../core/types";
+import { Atom, Equality } from "../core/types";
 import { useSelector } from "./useSelector";
 import { shallowEqual } from "../core/equality";
+import { isAtom } from "../core/isAtom";
+import { ContextSelectorFn } from "../core/select";
 
 /**
  * Reactive inline component that renders atom values directly in JSX.
@@ -33,8 +35,8 @@ import { shallowEqual } from "../core/equality";
  * function Page() {
  *   return (
  *     <Suspense fallback={<Loading />}>
- *       {rx(postsAtom, (getPosts) =>
- *         getPosts().map((post) => <Post post={post} />)
+ *       {rx(({ get }) =>
+ *         get(postsAtom).map((post) => <Post post={post} />)
  *       )}
  *     </Suspense>
  *   );
@@ -63,7 +65,7 @@ import { shallowEqual } from "../core/equality";
  *   return (
  *     <ErrorBoundary fallback={<div>Error!</div>}>
  *       <Suspense fallback={<div>Loading...</div>}>
- *         {rx(userAtom, (get) => get().name)}
+ *         {rx(({ get }) => get(userAtom).name)}
  *       </Suspense>
  *     </ErrorBoundary>
  *   );
@@ -72,25 +74,22 @@ import { shallowEqual } from "../core/equality";
  *
  * Or catch errors in the selector to handle loading/error inline:
  * ```tsx
- * {rx(userAtom, (get) => {
+ * {rx(({ get }) => {
  *   try {
- *     return get().name;
+ *     return get(userAtom).name;
  *   } catch {
  *     return "Loading...";
  *   }
  * })}
  * ```
  *
- * @template D - The type of the source atom's value
- * @template T - The type of the selected/derived value (defaults to D)
- * @param source - Single atom to select from
- * @param selector - Optional function to derive a value from the atom getter.
- *                   If omitted, returns the atom's value directly.
+ * @template T - The type of the selected/derived value
+ * @param selector - Context-based selector function with `{ get, all, any, race, settled }`
  * @param equals - Equality function or shorthand ("strict", "shallow", "deep").
  *                 Defaults to "shallow".
  * @returns A React element that renders the selected value
  *
- * @example Basic usage - render atom value directly
+ * @example Shorthand - render atom value directly
  * ```tsx
  * const count = atom(5);
  *
@@ -99,12 +98,26 @@ import { shallowEqual } from "../core/equality";
  * }
  * ```
  *
- * @example With selector - derive a value
+ * @example Context selector - derive a value
  * ```tsx
  * const count = atom(5);
  *
  * function DoubledCounter() {
- *   return <div>Doubled: {rx(count, (get) => get() * 2)}</div>;
+ *   return <div>Doubled: {rx(({ get }) => get(count) * 2)}</div>;
+ * }
+ * ```
+ *
+ * @example Multiple atoms
+ * ```tsx
+ * const firstName = atom("John");
+ * const lastName = atom("Doe");
+ *
+ * function FullName() {
+ *   return (
+ *     <div>
+ *       {rx(({ get }) => `${get(firstName)} ${get(lastName)}`)}
+ *     </div>
+ *   );
  * }
  * ```
  *
@@ -122,37 +135,6 @@ import { shallowEqual } from "../core/equality";
  *   );
  * }
  * ```
- */
-export function rx<D, T = D>(
-  source: Atom<D, any>,
-  selector?: (source: Getter<D>) => T,
-  equals?: Equality<T>
-): T;
-
-/**
- * Reactive inline component that derives a value from multiple atoms (array form).
- *
- * @template D - Tuple type of source atoms
- * @template T - The type of the derived value
- * @param source - Array of atoms to select from
- * @param selector - Function that receives getters for each atom and returns the derived value.
- *                   Required when using array form.
- * @param equals - Equality function or shorthand. Defaults to "shallow".
- * @returns A React element that renders the derived value
- *
- * @example Multiple atoms - derive combined value
- * ```tsx
- * const firstName = atom("John");
- * const lastName = atom("Doe");
- *
- * function FullName() {
- *   return (
- *     <div>
- *       {rx([firstName, lastName], (first, last) => `${first()} ${last()}`)}
- *     </div>
- *   );
- * }
- * ```
  *
  * @example Multiple subscriptions in one component
  * ```tsx
@@ -160,14 +142,14 @@ export function rx<D, T = D>(
  *   return (
  *     <div>
  *       <header>
- *         <Suspense fallback="...">{rx(userAtom, (get) => get().name)}</Suspense>
+ *         <Suspense fallback="...">{rx(({ get }) => get(userAtom).name)}</Suspense>
  *       </header>
  *       <main>
  *         <Suspense fallback="...">
- *           {rx(postsAtom, (get) => get().length)} posts
+ *           {rx(({ get }) => get(postsAtom).length)} posts
  *         </Suspense>
  *         <Suspense fallback="...">
- *           {rx(notificationsAtom, (get) => get().length)} notifications
+ *           {rx(({ get }) => get(notificationsAtom).length)} notifications
  *         </Suspense>
  *       </main>
  *     </div>
@@ -184,8 +166,8 @@ export function rx<D, T = D>(
  * function Info() {
  *   return (
  *     <div>
- *       {rx([showDetails, summary, details], (getShow, getSummary, getDetails) =>
- *         getShow() ? getDetails() : getSummary()
+ *       {rx(({ get }) =>
+ *         get(showDetails) ? get(details) : get(summary)
  *       )}
  *     </div>
  *   );
@@ -200,8 +182,7 @@ export function rx<D, T = D>(
  *   return (
  *     <div>
  *       {rx(
- *         user,
- *         (get) => get().name,
+ *         ({ get }) => get(user).name,
  *         (a, b) => a === b // Only re-render if name string changes
  *       )}
  *     </div>
@@ -211,44 +192,57 @@ export function rx<D, T = D>(
  *
  * @example Combining multiple async atoms with async utilities
  * ```tsx
- * import { all, settled } from "atomirx";
- *
  * const userAtom = atom(fetchUser());
  * const postsAtom = atom(fetchPosts());
  *
  * function Dashboard() {
  *   return (
  *     <Suspense fallback={<Loading />}>
- *       {rx([userAtom, postsAtom], (getUser, getPosts) => {
+ *       {rx(({ all }) => {
  *         // Use all() to wait for multiple atoms
- *         const [user, posts] = all([getUser, getPosts]);
+ *         const [user, posts] = all([userAtom, postsAtom]);
  *         return <DashboardContent user={user} posts={posts} />;
- *
- *         // Or use settled() to handle partial failures
- *         // const results = settled({ user: getUser, posts: getPosts });
  *       })}
  *     </Suspense>
  *   );
  * }
  * ```
- * @see all, race, any, settled in core/async.ts for more async utilities
+ *
+ * @example Using settled for partial failures
+ * ```tsx
+ * const userAtom = atom(fetchUser());
+ * const postsAtom = atom(fetchPosts());
+ *
+ * function Dashboard() {
+ *   return (
+ *     <Suspense fallback={<Loading />}>
+ *       {rx(({ settled }) => {
+ *         const [userResult, postsResult] = settled([userAtom, postsAtom]);
+ *         return (
+ *           <DashboardContent
+ *             user={userResult.status === 'resolved' ? userResult.value : null}
+ *             posts={postsResult.status === 'resolved' ? postsResult.value : []}
+ *           />
+ *         );
+ *       })}
+ *     </Suspense>
+ *   );
+ * }
+ * ```
  */
-export function rx<const D extends readonly Atom<any, any>[], T>(
-  source: D,
-  selector: (
-    ...values: {
-      [K in keyof D]: D[K] extends Atom<infer U, any> ? Getter<U> : never;
-    }
-  ) => T,
-  equals?: Equality<T>
-): T;
+// Overload: Pass atom directly to get its value (shorthand)
+export function rx<T>(atom: Atom<T, any>, equals?: Equality<T>): T;
 
-export function rx(
-  source: any,
-  selector?: AnyFunc,
-  equals?: Equality<any>
-): any {
-  return <Rx source={source} selector={selector} equals={equals} />;
+// Overload: Context-based selector function
+export function rx<T>(selector: ContextSelectorFn<T>, equals?: Equality<T>): T;
+
+export function rx<T>(
+  selectorOrAtom: ContextSelectorFn<T> | Atom<T, any>,
+  equals?: Equality<T>
+): T {
+  return (
+    <Rx selectorOrAtom={selectorOrAtom} equals={equals} />
+  ) as unknown as T;
 }
 
 /**
@@ -257,21 +251,24 @@ export function rx(
  * Memoized with React.memo to ensure:
  * 1. Parent components don't cause unnecessary re-renders
  * 2. Only atom changes trigger re-renders
- * 3. Props comparison is shallow (source, selector, equals references)
+ * 3. Props comparison is shallow (selectorOrAtom, equals references)
  *
  * Renders `selected ?? null` to handle null/undefined values gracefully in JSX.
  */
 const Rx = memo(
   function Rx(props: {
-    source: any;
-    selector?: AnyFunc;
+    selectorOrAtom: ContextSelectorFn<any> | Atom<any, any>;
     equals?: Equality<any>;
   }) {
-    const selected = useSelector(props.source, props.selector, props.equals);
+    // Convert atom shorthand to context selector
+    const selector: ContextSelectorFn<any> = isAtom(props.selectorOrAtom)
+      ? ({ get }) => get(props.selectorOrAtom as Atom<any, any>)
+      : (props.selectorOrAtom as ContextSelectorFn<any>);
+
+    const selected = useSelector(selector, props.equals);
     return <>{selected ?? null}</>;
   },
   (prev, next) =>
-    shallowEqual(prev.source, next.source) &&
-    prev.selector === next.selector &&
+    shallowEqual(prev.selectorOrAtom, next.selectorOrAtom) &&
     prev.equals === next.equals
 );

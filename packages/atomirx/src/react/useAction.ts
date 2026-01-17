@@ -51,10 +51,7 @@ export type ActionState<T> =
 /**
  * Action state without idle (used when lazy is false).
  */
-export type ActionStateWithoutIdle<T> = Exclude<
-  ActionState<T>,
-  ActionIdleState
->;
+export type ActionStateWithoutIdle<T> = Exclude<ActionState<T>, ActionIdleState>;
 
 /**
  * A promise with an abort method for manual cancellation.
@@ -65,13 +62,6 @@ export type AbortablePromise<T> = PromiseLike<T> & { abort: () => void };
  * Options for useAction hook.
  */
 export interface UseActionOptions {
-  /**
-   * If true, waits for manual call to execute. If false, executes on mount and when deps change.
-   * - `lazy: true` (default) - Action starts in "idle" state, waits for you to call it
-   * - `lazy: false` - Action executes immediately on mount and re-executes when deps change
-   * @default true
-   */
-  lazy?: boolean;
   /**
    * If true, only one request runs at a time - previous requests are aborted.
    * Also aborts on unmount and reset().
@@ -110,9 +100,7 @@ export type ActionApi = {
 /**
  * Dispatch function type - callable and returns AbortablePromise.
  */
-export type ActionDispatch<T> = () => AbortablePromise<
-  T extends PromiseLike<infer U> ? U : T
->;
+export type ActionDispatch<T> = () => AbortablePromise<T extends PromiseLike<infer U> ? U : T>;
 
 /**
  * Return type for useAction - a callable dispatch function with state and API attached.
@@ -133,8 +121,8 @@ export type ActionDispatch<T> = () => AbortablePromise<
  * fetchPosts.reset()   // reset state to idle
  * ```
  */
-export type Action<T> = ActionDispatch<T> &
-  ActionState<T extends PromiseLike<infer U> ? U : T> &
+export type Action<TResult, TLazy extends boolean = true> = ActionDispatch<TResult> &
+  (TLazy extends true ? ActionState<Awaited<TResult>> : ActionStateWithoutIdle<Awaited<TResult>>) &
   ActionApi;
 
 // Reducer action types
@@ -156,10 +144,7 @@ const LOADING_STATE: ActionLoadingState = {
   error: undefined,
 };
 
-function reducer<T>(
-  state: ActionState<T>,
-  action: ReducerAction<T>
-): ActionState<T> {
+function reducer<T>(state: ActionState<T>, action: ReducerAction<T>): ActionState<T> {
   switch (action.type) {
     case "START":
       return LOADING_STATE;
@@ -257,7 +242,7 @@ function reducer<T>(
  * - Only the latest request's result updates state
  * - This prevents stale data from overwriting fresh data
  *
- * @template T - The return type of the action function
+ * @template TResult - The return type of the action function
  * @param fn - Action function receiving `{ signal: AbortSignal }`. Can be sync or async.
  * @param options - Configuration options
  * @param options.lazy - If true (default), waits for manual call. If false, executes on mount.
@@ -448,15 +433,23 @@ function reducer<T>(
  * }
  * ```
  */
-export function useAction<T>(
-  fn: (context: ActionContext) => T,
-  options: UseActionOptions = {}
-): Action<T> {
+export function useAction<TResult, TLazy extends boolean = true>(
+  fn: (context: ActionContext) => TResult,
+  options: UseActionOptions & {
+    /**
+     * If true, waits for manual call to execute. If false, executes on mount and when deps change.
+     * - `lazy: true` (default) - Action starts in "idle" state, waits for you to call it
+     * - `lazy: false` - Action executes immediately on mount and re-executes when deps change
+     * @default true
+     */
+    lazy?: TLazy;
+  } = {}
+): Action<TResult, TLazy> {
   const { lazy = true, exclusive = true, deps = [] } = options;
 
   // Use loading as initial state when lazy is false (eager execution)
   const initialState = lazy ? IDLE_STATE : LOADING_STATE;
-  const [state, dispatchAction] = useReducer(reducer<Awaited<T>>, initialState);
+  const [state, dispatchAction] = useReducer(reducer<Awaited<TResult>>, initialState);
 
   // Track current abort controller for auto-abort and stale result detection
   const currentAbortControllerRef = useRef<AbortController | null>(null);
@@ -475,14 +468,14 @@ export function useAction<T>(
     return false;
   }, []);
 
-  const selected = useSelector(
-    (lazy ? [] : options.deps ?? []).filter(isAtom),
-    (...getters) => {
-      return getters.map((getter) => getter());
-    }
-  );
+  // Get atoms from deps for reactive tracking
+  const atomDeps = (lazy ? [] : (options.deps ?? [])).filter(isAtom);
 
-  const dispatch = useCallback((): AbortablePromise<Awaited<T>> => {
+  const selected = useSelector(({ get }) => {
+    return atomDeps.map((atom) => get(atom));
+  });
+
+  const dispatch = useCallback((): AbortablePromise<Awaited<TResult>> => {
     // Abort previous if exclusive mode
     if (exclusive) {
       abortCurrent();
@@ -494,7 +487,7 @@ export function useAction<T>(
 
     dispatchAction({ type: "START" });
 
-    let result: T;
+    let result: TResult;
     try {
       result = fnRef.current({ signal: abortController.signal });
     } catch (error) {
@@ -507,7 +500,7 @@ export function useAction<T>(
 
     // Handle async result
     if (isPromiseLike(result)) {
-      const promise = result as PromiseLike<Awaited<T>>;
+      const promise = result as PromiseLike<Awaited<TResult>>;
 
       promise.then(
         (value) => {
@@ -517,8 +510,7 @@ export function useAction<T>(
         },
         (error) => {
           // Check if this was an abort error
-          const isAbortError =
-            error instanceof DOMException && error.name === "AbortError";
+          const isAbortError = error instanceof DOMException && error.name === "AbortError";
 
           // If aborted, always dispatch the error to exit loading state
           if (isAbortError) {
@@ -548,12 +540,12 @@ export function useAction<T>(
             currentAbortControllerRef.current = null;
           }
         },
-      }) as AbortablePromise<Awaited<T>>;
+      }) as AbortablePromise<Awaited<TResult>>;
     }
 
     // Sync success - wrap in resolved promise
-    dispatchAction({ type: "SUCCESS", result: result as Awaited<T> });
-    return Object.assign(Promise.resolve(result as Awaited<T>), {
+    dispatchAction({ type: "SUCCESS", result: result as Awaited<TResult> });
+    return Object.assign(Promise.resolve(result as Awaited<TResult>), {
       abort: () => abortController.abort(),
     });
   }, [exclusive, abortCurrent]);
@@ -588,5 +580,5 @@ export function useAction<T>(
     ...state,
     abort: abortCurrent,
     reset,
-  }) as Action<T>;
+  }) as Action<TResult, TLazy>;
 }

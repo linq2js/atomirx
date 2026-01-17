@@ -647,4 +647,192 @@ describe("derived", () => {
       expect(doubled.stale()).toBe(false);
     });
   });
+
+  // ============================================================================
+  // Context API Tests
+  // ============================================================================
+
+  describe("context API", () => {
+    describe("get()", () => {
+      it("should derive value using get()", () => {
+        const count = atom(5);
+        const doubled = derived(({ get }) => get(count) * 2);
+
+        expect(doubled.value).toBe(10);
+      });
+
+      it("should update when source atom changes", () => {
+        const count = atom(5);
+        const doubled = derived(({ get }) => get(count) * 2);
+
+        expect(doubled.value).toBe(10);
+
+        count.set(10);
+        expect(doubled.value).toBe(20);
+      });
+
+      it("should combine multiple atoms", () => {
+        const firstName = atom("John");
+        const lastName = atom("Doe");
+
+        const fullName = derived(({ get }) => `${get(firstName)} ${get(lastName)}`);
+
+        expect(fullName.value).toBe("John Doe");
+
+        firstName.set("Jane");
+        expect(fullName.value).toBe("Jane Doe");
+      });
+
+      it("should track conditional dependencies", () => {
+        const flag = atom(true);
+        const a = atom(1);
+        const b = atom(2);
+        const listener = vi.fn();
+
+        const result = derived(({ get }) => (get(flag) ? get(a) : get(b)));
+        result.on(listener);
+
+        expect(result.value).toBe(1);
+
+        // Changing b should not trigger update (not accessed)
+        b.set(20);
+        expect(listener).not.toHaveBeenCalled();
+
+        // Changing a should trigger update
+        a.set(10);
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(result.value).toBe(10);
+      });
+
+      it("should handle async atoms", async () => {
+        const asyncAtom = atom(Promise.resolve(10));
+
+        const doubled = derived(({ get }) => get(asyncAtom) * 2);
+
+        expect(doubled.loading).toBe(true);
+
+        await asyncAtom;
+        expect(doubled.value).toBe(20);
+      });
+    });
+
+    describe("all()", () => {
+      it("should wait for all atoms", () => {
+        const a = atom(1);
+        const b = atom(2);
+        const c = atom(3);
+
+        const sum = derived(({ all }) => {
+          const [x, y, z] = all([a, b, c]);
+          return x + y + z;
+        });
+
+        expect(sum.value).toBe(6);
+      });
+
+      it("should support custom variable names via destructuring", () => {
+        const user$ = atom({ name: "John" });
+        const posts$ = atom([1, 2, 3]);
+
+        const result = derived(({ all }) => {
+          const [user, myPosts] = all([user$, posts$]);
+          return { user, posts: myPosts };
+        });
+
+        expect(result.value).toEqual({
+          user: { name: "John" },
+          posts: [1, 2, 3],
+        });
+      });
+
+      it("should enter loading state when any atom is loading", () => {
+        const syncAtom = atom(1);
+        const asyncAtom = atom(Promise.resolve(2));
+
+        const sum = derived(({ all }) => {
+          const [x, y] = all([syncAtom, asyncAtom]);
+          return x + y;
+        });
+
+        expect(sum.loading).toBe(true);
+      });
+    });
+
+    describe("any()", () => {
+      it("should return first resolved atom with key", () => {
+        const a = atom(1);
+        const b = atom(2);
+
+        const result = derived(({ any }) => {
+          const [key, value] = any({ first: a, second: b });
+          return { key, value };
+        });
+
+        expect(result.value).toEqual({ key: "first", value: 1 });
+      });
+    });
+
+    describe("race()", () => {
+      it("should return first settled atom with key", () => {
+        const a = atom(1);
+        const b = atom(2);
+
+        const result = derived(({ race }) => {
+          const [key, value] = race({ first: a, second: b });
+          return { key, value };
+        });
+
+        expect(result.value).toEqual({ key: "first", value: 1 });
+      });
+    });
+
+    describe("settled()", () => {
+      it("should return array of settled results", async () => {
+        const syncAtom = atom(1);
+        const error = new Error("Test error");
+        let reject: (e: Error) => void;
+        const errorAtom = atom(
+          new Promise<number>((_, r) => {
+            reject = r;
+          })
+        );
+
+        errorAtom.loading;
+        reject!(error);
+        await new Promise((r) => setTimeout(r, 0));
+
+        const result = derived(({ settled }) => {
+          const [syncResult, errorResult] = settled([syncAtom, errorAtom]);
+          return {
+            sync: syncResult.status === "resolved" ? syncResult.value : null,
+            error: errorResult.status === "rejected" ? errorResult.error : null,
+          };
+        });
+
+        expect(result.value).toEqual({
+          sync: 1,
+          error,
+        });
+      });
+    });
+
+    describe("combined usage", () => {
+      it("should work with get() and all() together", () => {
+        const flag = atom(true);
+        const a = atom(1);
+        const b = atom(2);
+        const c = atom(3);
+
+        const result = derived(({ get, all }) => {
+          if (get(flag)) {
+            const [x, y] = all([a, b]);
+            return x + y;
+          }
+          return get(c);
+        });
+
+        expect(result.value).toBe(3);
+      });
+    });
+  });
 });

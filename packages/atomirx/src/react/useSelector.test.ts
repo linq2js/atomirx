@@ -3,6 +3,7 @@ import { act } from "@testing-library/react";
 import { useSelector } from "./useSelector";
 import { atom } from "../core/atom";
 import { wrappers } from "./strictModeTest";
+import { SelectContext } from "../core/select";
 
 describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
   describe("basic usage", () => {
@@ -10,21 +11,22 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
       const count = atom(5);
 
       const { result } = renderHook(() =>
-        useSelector(count, (get) => get() * 2)
+        useSelector(({ get }) => get(count) * 2)
       );
 
       expect(result.current).toBe(10);
     });
 
-    it("should return atom value directly when no selector provided", () => {
+    it("should return atom value directly with shorthand", () => {
       const count = atom(42);
 
+      // Shorthand: pass atom directly
       const { result } = renderHook(() => useSelector(count));
 
       expect(result.current).toBe(42);
     });
 
-    it("should update when atom changes (no selector)", () => {
+    it("should update when atom changes (shorthand)", () => {
       const count = atom(1);
 
       const { result } = renderHook(() => useSelector(count));
@@ -38,24 +40,46 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
       expect(result.current).toBe(99);
     });
 
-    it("should select value from multiple atoms (array form)", () => {
+    it("should return atom value directly with context selector", () => {
+      const count = atom(42);
+
+      const { result } = renderHook(() => useSelector(({ get }) => get(count)));
+
+      expect(result.current).toBe(42);
+    });
+
+    it("should update when atom changes", () => {
+      const count = atom(1);
+
+      const { result } = renderHook(() => useSelector(({ get }) => get(count)));
+
+      expect(result.current).toBe(1);
+
+      act(() => {
+        count.set(99);
+      });
+
+      expect(result.current).toBe(99);
+    });
+
+    it("should select value from multiple atoms", () => {
       const a = atom(1);
       const b = atom(2);
 
       const { result } = renderHook(() =>
-        useSelector([a, b], (getA, getB) => getA() + getB())
+        useSelector(({ get }) => get(a) + get(b))
       );
 
       expect(result.current).toBe(3);
     });
 
-    it("should select value from multiple atoms (tuple form)", () => {
+    it("should select value from multiple atoms (three or more)", () => {
       const a = atom(1);
       const b = atom(2);
       const c = atom(3);
 
       const { result } = renderHook(() =>
-        useSelector([a, b, c], (getA, getB, getC) => getA() + getB() + getC())
+        useSelector(({ get }) => get(a) + get(b) + get(c))
       );
 
       expect(result.current).toBe(6);
@@ -67,7 +91,7 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
       const count = atom(5);
 
       const { result } = renderHook(() =>
-        useSelector(count, (get) => get() * 2)
+        useSelector(({ get }) => get(count) * 2)
       );
 
       expect(result.current).toBe(10);
@@ -84,7 +108,7 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
       const b = atom(2);
 
       const { result } = renderHook(() =>
-        useSelector([a, b], (getA, getB) => getA() + getB())
+        useSelector(({ get }) => get(a) + get(b))
       );
 
       expect(result.current).toBe(3);
@@ -109,14 +133,11 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
       const a = atom(1);
       const b = atom(2);
 
-      const selectorFn = vi.fn(
-        (getFlag: () => boolean, getA: () => number, getB: () => number) =>
-          getFlag() ? getA() : getB()
+      const selectorFn = vi.fn(({ get }: SelectContext) =>
+        get(flag) ? get(a) : get(b)
       );
 
-      const { result } = renderHook(() =>
-        useSelector([flag, a, b], selectorFn)
-      );
+      const { result } = renderHook(() => useSelector(selectorFn));
 
       expect(result.current).toBe(1);
       const callCount = selectorFn.mock.calls.length;
@@ -137,9 +158,7 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
       const b = atom(2);
 
       const { result } = renderHook(() =>
-        useSelector([flag, a, b], (getFlag, getA, getB) =>
-          getFlag() ? getA() : getB()
-        )
+        useSelector(({ get }) => (get(flag) ? get(a) : get(b)))
       );
 
       expect(result.current).toBe(1);
@@ -167,7 +186,7 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
 
       const { result } = renderHook(() => {
         renderCount.current++;
-        return useSelector(user, (get) => get());
+        return useSelector(({ get }) => get(user));
       });
 
       expect(result.current).toEqual({ name: "John", age: 30 });
@@ -187,7 +206,7 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
 
       const { result } = renderHook(() => {
         renderCount.current++;
-        return useSelector(user, (get) => get(), "strict");
+        return useSelector(({ get }) => get(user), "strict");
       });
 
       expect(result.current).toEqual({ name: "John", age: 30 });
@@ -208,8 +227,7 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
       const { result } = renderHook(() => {
         renderCount.current++;
         return useSelector(
-          user,
-          (get) => get(),
+          ({ get }) => get(user),
           (a, b) => a?.id === b?.id
         );
       });
@@ -238,9 +256,9 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
       const asyncAtom = atom(Promise.resolve(10));
 
       const { result } = renderHook(() =>
-        useSelector(asyncAtom, (get) => {
+        useSelector(({ get }) => {
           try {
-            return get() * 2;
+            return get(asyncAtom) * 2;
           } catch {
             return undefined;
           }
@@ -259,9 +277,9 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
       const asyncAtom = atom(promise);
 
       const { result } = renderHook(() =>
-        useSelector(asyncAtom, (get) => {
+        useSelector(({ get }) => {
           try {
-            return get() * 2;
+            return get(asyncAtom) * 2;
           } catch {
             return undefined;
           }
@@ -279,12 +297,40 @@ describe.each(wrappers)("useSelector - $mode", ({ renderHook }) => {
     });
   });
 
+  describe("async utilities", () => {
+    it("should support all() for multiple async atoms", async () => {
+      const a = atom(Promise.resolve(1));
+      const b = atom(Promise.resolve(2));
+
+      const { result } = renderHook(() =>
+        useSelector(({ all }) => {
+          try {
+            const [valA, valB] = all([a, b]);
+            return valA + valB;
+          } catch {
+            return undefined;
+          }
+        })
+      );
+
+      // Initially loading
+      expect(result.current).toBeUndefined();
+
+      // Wait for resolution
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(result.current).toBe(3);
+    });
+  });
+
   describe("cleanup", () => {
     it("should unsubscribe on unmount", () => {
       const count = atom(5);
 
       const { result, unmount } = renderHook(() =>
-        useSelector(count, (get) => get() * 2)
+        useSelector(({ get }) => get(count) * 2)
       );
 
       expect(result.current).toBe(10);

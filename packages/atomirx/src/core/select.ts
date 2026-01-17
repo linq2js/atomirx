@@ -49,42 +49,33 @@ export interface SelectContext {
 
   /**
    * Wait for all atoms to resolve (like Promise.all).
+   * Array-only - use destructuring for custom variable names.
    *
-   * - If all atoms are resolved → returns array/object of values
+   * - If all atoms are resolved → returns array of values
    * - If any atom has error → throws that error immediately
    * - If any atom is loading (and none errored) → throws combined promise
    *
-   * @param atoms - Array or object of atoms
-   * @returns Array or object of resolved values
+   * @param atoms - Array of atoms
+   * @returns Array of resolved values (same order as input)
    *
-   * @example Array form
+   * @example
    * ```ts
    * derived(({ all }) => {
-   *   const [user, posts] = all([user$, posts$]);
-   *   return { user, posts };
-   * });
-   * ```
-   *
-   * @example Object form
-   * ```ts
-   * derived(({ all }) => {
-   *   const { user, posts } = all({ user: user$, posts: posts$ });
-   *   return { user, posts };
+   *   const [user, posts, customName] = all([user$, posts$, comments$]);
+   *   return { user, posts, comments: customName };
    * });
    * ```
    */
   all<const T extends readonly Atom<any, any>[]>(
     atoms: T
   ): { [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never };
-  all<T extends Record<string, Atom<any, any>>>(
-    atoms: T
-  ): { [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never };
 
   /**
    * Return the first resolved atom's value (like Promise.any).
+   * Object-only - returns [key, value] tuple to identify the winner.
    *
    * - If any atom is resolved → returns [key, value] tuple (skips errors)
-   * - If all atoms have errors → throws AllGettersRejectedError
+   * - If all atoms have errors → throws AllAtomsRejectedError
    * - If some are loading and rest errored → throws promise that resolves to first success
    *
    * @param atoms - Object of atoms
@@ -94,7 +85,8 @@ export interface SelectContext {
    * ```ts
    * derived(({ any }) => {
    *   const [source, data] = any({ cache: cache$, api: api$ });
-   *   return { source, data };
+   *   console.log(`Data from: ${source}`);
+   *   return data;
    * });
    * ```
    */
@@ -104,6 +96,7 @@ export interface SelectContext {
 
   /**
    * Return the first settled atom's value (like Promise.race).
+   * Object-only - returns [key, value] tuple to identify the winner.
    *
    * - If any atom is resolved → returns [key, value] tuple
    * - If any atom has error (and none resolved before it) → throws that error
@@ -116,7 +109,8 @@ export interface SelectContext {
    * ```ts
    * derived(({ race }) => {
    *   const [source, data] = race({ fast: fast$, slow: slow$ });
-   *   return { source, data };
+   *   console.log(`Winner: ${source}`);
+   *   return data;
    * });
    * ```
    */
@@ -126,38 +120,26 @@ export interface SelectContext {
 
   /**
    * Get all atom statuses when all are settled (like Promise.allSettled).
+   * Array-only - use destructuring for custom variable names.
    *
-   * - If all atoms are settled (resolved or rejected) → returns array/object of statuses
+   * - If all atoms are settled (resolved or rejected) → returns array of statuses
    * - If any atom is loading → throws combined promise
    *
-   * @param atoms - Array or object of atoms
-   * @returns Array or object of settled results
+   * @param atoms - Array of atoms
+   * @returns Array of settled results (same order as input)
    *
-   * @example Array form
+   * @example
    * ```ts
    * derived(({ settled }) => {
-   *   const results = settled([user$, posts$]);
-   *   return results.map(r => r.status === 'resolved' ? r.value : null);
-   * });
-   * ```
-   *
-   * @example Object form
-   * ```ts
-   * derived(({ settled }) => {
-   *   const { user, posts } = settled({ user: user$, posts: posts$ });
+   *   const [userResult, postsResult] = settled([user$, posts$]);
    *   return {
-   *     user: user.status === 'resolved' ? user.value : null,
-   *     posts: posts.status === 'resolved' ? posts.value : [],
+   *     user: userResult.status === 'resolved' ? userResult.value : null,
+   *     posts: postsResult.status === 'resolved' ? postsResult.value : [],
    *   };
    * });
    * ```
    */
   settled<const T extends readonly Atom<any, any>[]>(
-    atoms: T
-  ): {
-    [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
-  };
-  settled<T extends Record<string, Atom<any, any>>>(
     atoms: T
   ): {
     [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
@@ -210,7 +192,7 @@ export type LegacySelectorFn<D extends readonly Atom<any, any>[], T> = (
  * 2. Tracks which atoms are accessed during computation
  * 3. Returns a result with value/error/promise and dependencies
  *
- * ## New Context API (Recommended)
+ * ## Context API (Recommended)
  *
  * ```ts
  * select(({ get, all }) => {
@@ -219,6 +201,15 @@ export type LegacySelectorFn<D extends readonly Atom<any, any>[], T> = (
  *   return { user, posts, comments };
  * });
  * ```
+ *
+ * ## Utility Forms
+ *
+ * | Utility | Form | Reason |
+ * |---------|------|--------|
+ * | `all()` | Array | Custom names via destructuring |
+ * | `settled()` | Array | Custom names via destructuring |
+ * | `race()` | Object | Need winner key in result |
+ * | `any()` | Object | Need winner key in result |
  *
  * ## Legacy Array API (Still Supported)
  *
@@ -253,10 +244,7 @@ export function select<const D extends readonly Atom<any, any>[], T>(
   fn: LegacySelectorFn<D, T>
 ): SelectResult<T>;
 
-export function select(
-  sourceOrFn: any,
-  fn?: any
-): SelectResult<any> {
+export function select(sourceOrFn: any, fn?: any): SelectResult<any> {
   // Detect which API is being used
   if (typeof sourceOrFn === "function" && fn === undefined) {
     // New context API: select(({ get }) => ...)
@@ -304,40 +292,48 @@ function selectWithContext<T>(fn: ContextSelectorFn<T>): SelectResult<T> {
 
   /**
    * Wait for all atoms to resolve (like Promise.all).
+   * Array-only for simpler API.
    */
-  const all = (
-    atoms: readonly Atom<any, any>[] | Record<string, Atom<any, any>>
-  ): any => {
-    if (Array.isArray(atoms)) {
-      return allArray(atoms, get);
-    }
-    return allObject(atoms as Record<string, Atom<any, any>>, get);
+  const all = <const T extends readonly Atom<any, any>[]>(
+    atoms: T
+  ): { [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never } => {
+    return allArray(atoms, get) as {
+      [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never;
+    };
   };
 
   /**
    * Return the first resolved atom (like Promise.any).
+   * Object-only to return winner key.
    */
-  const any = (atoms: Record<string, Atom<any, any>>): any => {
+  const any = <T extends Record<string, Atom<any, any>>>(
+    atoms: T
+  ): [keyof T & string, T[keyof T] extends Atom<infer U, any> ? U : never] => {
     return anyImpl(atoms, get);
   };
 
   /**
    * Return the first settled atom (like Promise.race).
+   * Object-only to return winner key.
    */
-  const race = (atoms: Record<string, Atom<any, any>>): any => {
+  const race = <T extends Record<string, Atom<any, any>>>(
+    atoms: T
+  ): [keyof T & string, T[keyof T] extends Atom<infer U, any> ? U : never] => {
     return raceImpl(atoms, get);
   };
 
   /**
    * Get all atom statuses when settled (like Promise.allSettled).
+   * Array-only for simpler API.
    */
-  const settled = (
-    atoms: readonly Atom<any, any>[] | Record<string, Atom<any, any>>
-  ): any => {
-    if (Array.isArray(atoms)) {
-      return settledArray(atoms, get);
-    }
-    return settledObject(atoms as Record<string, Atom<any, any>>, get);
+  const settled = <const T extends readonly Atom<any, any>[]>(
+    atoms: T
+  ): {
+    [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
+  } => {
+    return settledArray(atoms, get) as {
+      [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
+    };
   };
 
   // Create the context
@@ -436,51 +432,6 @@ function allArray<T>(
   }
 
   return results;
-}
-
-function allObject<T extends Record<string, Atom<any, any>>>(
-  atoms: T,
-  get: <U>(a: Atom<U, any>) => U
-): { [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never } {
-  const keys = Object.keys(atoms) as (keyof T & string)[];
-
-  if (keys.length === 0) {
-    return {} as { [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never };
-  }
-
-  const results: Record<string, unknown> = {};
-  const loadingPromises: PromiseLike<unknown>[] = [];
-  let firstError: unknown = undefined;
-  let hasError = false;
-
-  for (const key of keys) {
-    const status = getAtomStatus(atoms[key], get);
-
-    if (status.status === "resolved") {
-      results[key] = status.value;
-    } else if (status.status === "rejected") {
-      if (!hasError) {
-        firstError = status.error;
-        hasError = true;
-      }
-    } else {
-      loadingPromises.push(status.promise);
-    }
-  }
-
-  // Errors take priority over loading
-  if (hasError) {
-    throw firstError;
-  }
-
-  // If any loading, throw combined promise
-  if (loadingPromises.length > 0) {
-    throw Promise.all(loadingPromises);
-  }
-
-  return results as {
-    [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never;
-  };
 }
 
 function anyImpl<T extends Record<string, Atom<any, any>>>(
@@ -586,45 +537,6 @@ function settledArray<T>(
   }
 
   return results;
-}
-
-function settledObject<T extends Record<string, Atom<any, any>>>(
-  atoms: T,
-  get: <U>(a: Atom<U, any>) => U
-): {
-  [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
-} {
-  const keys = Object.keys(atoms) as (keyof T & string)[];
-
-  if (keys.length === 0) {
-    return {} as {
-      [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
-    };
-  }
-
-  const results: Record<string, SettledResult<unknown>> = {};
-  const loadingPromises: PromiseLike<unknown>[] = [];
-
-  for (const key of keys) {
-    const status = getAtomStatus(atoms[key], get);
-
-    if (status.status === "resolved") {
-      results[key] = { status: "resolved", value: status.value };
-    } else if (status.status === "rejected") {
-      results[key] = { status: "rejected", error: status.error };
-    } else {
-      loadingPromises.push(status.promise);
-    }
-  }
-
-  // If any loading, throw combined promise
-  if (loadingPromises.length > 0) {
-    throw Promise.all(loadingPromises);
-  }
-
-  return results as {
-    [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
-  };
 }
 
 /**

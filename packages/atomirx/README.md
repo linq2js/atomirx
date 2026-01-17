@@ -28,22 +28,22 @@ yarn add atomirx
 import { atom, derived, effect } from "atomirx";
 
 // Create a mutable atom
-const count = atom(0);
+const count$ = atom(0);
 
 // Create a derived (computed) value
-const doubled = derived(count, (get) => get() * 2);
+const doubled$ = derived(({ get }) => get(count$) * 2);
 
 // Subscribe to changes
-count.on(() => console.log("Count:", count.value));
-doubled.on(() => console.log("Doubled:", doubled.value));
+count$.on(() => console.log("Count:", count$.value));
+doubled$.on(() => console.log("Doubled:", doubled$.value));
 
 // Update the atom
-count.set(5);        // Count: 5, Doubled: 10
-count.set(n => n + 1); // Count: 6, Doubled: 12
+count$.set(5); // Count: 5, Doubled: 10
+count$.set((n) => n + 1); // Count: 6, Doubled: 12
 
 // Create side effects
-const dispose = effect(count, (get) => {
-  localStorage.setItem("count", String(get()));
+const dispose = effect(({ get }) => {
+  localStorage.setItem("count", String(get(count$)));
 });
 
 // Clean up when done
@@ -75,23 +75,23 @@ const expensive = atom(() => computeExpensiveValue());
 
 // With fallback for loading/error states
 const data = atom(fetchData(), { fallback: [] });
-console.log(data.value);   // [] during loading
+console.log(data.value); // [] during loading
 console.log(data.stale()); // true during loading
 ```
 
 #### Atom API
 
-| Property/Method | Description |
-|----------------|-------------|
-| `value` | Current value (undefined during loading without fallback) |
-| `loading` | `true` if waiting for a Promise to resolve |
-| `error` | Error from rejected Promise (undefined if no error) |
-| `stale()` | `true` if using fallback/previous value during loading/error |
-| `dirty()` | `true` if value has been modified since creation |
-| `set(value)` | Update with value, Promise, or reducer function |
-| `reset()` | Reset to initial state |
-| `on(listener)` | Subscribe to changes, returns unsubscribe function |
-| `then()` | Makes atom awaitable: `await atom` |
+| Property/Method | Description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| `value`         | Current value (undefined during loading without fallback)    |
+| `loading`       | `true` if waiting for a Promise to resolve                   |
+| `error`         | Error from rejected Promise (undefined if no error)          |
+| `stale()`       | `true` if using fallback/previous value during loading/error |
+| `dirty()`       | `true` if value has been modified since creation             |
+| `set(value)`    | Update with value, Promise, or reducer function              |
+| `reset()`       | Reset to initial state                                       |
+| `on(listener)`  | Subscribe to changes, returns unsubscribe function           |
+| `then()`        | Makes atom awaitable: `await atom`                           |
 
 ### Derived
 
@@ -100,71 +100,88 @@ Derived atoms are read-only computed values that automatically update when sourc
 ```typescript
 import { atom, derived } from "atomirx";
 
-// Single source
+// Context API (recommended) - inline atom access with get()
 const count = atom(5);
-const doubled = derived(count, (get) => get() * 2);
+const doubled = derived(({ get }) => get(count) * 2);
 console.log(doubled.value); // 10
 
-// Multiple sources
+// Multiple atoms - just use get() for each
 const firstName = atom("John");
 const lastName = atom("Doe");
-const fullName = derived(
-  [firstName, lastName],
-  (getFirst, getLast) => `${getFirst()} ${getLast()}`
-);
+const fullName = derived(({ get }) => `${get(firstName)} ${get(lastName)}`);
 console.log(fullName.value); // "John Doe"
 
-// Conditional dependencies - only subscribes to accessed atoms
+// Conditional dependencies - only accessed atoms become dependencies
 const showDetails = atom(false);
 const summary = atom("Brief");
 const details = atom("Detailed");
 
-const content = derived(
-  [showDetails, summary, details],
-  (getShow, getSummary, getDetails) =>
-    getShow() ? getDetails() : getSummary()
-);
+const content = derived(({ get }) => (get(showDetails) ? get(details) : get(summary)));
 // When showDetails is false, changes to details don't trigger recomputation
 ```
 
 #### Suspense-Style Getters
 
-Getters in derived atoms behave like React Suspense:
-- **Loading atom**: getter throws the Promise
-- **Error atom**: getter throws the error
-- **Resolved atom**: getter returns the value
+The `get()` function behaves like React Suspense:
+
+- **Loading atom**: `get()` throws the Promise
+- **Error atom**: `get()` throws the error
+- **Resolved atom**: `get()` returns the value
 
 ```typescript
 const asyncUser = atom(fetchUser());
-const userName = derived(asyncUser, (get) => get().name);
+const userName = derived(({ get }) => get(asyncUser).name);
 
 // userName.loading is true while asyncUser is loading
 // userName.error is set if asyncUser has an error
 ```
 
+#### Legacy Array API
+
+The array-based API is still supported for backward compatibility:
+
+```typescript
+// Single source
+const doubled = derived(count, (get) => get() * 2);
+
+// Multiple sources
+const fullName = derived(
+  [firstName, lastName],
+  (getFirst, getLast) => `${getFirst()} ${getLast()}`
+);
+```
+
 ### Effect
 
-Effects run side effects when source atoms change.
+Effects run side effects when accessed atoms change. Uses the same `SelectContext` as `derived`.
 
 ```typescript
 import { atom, effect } from "atomirx";
 
 // Basic effect
 const count = atom(0);
-const dispose = effect(count, (get) => {
-  console.log("Count changed:", get());
+const dispose = effect(({ get }) => {
+  console.log("Count changed:", get(count));
 });
 
-// With cleanup
+// Multiple atoms - just use get() for each
+const dispose = effect(({ get }) => {
+  const user = get(userAtom);
+  const settings = get(settingsAtom);
+  analytics.identify(user.id, settings);
+});
+
+// With cleanup - return a function
 const interval = atom(1000);
-const dispose = effect(interval, (get) => {
-  const id = setInterval(() => console.log("tick"), get());
+const dispose = effect(({ get }) => {
+  const id = setInterval(() => console.log("tick"), get(interval));
   return () => clearInterval(id); // Cleanup before next run or dispose
 });
 
-// Multiple sources
-const dispose = effect([userAtom, settingsAtom], (getUser, getSettings) => {
-  analytics.identify(getUser().id, getSettings());
+// With async utilities
+const dispose = effect(({ all }) => {
+  const [user, config] = all([userAtom, configAtom]);
+  console.log("Both resolved:", user, config);
 });
 ```
 
@@ -245,38 +262,50 @@ counterStore.reset();
 
 ## Async Utilities
 
-Utilities for working with multiple async atoms in derived/selector contexts.
+The `SelectContext` provides utilities for working with multiple async atoms.
+
+| Utility     | Form   | Reason                         |
+| ----------- | ------ | ------------------------------ |
+| `all()`     | Array  | Custom names via destructuring |
+| `settled()` | Array  | Custom names via destructuring |
+| `race()`    | Object | Need winner key in result      |
+| `any()`     | Object | Need winner key in result      |
 
 ```typescript
-import { atom, derived, all, any, race, settled } from "atomirx";
+import { atom, derived } from "atomirx";
 
-const userAtom = atom(fetchUser());
-const postsAtom = atom(fetchPosts());
+const user$ = atom(fetchUser());
+const posts$ = atom(fetchPosts());
 
 // all() - Wait for all to resolve (like Promise.all)
-const dashboard = derived([userAtom, postsAtom], (getUser, getPosts) => {
-  const [user, posts] = all([getUser, getPosts]);
+// Array form allows custom variable names via destructuring
+const dashboard = derived(({ all }) => {
+  const [user, posts] = all([user$, posts$]);
   return { user, posts };
 });
 
 // any() - First resolved wins (like Promise.any)
-const data = derived([primaryAtom, fallbackAtom], (getPrimary, getFallback) => {
-  const [winner, value] = any({ primary: getPrimary, fallback: getFallback });
+// Object form returns [key, value] to identify the winner
+const data = derived(({ any }) => {
+  const [source, value] = any({ primary: primary$, fallback: fallback$ });
+  console.log(`Data from: ${source}`);
   return value;
 });
 
 // race() - First settled wins (like Promise.race)
-const fastest = derived([cacheAtom, apiAtom], (getCache, getApi) => {
-  const [source, value] = race({ cache: getCache, api: getApi });
+// Object form returns [key, value] to identify the winner
+const fastest = derived(({ race }) => {
+  const [source, value] = race({ cache: cache$, api: api$ });
   return { source, value };
 });
 
 // settled() - Get all results regardless of success/failure (like Promise.allSettled)
-const results = derived([userAtom, postsAtom], (getUser, getPosts) => {
-  const { user, posts } = settled({ user: getUser, posts: getPosts });
+// Array form allows custom variable names via destructuring
+const results = derived(({ settled }) => {
+  const [userResult, postsResult] = settled([user$, posts$]);
   return {
-    user: user.status === "resolved" ? user.value : null,
-    posts: posts.status === "resolved" ? posts.value : [],
+    user: userResult.status === "resolved" ? userResult.value : null,
+    posts: postsResult.status === "resolved" ? postsResult.value : [],
   };
 });
 ```
@@ -285,7 +314,7 @@ const results = derived([userAtom, postsAtom], (getUser, getPosts) => {
 
 ### useSelector
 
-Subscribe to atom values with automatic re-render.
+Subscribe to atom values with automatic re-render. Uses the same `SelectContext` as `derived`.
 
 ```tsx
 import { useSelector } from "atomirx/react";
@@ -294,18 +323,21 @@ import { atom } from "atomirx";
 const count = atom(5);
 
 function Counter() {
-  // Simple usage
+  // Shorthand: pass atom directly to get its value
   const value = useSelector(count);
-  
-  // With selector
-  const doubled = useSelector(count, (get) => get() * 2);
-  
-  // Multiple atoms
-  const fullName = useSelector(
-    [firstName, lastName],
-    (getFirst, getLast) => `${getFirst()} ${getLast()}`
-  );
-  
+
+  // Context selector: derive a value
+  const doubled = useSelector(({ get }) => get(count) * 2);
+
+  // Multiple atoms - just use get() for each
+  const fullName = useSelector(({ get }) => `${get(firstName)} ${get(lastName)}`);
+
+  // With async utilities
+  const data = useSelector(({ all }) => {
+    const [user, posts] = all([userAtom, postsAtom]);
+    return { user, posts };
+  });
+
   return <div>{doubled}</div>;
 }
 ```
@@ -318,7 +350,8 @@ For async atoms, wrap with `<Suspense>` and `<ErrorBoundary>`:
 const userAtom = atom(fetchUser());
 
 function UserProfile() {
-  const user = useSelector(userAtom); // Suspends until resolved
+  // Suspends until resolved
+  const user = useSelector(userAtom);
   return <div>{user.name}</div>;
 }
 
@@ -335,7 +368,7 @@ function App() {
 
 ### rx
 
-Reactive inline component for fine-grained updates.
+Reactive inline component for fine-grained updates. Uses the same `SelectContext` as `useSelector`.
 
 ```tsx
 import { rx } from "atomirx/react";
@@ -343,18 +376,23 @@ import { rx } from "atomirx/react";
 function Page() {
   return (
     <div>
-      {/* Only this part re-renders when count changes */}
+      {/* Shorthand: pass atom directly */}
       Count: {rx(count)}
-      
-      {/* With selector */}
-      Doubled: {rx(count, (get) => get() * 2)}
-      
-      {/* Multiple atoms */}
-      {rx([firstName, lastName], (f, l) => `${f()} ${l()}`)}
+      {/* Context selector: derive a value */}
+      Doubled: {rx(({ get }) => get(count) * 2)}
+      {/* Multiple atoms - just use get() for each */}
+      {rx(({ get }) => `${get(firstName)} ${get(lastName)}`)}
+      {/* With async utilities */}
+      {rx(({ all }) => {
+        const [user, posts] = all([userAtom, postsAtom]);
+        return <Dashboard user={user} posts={posts} />;
+      })}
     </div>
   );
 }
 ```
+
+Only the `rx` component re-renders when atoms change, not the parent component.
 
 ### useAction
 
@@ -371,9 +409,7 @@ function UserProfile({ userId }) {
 
   return (
     <div>
-      {fetchUser.status === "idle" && (
-        <button onClick={fetchUser}>Load User</button>
-      )}
+      {fetchUser.status === "idle" && <button onClick={fetchUser}>Load User</button>}
       {fetchUser.status === "loading" && <Spinner />}
       {fetchUser.status === "success" && <div>{fetchUser.result.name}</div>}
       {fetchUser.status === "error" && <div>Error: {String(fetchUser.error)}</div>}
@@ -382,27 +418,27 @@ function UserProfile({ userId }) {
 }
 
 // Eager execution on mount
-const fetchUser = useAction(
-  async ({ signal }) => fetchUserApi(userId, { signal }),
-  { lazy: false, deps: [userId] }
-);
+const fetchUser = useAction(async ({ signal }) => fetchUserApi(userId, { signal }), {
+  lazy: false,
+  deps: [userId],
+});
 
 // With atom deps - re-executes when atom changes
-const fetchUser = useAction(
-  async ({ signal }) => fetchUserApi(userIdAtom.value, { signal }),
-  { lazy: false, deps: [userIdAtom] }
-);
+const fetchUser = useAction(async ({ signal }) => fetchUserApi(userIdAtom.value, { signal }), {
+  lazy: false,
+  deps: [userIdAtom],
+});
 ```
 
 #### useAction API
 
-| Property/Method | Description |
-|----------------|-------------|
-| `status` | `"idle"` \| `"loading"` \| `"success"` \| `"error"` |
-| `result` | Result value when successful |
-| `error` | Error when failed |
-| `abort()` | Cancel current request |
-| `reset()` | Reset to idle state |
+| Property/Method | Description                                         |
+| --------------- | --------------------------------------------------- |
+| `status`        | `"idle"` \| `"loading"` \| `"success"` \| `"error"` |
+| `result`        | Result value when successful                        |
+| `error`         | Error when failed                                   |
+| `abort()`       | Cancel current request                              |
+| `reset()`       | Reset to idle state                                 |
 
 ### useStable
 
@@ -434,35 +470,38 @@ function MyComponent({ userId }) {
 
 ### Core
 
-| Export | Description |
-|--------|-------------|
-| `atom(value, options?)` | Create a mutable atom |
-| `derived(source, fn, options?)` | Create a derived (computed) atom |
-| `effect(source, fn)` | Create a side effect |
-| `batch(fn)` | Batch multiple updates |
-| `emitter(initialListeners?)` | Create an event emitter |
-| `define(factory, options?)` | Create a swappable lazy singleton |
-| `select(source, fn)` | Low-level selector utility |
-| `isAtom(value)` | Type guard for atoms |
+| Export                      | Description                        |
+| --------------------------- | ---------------------------------- |
+| `atom(value, options?)`     | Create a mutable atom              |
+| `derived(fn)`               | Create a derived atom              |
+| `derived(source, fn)`       | Create a derived atom (legacy API) |
+| `effect(fn)`                | Create a side effect               |
+| `batch(fn)`                 | Batch multiple updates             |
+| `define(factory, options?)` | Create a swappable lazy singleton  |
+| `isAtom(value)`             | Type guard for atoms               |
 
-### Async Utilities
+### SelectContext Utilities
 
-| Export | Description |
-|--------|-------------|
-| `all(getters)` | Wait for all getters (like Promise.all) |
-| `any(getters)` | First resolved getter (like Promise.any) |
-| `race(getters)` | First settled getter (like Promise.race) |
-| `settled(getters)` | All results regardless of success/failure |
-| `getterStatus(getter)` | Get status of a single getter |
+Available in `derived`, `effect`, `useSelector`, and `rx`:
+
+| Utility          | Form   | Description                               |
+| ---------------- | ------ | ----------------------------------------- |
+| `get(atom)`      | -      | Read atom value with dependency tracking  |
+| `all(atoms)`     | Array  | Wait for all atoms (like Promise.all)     |
+| `any(atoms)`     | Object | First resolved atom (like Promise.any)    |
+| `race(atoms)`    | Object | First settled atom (like Promise.race)    |
+| `settled(atoms)` | Array  | All results regardless of success/failure |
 
 ### React (`atomirx/react`)
 
-| Export | Description |
-|--------|-------------|
-| `useSelector(source, selector?, equals?)` | Subscribe to atom values |
-| `useAction(fn, options?)` | Handle async actions |
-| `useStable(input, equals?)` | Stabilize references |
-| `rx(source, selector?, equals?)` | Reactive inline component |
+| Export                      | Description                           |
+| --------------------------- | ------------------------------------- |
+| `useSelector(atom)`         | Subscribe to atom value (shorthand)   |
+| `useSelector(fn, equals?)`  | Subscribe with context selector       |
+| `useAction(fn, options?)`   | Handle async actions                  |
+| `useStable(input, equals?)` | Stabilize references                  |
+| `rx(atom)`                  | Reactive inline component (shorthand) |
+| `rx(fn, equals?)`           | Reactive inline with context selector |
 
 ## TypeScript
 
@@ -473,7 +512,7 @@ import { atom, derived } from "atomirx";
 
 // Types are inferred
 const count = atom(0); // MutableAtom<number>
-const doubled = derived(count, (get) => get() * 2); // Atom<number>
+const doubled = derived(({ get }) => get(count) * 2); // Atom<number>
 
 // Explicit typing
 const user = atom<User | null>(null);

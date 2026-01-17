@@ -1,41 +1,40 @@
 import { batch } from "./batch";
 import { derived } from "./derived";
-import { AnyFunc, Atom, Getter } from "./types";
+import { SelectContext } from "./select";
 
 /**
  * Callback function for effects.
+ * Receives the select context with `{ get, all, any, race, settled }` utilities.
  * Can optionally return a cleanup function that runs before the next execution
  * or when the effect is disposed.
- *
- * @template TArgs - Tuple of getter function types
  */
-export type EffectFn<TArgs extends any[]> = (
-  ...args: TArgs
-) => void | VoidFunction;
+export type EffectFn = (context: SelectContext) => void | VoidFunction;
 
 /**
- * Creates a side-effect that runs when source atom(s) change.
+ * Creates a side-effect that runs when accessed atom(s) change.
  *
  * Effects are similar to derived atoms but for side-effects rather than computed values.
  * They inherit derived's behavior:
  * - **Suspense-like async**: Waits for async atoms to resolve before running
- * - **Conditional dependencies**: Only tracks atoms actually accessed via getters
+ * - **Conditional dependencies**: Only tracks atoms actually accessed via `get()`
  * - **Automatic cleanup**: Previous cleanup runs before next execution
  * - **Batched updates**: Atom updates within the effect are batched (single notification)
  *
- * ## Single Source
+ * ## Basic Usage
  *
  * ```ts
- * const dispose = effect(countAtom, (getCount) => {
- *   localStorage.setItem('count', String(getCount()));
+ * const dispose = effect(({ get }) => {
+ *   localStorage.setItem('count', String(get(countAtom)));
  * });
  * ```
  *
- * ## Multiple Sources
+ * ## Multiple Atoms
  *
  * ```ts
- * const dispose = effect([userAtom, settingsAtom], (getUser, getSettings) => {
- *   analytics.identify(getUser().id, getSettings());
+ * const dispose = effect(({ get }) => {
+ *   const user = get(userAtom);
+ *   const settings = get(settingsAtom);
+ *   analytics.identify(user.id, settings);
  * });
  * ```
  *
@@ -44,8 +43,9 @@ export type EffectFn<TArgs extends any[]> = (
  * Return a function to clean up before the next run or on dispose:
  *
  * ```ts
- * const dispose = effect(intervalAtom, (getInterval) => {
- *   const id = setInterval(() => console.log('tick'), getInterval());
+ * const dispose = effect(({ get }) => {
+ *   const interval = get(intervalAtom);
+ *   const id = setInterval(() => console.log('tick'), interval);
  *   return () => clearInterval(id); // Cleanup
  * });
  * ```
@@ -55,9 +55,10 @@ export type EffectFn<TArgs extends any[]> = (
  * Effects wait for async atoms to resolve (Suspense-like behavior):
  *
  * ```ts
- * const dispose = effect([asyncUserAtom, asyncConfigAtom], (getUser, getConfig) => {
+ * const dispose = effect(({ all }) => {
  *   // Only runs when BOTH atoms are resolved
- *   initializeApp(getUser(), getConfig());
+ *   const [user, config] = all([asyncUserAtom, asyncConfigAtom]);
+ *   initializeApp(user, config);
  * });
  * ```
  *
@@ -68,49 +69,43 @@ export type EffectFn<TArgs extends any[]> = (
  * for simpler implementation. For long-lived effects this is negligible;
  * for many short-lived effects, be aware of potential memory accumulation.
  *
- * @param source - Single atom or array of atoms to observe
- * @param fn - Effect callback receiving getter(s). May return a cleanup function.
+ * @param fn - Effect callback receiving context with `{ get, all, any, race, settled }`.
+ *             May return a cleanup function.
  * @returns Dispose function to stop the effect and run final cleanup
  *
  * @example Persisting state
  * ```ts
- * const dispose = effect(stateAtom, (getState) => {
- *   localStorage.setItem('app-state', JSON.stringify(getState()));
+ * const dispose = effect(({ get }) => {
+ *   localStorage.setItem('app-state', JSON.stringify(get(stateAtom)));
  * });
  * ```
  *
  * @example Syncing to external system
  * ```ts
- * const dispose = effect([authAtom, dataAtom], (getAuth, getData) => {
- *   const ws = new WebSocket(getAuth().endpoint);
- *   ws.send(JSON.stringify(getData()));
+ * const dispose = effect(({ get }) => {
+ *   const auth = get(authAtom);
+ *   const data = get(dataAtom);
+ *   const ws = new WebSocket(auth.endpoint);
+ *   ws.send(JSON.stringify(data));
  *   return () => ws.close();
  * });
  * ```
+ *
+ * @example Using async utilities
+ * ```ts
+ * const dispose = effect(({ all }) => {
+ *   const [user, posts] = all([userAtom, postsAtom]);
+ *   console.log(`${user.name} has ${posts.length} posts`);
+ * });
+ * ```
  */
-export function effect<D>(
-  source: Atom<D, any>,
-  fn: EffectFn<[Getter<D>]>
-): VoidFunction;
-
-export function effect<const D extends readonly Atom<any, any>[]>(
-  source: D,
-  fn: EffectFn<
-    [
-      ...{
-        [K in keyof D]: D[K] extends Atom<infer U, any> ? Getter<U> : never;
-      }
-    ]
-  >
-): VoidFunction;
-
-export function effect(source: any, fn: AnyFunc): VoidFunction {
+export function effect(fn: EffectFn): VoidFunction {
   let disposed = false;
   let cleanup: VoidFunction | undefined;
 
   // Create a derived atom that runs the effect on each recomputation.
   // Using derived gives us: dependency tracking, async handling, and batching.
-  void derived(source, (...args) => {
+  void derived((context) => {
     // Run previous cleanup before next execution
     cleanup?.();
 
@@ -118,7 +113,7 @@ export function effect(source: any, fn: AnyFunc): VoidFunction {
     if (disposed) return;
 
     // Run effect in a batch - multiple atom updates will only notify once
-    const nextCleanup = batch(() => fn(...args));
+    const nextCleanup = batch(() => fn(context));
     if (typeof nextCleanup === "function") {
       cleanup = () => {
         try {

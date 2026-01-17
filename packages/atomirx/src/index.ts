@@ -1,12 +1,4 @@
 export { atom } from "./core/atom";
-export {
-  all,
-  AllGettersRejectedError,
-  any,
-  getterStatus,
-  race,
-  settled,
-} from "./core/async";
 export { batch } from "./core/batch";
 export { define } from "./core/define";
 export { derived } from "./core/derived";
@@ -25,9 +17,4 @@ export type {
   Pipeable,
 } from "./core/types";
 
-export type { GetterStatusResult, SettledResult } from "./core/async";
-export type {
-  SelectContext,
-  SelectResult,
-  SettledResult as SelectSettledResult,
-} from "./core/select";
+export type { SelectContext, SelectResult, SettledResult } from "./core/select";

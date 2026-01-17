@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { atom, derived } from "atomirx";
 import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
-import { LogPanel, useLogger } from "../components/LogPanel";
+import { useEventLog } from "../App";
 import { Calculator, ArrowRight, Shuffle } from "lucide-react";
 
 // Source atoms
@@ -42,6 +42,7 @@ const infoAtom = derived(
 );
 
 export function DerivedAtomDemo() {
+  // Shorthand: pass atom directly to get its value
   const price = useSelector(priceAtom);
   const quantity = useSelector(quantityAtom);
   const discount = useSelector(discountAtom);
@@ -51,14 +52,7 @@ export function DerivedAtomDemo() {
   const showDetails = useSelector(showDetailsAtom);
   const info = useSelector(infoAtom);
 
-  const [logs, setLogs] = useState<
-    { id: number; message: string; timestamp: Date; type?: "info" | "success" | "error" | "warning" }[]
-  >([]);
-  const { log, clear, setSetLogs } = useLogger();
-
-  useEffect(() => {
-    setSetLogs(setLogs);
-  }, [setSetLogs]);
+  const { log } = useEventLog();
 
   useEffect(() => {
     const unsubs = [
@@ -234,15 +228,6 @@ const info = derived(
         </div>
       </DemoSection>
 
-      {/* Event Log */}
-      <DemoSection title="Event Log">
-        <div className="space-y-3">
-          <LogPanel logs={logs} />
-          <button onClick={clear} className="btn-secondary text-sm">
-            Clear Logs
-          </button>
-        </div>
-      </DemoSection>
     </div>
   );
 }

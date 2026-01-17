@@ -1,7 +1,8 @@
 import { useSyncExternalStore, useCallback, useRef } from "react";
-import { select } from "../core/select";
+import { select, ContextSelectorFn } from "../core/select";
 import { resolveEquality } from "../core/equality";
-import { AnyFunc, Atom, Equality, Getter } from "../core/types";
+import { Atom, Equality } from "../core/types";
+import { isAtom } from "../core/isAtom";
 
 /**
  * React hook that selects/derives a value from atom(s) with automatic subscriptions.
@@ -55,40 +56,39 @@ import { AnyFunc, Atom, Equality, Getter } from "../core/types";
  * ```
  *
  * @template T - The type of the selected value
- * @param source - Single atom or array of atoms
- * @param selector - Function that computes the selected value from atom getters
+ * @param selector - Context-based selector function with `{ get, all, any, race, settled }`
  * @param equals - Equality function or shorthand ("strict", "shallow", "deep"). Defaults to "shallow"
  * @returns The selected value (throws Promise if loading, throws Error if errored)
+ *
+ * @example Single atom (shorthand)
+ * ```tsx
+ * const count = atom(5);
+ *
+ * function Counter() {
+ *   // Shorthand: pass atom directly to get its value
+ *   const value = useSelector(count);
+ *   return <div>{value}</div>;
+ * }
+ * ```
  *
  * @example Single atom (with selector)
  * ```tsx
  * const count = atom(5);
  *
  * function Counter() {
- *   const doubled = useSelector(count, (get) => get() * 2);
+ *   const doubled = useSelector(({ get }) => get(count) * 2);
  *   return <div>{doubled}</div>;
  * }
  * ```
  *
- * @example Single atom (without selector - returns atom value directly)
- * ```tsx
- * const count = atom(5);
- *
- * function Counter() {
- *   const value = useSelector(count); // equivalent to useSelector(count, (get) => get())
- *   return <div>{value}</div>;
- * }
- * ```
- *
- * @example Multiple atoms (array form)
+ * @example Multiple atoms
  * ```tsx
  * const firstName = atom("John");
  * const lastName = atom("Doe");
  *
  * function FullName() {
- *   const fullName = useSelector(
- *     [firstName, lastName],
- *     (first, last) => `${first()} ${last()}`
+ *   const fullName = useSelector(({ get }) =>
+ *     `${get(firstName)} ${get(lastName)}`
  *   );
  *   return <div>{fullName}</div>;
  * }
@@ -100,7 +100,7 @@ import { AnyFunc, Atom, Equality, Getter } from "../core/types";
  *
  * function UserName() {
  *   // Only re-render when name actually changes (shallow comparison)
- *   const name = useSelector(user, (get) => get()?.name, "shallow");
+ *   const name = useSelector(({ get }) => get(user)?.name, "shallow");
  *   return <div>{name}</div>;
  * }
  * ```
@@ -113,10 +113,8 @@ import { AnyFunc, Atom, Equality, Getter } from "../core/types";
  *
  * function UserInfo() {
  *   // Only subscribes to showDetails + the accessed info atom
- *   const info = useSelector(
- *     [showDetails, basicInfo, detailedInfo],
- *     (getShowDetails, getBasicInfo, getDetailedInfo) =>
- *       getShowDetails() ? getDetailedInfo() : getBasicInfo()
+ *   const info = useSelector(({ get }) =>
+ *     get(showDetails) ? get(detailedInfo) : get(basicInfo)
  *   );
  *   return <div>{info.name}</div>;
  * }
@@ -128,7 +126,7 @@ import { AnyFunc, Atom, Equality, Getter } from "../core/types";
  *
  * function UserProfile() {
  *   // This will suspend until the atom resolves
- *   const user = useSelector(userAtom);
+ *   const user = useSelector(({ get }) => get(userAtom));
  *   return <div>{user.name}</div>;
  * }
  *
@@ -146,63 +144,80 @@ import { AnyFunc, Atom, Equality, Getter } from "../core/types";
  *
  * @example Combining multiple async atoms with async utilities
  * ```tsx
- * import { all, settled } from "atomirx";
- *
  * const userAtom = atom(fetchUser());
  * const postsAtom = atom(fetchPosts());
  *
  * function Dashboard() {
- *   const data = useSelector([userAtom, postsAtom], (getUser, getPosts) => {
+ *   const data = useSelector(({ all }) => {
  *     // Use all() to wait for multiple atoms
- *     const [user, posts] = all([getUser, getPosts]);
+ *     const [user, posts] = all([userAtom, postsAtom]);
  *     return { user, posts };
- *
- *     // Or use settled() to handle partial failures
- *     // const results = settled({ user: getUser, posts: getPosts });
  *   });
  *
  *   return <DashboardContent user={data.user} posts={data.posts} />;
  * }
  * ```
- * @see all, race, any, settled in core/async.ts for more async utilities
+ *
+ * @example Using settled for partial failures
+ * ```tsx
+ * const userAtom = atom(fetchUser());
+ * const postsAtom = atom(fetchPosts());
+ *
+ * function Dashboard() {
+ *   const data = useSelector(({ settled }) => {
+ *     const [userResult, postsResult] = settled([userAtom, postsAtom]);
+ *     return {
+ *       user: userResult.status === 'resolved' ? userResult.value : null,
+ *       posts: postsResult.status === 'resolved' ? postsResult.value : [],
+ *     };
+ *   });
+ *
+ *   return <DashboardContent user={data.user} posts={data.posts} />;
+ * }
+ * ```
+ *
+ * @example Using race for first resolved
+ * ```tsx
+ * const cacheAtom = atom(fetchFromCache());
+ * const apiAtom = atom(fetchFromApi());
+ *
+ * function Data() {
+ *   const [source, data] = useSelector(({ race }) =>
+ *     race({ cache: cacheAtom, api: apiAtom })
+ *   );
+ *   return <div>Data from {source}: {data}</div>;
+ * }
+ * ```
  */
-export function useSelector<D, T = D>(
-  source: Atom<D, any>,
-  selector?: (source: Getter<D>) => T,
+// Overload: Pass atom directly to get its value
+export function useSelector<T>(
+  atom: Atom<T, any>,
   equals?: Equality<T>
 ): T;
 
-export function useSelector<const D extends readonly Atom<any, any>[], T>(
-  source: D,
-  selector: (
-    ...values: {
-      [K in keyof D]: D[K] extends Atom<infer U, any> ? Getter<U> : never;
-    }
-  ) => T,
+// Overload: Context-based selector function
+export function useSelector<T>(
+  selector: ContextSelectorFn<T>,
   equals?: Equality<T>
 ): T;
 
-export function useSelector(
-  source: any,
-  selector?: AnyFunc,
-  equals?: Equality<any>
-): any {
+export function useSelector<T>(
+  selectorOrAtom: ContextSelectorFn<T> | Atom<T, any>,
+  equals?: Equality<T>
+): T {
+  // Convert atom shorthand to context selector
+  const selector: ContextSelectorFn<T> = isAtom(selectorOrAtom)
+    ? ({ get }) => get(selectorOrAtom as Atom<T, any>)
+    : (selectorOrAtom as ContextSelectorFn<T>);
   // Default to shallow equality to handle object-returning selectors properly
-  const eq = resolveEquality(equals ?? "shallow");
-  // Default identity selector for single atom case
-  const identitySelector = (get: Getter<any>) => get();
+  const eq = resolveEquality(equals as Equality<any> ?? "shallow");
 
-  // Use identity selector if none provided (single atom case)
-  const selectorFn = selector ?? identitySelector;
-
-  // Store source and selectorFn in refs to avoid recreating callbacks
-  const sourceRef = useRef(source);
-  const selectorFnRef = useRef(selectorFn);
+  // Store selector in ref to avoid recreating callbacks
+  const selectorRef = useRef(selector);
   const eqRef = useRef(eq);
 
   // Update refs on each render
-  sourceRef.current = source;
-  selectorFnRef.current = selectorFn;
+  selectorRef.current = selector;
   eqRef.current = eq;
 
   // Track current dependencies and their unsubscribe functions
@@ -221,7 +236,7 @@ export function useSelector(
    * We collect dependencies here but don't subscribe yet.
    */
   const getSnapshot = useCallback(() => {
-    const result = select(sourceRef.current, selectorFnRef.current);
+    const result = select(selectorRef.current);
 
     // Update dependencies
     dependenciesRef.current = result.dependencies;
@@ -285,7 +300,7 @@ export function useSelector(
         if (!subscriptions.has(atom)) {
           const unsubscribe = atom.on(() => {
             // Re-run selector to update dependencies and check equality
-            const result = select(sourceRef.current, selectorFnRef.current);
+            const result = select(selectorRef.current);
             dependenciesRef.current = result.dependencies;
 
             // Update subscriptions if dependencies changed

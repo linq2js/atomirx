@@ -365,7 +365,7 @@ describe("select", () => {
     });
 
     describe("all()", () => {
-      it("should return array of values when all resolved (array form)", () => {
+      it("should return array of values when all resolved", () => {
         const a = atom(1);
         const b = atom(2);
         const c = atom(3);
@@ -378,16 +378,25 @@ describe("select", () => {
         expect(result.value).toBe(6);
       });
 
-      it("should return object of values when all resolved (object form)", () => {
-        const a = atom(1);
-        const b = atom(2);
+      it("should support custom variable names via destructuring", () => {
+        const userAtom = atom({ name: "John" });
+        const postsAtom = atom([1, 2, 3]);
+        const commentsAtom = atom(["a", "b"]);
 
         const result = select(({ all }) => {
-          const { first, second } = all({ first: a, second: b });
-          return first + second;
+          const [user, posts, myComments] = all([
+            userAtom,
+            postsAtom,
+            commentsAtom,
+          ]);
+          return { user, posts, comments: myComments };
         });
 
-        expect(result.value).toBe(3);
+        expect(result.value).toEqual({
+          user: { name: "John" },
+          posts: [1, 2, 3],
+          comments: ["a", "b"],
+        });
       });
 
       it("should throw promise when any atom is loading", () => {
@@ -590,7 +599,7 @@ describe("select", () => {
     });
 
     describe("settled()", () => {
-      it("should return array of settled results (array form)", async () => {
+      it("should return array of settled results", async () => {
         const syncAtom = atom(1);
         const error = new Error("Test error");
         let reject: (e: Error) => void;
@@ -614,27 +623,31 @@ describe("select", () => {
         ]);
       });
 
-      it("should return object of settled results (object form)", async () => {
-        const syncAtom = atom(42);
-        const error = new Error("Test error");
+      it("should support custom variable names via destructuring", async () => {
+        const userAtom = atom({ name: "John" });
+        const error = new Error("Posts failed");
         let reject: (e: Error) => void;
-        const errorAtom = atom(
-          new Promise<number>((_, r) => {
+        const postsAtom = atom(
+          new Promise<string[]>((_, r) => {
             reject = r;
           })
         );
 
-        errorAtom.loading;
+        postsAtom.loading;
         reject!(error);
         await new Promise((r) => setTimeout(r, 0));
 
         const result = select(({ settled }) => {
-          return settled({ success: syncAtom, failure: errorAtom });
+          const [userResult, postsResult] = settled([userAtom, postsAtom]);
+          return {
+            user: userResult.status === "resolved" ? userResult.value : null,
+            posts: postsResult.status === "resolved" ? postsResult.value : [],
+          };
         });
 
         expect(result.value).toEqual({
-          success: { status: "resolved", value: 42 },
-          failure: { status: "rejected", error },
+          user: { name: "John" },
+          posts: [],
         });
       });
 

@@ -1,9 +1,9 @@
-import { useState } from "react";
 import { atom } from "atomirx";
 import { useAction, useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { StatusBadge } from "../components/StatusBadge";
+import { useEventLog } from "../App";
 import { Play, Square, RefreshCw, Loader2, CheckCircle, AlertCircle, Clock } from "lucide-react";
 
 // Simulated API calls
@@ -34,8 +34,9 @@ const fetchData = async (
 const userIdAtom = atom(1, { key: "userId" });
 
 export function UseActionDemo() {
+  // Shorthand: pass atom directly to get its value
   const userId = useSelector(userIdAtom);
-  const [manualLogs, setManualLogs] = useState<string[]>([]);
+  const { log } = useEventLog();
 
   // Basic manual dispatch (lazy: true by default)
   const basicAction = useAction(async ({ signal }) => {
@@ -63,17 +64,13 @@ export function UseActionDemo() {
     return { computed: Math.random() * 100 };
   });
 
-  const addLog = (msg: string) => {
-    setManualLogs((prev) => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`].slice(-10));
-  };
-
   const handleBasicDispatch = async () => {
-    addLog("Dispatching basic action...");
+    log("Dispatching basic action...");
     try {
       const result = await basicAction();
-      addLog(`Success: ${JSON.stringify(result)}`);
+      log(`Success: ${JSON.stringify(result)}`, "success");
     } catch (e) {
-      addLog(`Error: ${(e as Error).message}`);
+      log(`Error: ${(e as Error).message}`, "error");
     }
   };
 
@@ -172,7 +169,7 @@ const autoFetch = useAction(
             <button
               onClick={() => {
                 basicAction.abort();
-                addLog("Aborted action");
+                log("Aborted action", "warning");
               }}
               className="btn-secondary flex items-center gap-2"
               disabled={basicAction.status !== "loading"}
@@ -201,7 +198,7 @@ const autoFetch = useAction(
             <button
               onClick={() => {
                 noExclusiveAction();
-                addLog("Started long-running action (3s)");
+                log("Started long-running action (3s)");
               }}
               className="btn-primary flex items-center gap-2"
             >
@@ -211,7 +208,7 @@ const autoFetch = useAction(
             <button
               onClick={() => {
                 noExclusiveAction.abort();
-                addLog("Manually aborted");
+                log("Manually aborted", "warning");
               }}
               className="btn-secondary flex items-center gap-2"
               disabled={noExclusiveAction.status !== "loading"}
@@ -307,21 +304,6 @@ const autoFetch = useAction(
             <RefreshCw className="w-4 h-4" />
             Compute Random
           </button>
-        </div>
-      </DemoSection>
-
-      {/* Action Log */}
-      <DemoSection title="Action Log">
-        <div className="bg-surface-900 rounded-lg border border-surface-800 p-4 font-mono text-xs max-h-[200px] overflow-y-auto">
-          {manualLogs.length === 0 ? (
-            <p className="text-surface-500">No actions yet</p>
-          ) : (
-            manualLogs.map((log, i) => (
-              <div key={i} className="text-surface-400">
-                {log}
-              </div>
-            ))
-          )}
         </div>
       </DemoSection>
 

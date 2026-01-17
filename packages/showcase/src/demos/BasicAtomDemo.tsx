@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { atom } from "atomirx";
 import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
-import { LogPanel, useLogger } from "../components/LogPanel";
+import { useEventLog } from "../App";
 import { Plus, Minus, RotateCcw, Edit3 } from "lucide-react";
 
 // Create atoms outside component to persist across renders
@@ -11,17 +11,11 @@ const countAtom = atom(0, { key: "count" });
 const nameAtom = atom("atomirx", { key: "name" });
 
 export function BasicAtomDemo() {
+  // Shorthand: pass atom directly to get its value
   const count = useSelector(countAtom);
   const name = useSelector(nameAtom);
-  const [logs, setLogs] = useState<
-    { id: number; message: string; timestamp: Date; type?: "info" | "success" | "error" | "warning" }[]
-  >([]);
-  const { log, clear, setSetLogs } = useLogger();
+  const { log } = useEventLog();
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setSetLogs(setLogs);
-  }, [setSetLogs]);
 
   // Subscribe to changes for logging
   useEffect(() => {
@@ -78,7 +72,7 @@ import { useSelector } from "atomirx/react";
 // Create an atom with initial value
 const countAtom = atom(0);
 
-// In your component
+// In your component (shorthand: pass atom directly)
 const count = useSelector(countAtom);
 
 // Update the atom
@@ -157,19 +151,6 @@ countAtom.reset();          // Reset to initial value
             <p className="text-sm text-surface-400 mb-1">Current value:</p>
             <p className="text-xl font-semibold text-surface-100">"{name}"</p>
           </div>
-        </div>
-      </DemoSection>
-
-      {/* Event Log */}
-      <DemoSection
-        title="Event Log"
-        description="Real-time log of atom operations and subscriptions"
-      >
-        <div className="space-y-3">
-          <LogPanel logs={logs} />
-          <button onClick={clear} className="btn-secondary text-sm">
-            Clear Logs
-          </button>
         </div>
       </DemoSection>
 

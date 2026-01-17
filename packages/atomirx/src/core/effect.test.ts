@@ -2,15 +2,16 @@ import { describe, it, expect, vi } from "vitest";
 import { atom } from "./atom";
 import { derived } from "./derived";
 import { effect } from "./effect";
+import { SelectContext } from "./select";
 
 describe("effect", () => {
-  describe("single source atom", () => {
+  describe("basic usage", () => {
     it("should run effect immediately on creation", () => {
       const count = atom(5);
       const effectFn = vi.fn();
 
-      effect(count, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(count));
       });
 
       expect(effectFn).toHaveBeenCalledTimes(1);
@@ -21,8 +22,8 @@ describe("effect", () => {
       const count = atom(0);
       const effectFn = vi.fn();
 
-      effect(count, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(count));
       });
 
       expect(effectFn).toHaveBeenCalledTimes(1);
@@ -34,27 +35,28 @@ describe("effect", () => {
       expect(effectFn).toHaveBeenCalledWith(10);
     });
 
-    it("should receive getter function, not direct value", () => {
+    it("should receive context with get function", () => {
       const count = atom(42);
-      let receivedGetter: (() => number) | undefined;
+      let receivedContext: SelectContext | undefined;
 
-      effect(count, (get) => {
-        receivedGetter = get;
+      effect((ctx) => {
+        receivedContext = ctx;
+        ctx.get(count); // Access to track dependency
       });
 
-      expect(typeof receivedGetter).toBe("function");
-      expect(receivedGetter!()).toBe(42);
+      expect(typeof receivedContext?.get).toBe("function");
+      expect(receivedContext!.get(count)).toBe(42);
     });
   });
 
-  describe("multiple source atoms (array form)", () => {
-    it("should run effect with multiple getters", () => {
+  describe("multiple atoms", () => {
+    it("should run effect with multiple atoms", () => {
       const a = atom(1);
       const b = atom(2);
       const effectFn = vi.fn();
 
-      effect([a, b], (getA, getB) => {
-        effectFn(getA(), getB());
+      effect(({ get }) => {
+        effectFn(get(a), get(b));
       });
 
       expect(effectFn).toHaveBeenCalledTimes(1);
@@ -66,8 +68,8 @@ describe("effect", () => {
       const b = atom(2);
       const effectFn = vi.fn();
 
-      effect([a, b], (getA, getB) => {
-        effectFn(getA(), getB());
+      effect(({ get }) => {
+        effectFn(get(a), get(b));
       });
 
       expect(effectFn).toHaveBeenCalledTimes(1);
@@ -87,8 +89,8 @@ describe("effect", () => {
       const c = atom("c");
       const effectFn = vi.fn();
 
-      effect([a, b, c], (getA, getB, getC) => {
-        effectFn(getA() + getB() + getC());
+      effect(({ get }) => {
+        effectFn(get(a) + get(b) + get(c));
       });
 
       expect(effectFn).toHaveBeenCalledWith("abc");
@@ -104,8 +106,8 @@ describe("effect", () => {
       const cleanup = vi.fn();
       const effectFn = vi.fn(() => cleanup);
 
-      effect(count, (get) => {
-        get();
+      effect(({ get }) => {
+        get(count);
         return effectFn();
       });
 
@@ -122,8 +124,8 @@ describe("effect", () => {
       const count = atom(0);
       const cleanup = vi.fn();
 
-      const dispose = effect(count, (get) => {
-        get();
+      const dispose = effect(({ get }) => {
+        get(count);
         return cleanup;
       });
 
@@ -138,8 +140,8 @@ describe("effect", () => {
       const count = atom(0);
       const cleanup = vi.fn();
 
-      const dispose = effect(count, (get) => {
-        get();
+      const dispose = effect(({ get }) => {
+        get(count);
         return cleanup;
       });
 
@@ -153,8 +155,8 @@ describe("effect", () => {
       const count = atom(0);
       const effectFn = vi.fn();
 
-      const dispose = effect(count, (get) => {
-        effectFn(get());
+      const dispose = effect(({ get }) => {
+        effectFn(get(count));
         // No return - void
       });
 
@@ -169,8 +171,8 @@ describe("effect", () => {
       const count = atom(0);
       const effectFn = vi.fn();
 
-      const dispose = effect(count, (get) => {
-        effectFn(get());
+      const dispose = effect(({ get }) => {
+        effectFn(get(count));
         return undefined;
       });
 
@@ -184,8 +186,8 @@ describe("effect", () => {
       const count = atom(0);
       const order: string[] = [];
 
-      effect(count, (get) => {
-        const value = get();
+      effect(({ get }) => {
+        const value = get(count);
         order.push(`effect:${value}`);
         return () => order.push(`cleanup:${value}`);
       });
@@ -209,7 +211,9 @@ describe("effect", () => {
   describe("dispose function", () => {
     it("should return a dispose function", () => {
       const count = atom(0);
-      const dispose = effect(count, () => {});
+      const dispose = effect(({ get }) => {
+        get(count);
+      });
 
       expect(typeof dispose).toBe("function");
     });
@@ -218,8 +222,8 @@ describe("effect", () => {
       const count = atom(0);
       const effectFn = vi.fn();
 
-      const dispose = effect(count, (get) => {
-        effectFn(get());
+      const dispose = effect(({ get }) => {
+        effectFn(get(count));
       });
 
       expect(effectFn).toHaveBeenCalledTimes(1);
@@ -239,8 +243,8 @@ describe("effect", () => {
       const effectFn = vi.fn();
       const cleanup = vi.fn();
 
-      const dispose = effect(count, (get) => {
-        effectFn(get());
+      const dispose = effect(({ get }) => {
+        effectFn(get(count));
         return cleanup;
       });
 
@@ -252,7 +256,7 @@ describe("effect", () => {
     });
   });
 
-  describe("async source atoms (suspense-like behavior)", () => {
+  describe("async atoms (suspense-like behavior)", () => {
     it("should wait for async atom to resolve before running effect", async () => {
       let resolve: (value: number) => void;
       const asyncAtom = atom(
@@ -262,8 +266,8 @@ describe("effect", () => {
       );
       const effectFn = vi.fn();
 
-      effect(asyncAtom, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(asyncAtom));
       });
 
       // Effect should not run while loading
@@ -280,8 +284,8 @@ describe("effect", () => {
       const asyncAtom = atom(Promise.resolve(100));
       const effectFn = vi.fn();
 
-      effect(asyncAtom, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(asyncAtom));
       });
 
       // Wait for resolution
@@ -291,7 +295,7 @@ describe("effect", () => {
       expect(effectFn).toHaveBeenCalledWith(100);
     });
 
-    it("should handle multiple async atoms - wait for all", async () => {
+    it("should handle multiple async atoms - wait for all using all()", async () => {
       let resolve1: (value: number) => void;
       let resolve2: (value: string) => void;
 
@@ -307,8 +311,9 @@ describe("effect", () => {
       );
       const effectFn = vi.fn();
 
-      effect([a, b], (getA, getB) => {
-        effectFn(getA(), getB());
+      effect(({ all }) => {
+        const [valA, valB] = all([a, b]);
+        effectFn(valA, valB);
       });
 
       // Effect should not run while any atom is loading
@@ -336,8 +341,8 @@ describe("effect", () => {
       );
       const effectFn = vi.fn();
 
-      effect(asyncAtom, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(asyncAtom));
       });
 
       resolve!(10);
@@ -363,8 +368,8 @@ describe("effect", () => {
       );
       const effectFn = vi.fn();
 
-      effect(asyncAtom, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(asyncAtom));
       });
 
       reject!(new Error("Test error"));
@@ -386,8 +391,8 @@ describe("effect", () => {
       );
       const effectFn = vi.fn();
 
-      effect(asyncAtom, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(asyncAtom));
       });
 
       // Effect runs immediately with fallback
@@ -410,9 +415,9 @@ describe("effect", () => {
       const b = atom(2);
       const effectFn = vi.fn();
 
-      effect([flag, a, b], (getFlag, getA, getB) => {
+      effect(({ get }) => {
         // Only access a or b based on flag
-        effectFn(getFlag() ? getA() : getB());
+        effectFn(get(flag) ? get(a) : get(b));
       });
 
       expect(effectFn).toHaveBeenCalledTimes(1);
@@ -435,8 +440,8 @@ describe("effect", () => {
       const b = atom(2);
       const effectFn = vi.fn();
 
-      effect([flag, a, b], (getFlag, getA, getB) => {
-        effectFn(getFlag() ? getA() : getB());
+      effect(({ get }) => {
+        effectFn(get(flag) ? get(a) : get(b));
       });
 
       expect(effectFn).toHaveBeenLastCalledWith(1);
@@ -463,8 +468,8 @@ describe("effect", () => {
       const count = atom(0);
       const effectFn = vi.fn();
 
-      effect(count, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(count));
       });
 
       count.set(1);
@@ -482,8 +487,8 @@ describe("effect", () => {
         throw new Error("Cleanup error");
       });
 
-      effect(count, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(count));
         return cleanup;
       });
 
@@ -503,8 +508,8 @@ describe("effect", () => {
 
       // Effect errors are caught by derived and stored in error state
       // The effect creation itself doesn't throw
-      effect(count, (get) => {
-        get();
+      effect(({ get }) => {
+        get(count);
         effectFn();
       });
 
@@ -515,8 +520,8 @@ describe("effect", () => {
       const nullable = atom<string | null>(null);
       const effectFn = vi.fn();
 
-      effect(nullable, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(nullable));
       });
 
       expect(effectFn).toHaveBeenCalledWith(null);
@@ -528,11 +533,11 @@ describe("effect", () => {
       expect(effectFn).toHaveBeenLastCalledWith(null);
     });
 
-    it("should handle empty array of sources", () => {
+    it("should handle effect with no dependencies", () => {
       const effectFn = vi.fn();
 
-      // Empty array - effect runs once on creation, never again
-      effect([] as const, () => {
+      // Effect with no get() calls - runs once on creation, never again
+      effect(() => {
         effectFn();
       });
 
@@ -541,11 +546,11 @@ describe("effect", () => {
 
     it("should handle derived atoms as source", () => {
       const count = atom(5);
-      const doubled = derived(count, (get) => get() * 2);
+      const doubled = derived(({ get }) => get(count) * 2);
       const effectFn = vi.fn();
 
-      effect(doubled, (get) => {
-        effectFn(get());
+      effect(({ get }) => {
+        effectFn(get(doubled));
       });
 
       expect(effectFn).toHaveBeenCalledWith(10);
@@ -566,8 +571,8 @@ describe("effect", () => {
 
       const count = atom(0);
 
-      effect(count, (get) => {
-        mockLocalStorage.setItem("count", String(get()));
+      effect(({ get }) => {
+        mockLocalStorage.setItem("count", String(get(count)));
       });
 
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith("count", "0");
@@ -583,8 +588,8 @@ describe("effect", () => {
 
       const endpoint = atom("ws://server1");
 
-      const dispose = effect(endpoint, (get) => {
-        const url = get();
+      const dispose = effect(({ get }) => {
+        const url = get(endpoint);
         connections.push(url);
 
         return () => {
@@ -610,8 +615,8 @@ describe("effect", () => {
       const ticks: number[] = [];
       let intervalId: ReturnType<typeof setInterval> | undefined;
 
-      const dispose = effect(intervalMs, (get) => {
-        const ms = get();
+      const dispose = effect(({ get }) => {
+        const ms = get(intervalMs);
         intervalId = setInterval(() => {
           ticks.push(ms);
         }, ms);
@@ -642,8 +647,8 @@ describe("effect", () => {
       const user = atom({ id: 1, name: "John" });
       const page = atom("home");
 
-      effect([user, page], (getUser, getPage) => {
-        logs.push(`User ${getUser().name} viewed ${getPage()}`);
+      effect(({ get }) => {
+        logs.push(`User ${get(user).name} viewed ${get(page)}`);
       });
 
       expect(logs).toEqual(["User John viewed home"]);
@@ -669,8 +674,8 @@ describe("effect", () => {
       const effectFn = vi.fn();
       const cleanup = vi.fn();
 
-      const dispose = effect(count, (get) => {
-        effectFn(get());
+      const dispose = effect(({ get }) => {
+        effectFn(get(count));
         return cleanup;
       });
 
@@ -700,8 +705,8 @@ describe("effect", () => {
       a.on(aListener);
       b.on(bListener);
 
-      effect(trigger, (get) => {
-        get(); // Track trigger
+      effect(({ get }) => {
+        get(trigger); // Track trigger
         // Update multiple atoms - should be batched
         a.set((v) => v + 1);
         b.set((v) => v + 1);
@@ -731,13 +736,13 @@ describe("effect", () => {
       const trigger = atom(0);
       const a = atom(0);
       const b = atom(0);
-      const sum = derived([a, b], (getA, getB) => getA() + getB());
+      const sum = derived(({ get }) => get(a) + get(b));
       const sumListener = vi.fn();
 
       sum.on(sumListener);
 
-      effect(trigger, (get) => {
-        get();
+      effect(({ get }) => {
+        get(trigger);
         a.set((v) => v + 1);
         b.set((v) => v + 1);
       });
@@ -752,6 +757,25 @@ describe("effect", () => {
       trigger.set(1);
       expect(sum.value).toBe(4);
       expect(sumListener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("async utilities", () => {
+    it("should support all() for waiting on multiple atoms", async () => {
+      const a = atom(Promise.resolve(1));
+      const b = atom(Promise.resolve(2));
+      const effectFn = vi.fn();
+
+      effect(({ all }) => {
+        const [valA, valB] = all([a, b]);
+        effectFn(valA + valB);
+      });
+
+      // Wait for resolution
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(effectFn).toHaveBeenCalledTimes(1);
+      expect(effectFn).toHaveBeenCalledWith(3);
     });
   });
 });

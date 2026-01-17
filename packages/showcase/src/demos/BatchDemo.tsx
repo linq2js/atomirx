@@ -3,7 +3,7 @@ import { atom, batch } from "atomirx";
 import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
-import { LogPanel, useLogger } from "../components/LogPanel";
+import { useEventLog } from "../App";
 import { Layers, Zap, ArrowRight, Users } from "lucide-react";
 
 // Create atoms for demo
@@ -13,28 +13,17 @@ const atomB = atom(0, { key: "atomB" });
 const atomC = atom(0, { key: "atomC" });
 
 export function BatchDemo() {
+  // Shorthand: pass atom directly to get its value
   const counter = useSelector(counterAtom);
   const a = useSelector(atomA);
   const b = useSelector(atomB);
   const c = useSelector(atomC);
 
-  const [logs, setLogs] = useState<
-    {
-      id: number;
-      message: string;
-      timestamp: Date;
-      type?: "info" | "success" | "error" | "warning";
-    }[]
-  >([]);
-  const { log, clear, setSetLogs } = useLogger();
+  const { log, clear } = useEventLog();
   const [notificationCount, setNotificationCount] = useState(0);
   const [sharedListenerCount, setSharedListenerCount] = useState(0);
   const notificationCountRef = useRef(0);
   const sharedListenerCountRef = useRef(0);
-
-  useEffect(() => {
-    setSetLogs(setLogs);
-  }, [setSetLogs]);
 
   // Track notifications for the counter atom
   useEffect(() => {
@@ -445,15 +434,6 @@ batch(() => {
         </div>
       </div>
 
-      {/* Event Log */}
-      <DemoSection title="Event Log">
-        <div className="space-y-3">
-          <LogPanel logs={logs} maxHeight="250px" />
-          <button onClick={clear} className="btn-secondary text-sm">
-            Clear Logs
-          </button>
-        </div>
-      </DemoSection>
     </div>
   );
 }

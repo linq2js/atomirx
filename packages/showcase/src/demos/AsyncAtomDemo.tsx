@@ -4,7 +4,7 @@ import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { StatusBadge } from "../components/StatusBadge";
-import { LogPanel, useLogger } from "../components/LogPanel";
+import { useEventLog } from "../App";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { RefreshCw, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
@@ -38,6 +38,7 @@ function UserDisplay({
 }) {
   // useSelector throws Promise while loading (triggers Suspense)
   // useSelector throws Error on rejection (triggers ErrorBoundary)
+  // Shorthand: pass atom directly to get its value
   const user = useSelector(userAtom);
 
   return (
@@ -63,6 +64,7 @@ function UserWithFallbackDisplay({
   userAtom: MutableAtom<User, User>;
   onStaleChange: (stale: boolean) => void;
 }) {
+  // Shorthand: pass atom directly to get its value
   const user = useSelector(userAtom);
   const isStale = userAtom.stale();
 
@@ -130,15 +132,7 @@ function ErrorFallback({
 }
 
 export function AsyncAtomDemo() {
-  const [logs, setLogs] = useState<
-    {
-      id: number;
-      message: string;
-      timestamp: Date;
-      type?: "info" | "success" | "error" | "warning";
-    }[]
-  >([]);
-  const { log, clear, setSetLogs } = useLogger();
+  const { log } = useEventLog();
 
   // Create atoms once and keep them in refs
   const userAtomRef = useRef<MutableAtom<User>>();
@@ -166,10 +160,6 @@ export function AsyncAtomDemo() {
 
   // Error boundary key to force remount on retry
   const [errorBoundaryKey, setErrorBoundaryKey] = useState(0);
-
-  useEffect(() => {
-    setSetLogs(setLogs);
-  }, [setSetLogs]);
 
   // Subscribe to atom changes for logging and status tracking
   const logRef = useCallback(log, [log]);
@@ -252,6 +242,7 @@ const userAtom = atom(fetchUser());
 // Component using useSelector (MUST be wrapped with Suspense + ErrorBoundary)
 function UserDisplay() {
   // Suspends while loading, throws on error
+  // Shorthand: pass atom directly
   const user = useSelector(userAtom);
   return <div>{user.name}</div>;
 }
@@ -397,16 +388,6 @@ console.log(userAtom.stale()); // true during loading/error
               to check if the value is stale.
             </p>
           </div>
-        </div>
-      </DemoSection>
-
-      {/* Event Log */}
-      <DemoSection title="Event Log">
-        <div className="space-y-3">
-          <LogPanel logs={logs} />
-          <button onClick={clear} className="btn-secondary text-sm">
-            Clear Logs
-          </button>
         </div>
       </DemoSection>
 

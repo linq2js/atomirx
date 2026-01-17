@@ -1,55 +1,15 @@
 import { useState, useEffect, useRef } from "react";
-import {
-  atom,
-  all,
-  any,
-  race,
-  settled,
-  AllGettersRejectedError,
-  MutableAtom,
-} from "atomirx";
+import { atom, derived, MutableAtom, AllAtomsRejectedError } from "atomirx";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
-import { LogPanel, useLogger } from "../components/LogPanel";
+import { useEventLog } from "../App";
 import { StatusBadge } from "../components/StatusBadge";
 import { Workflow, Loader2, CheckCircle, Trophy, Play } from "lucide-react";
 
 // Helper to create delayed promise
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Check if value is a promise-like object
-const isPromiseLike = (value: unknown): value is PromiseLike<unknown> =>
-  value != null &&
-  typeof value === "object" &&
-  "then" in value &&
-  typeof (value as any).then === "function";
-
 type AsyncAtomResult = { name: string; resolvedAt: string };
-
-// Create a suspense-style getter from an atom
-// This follows the same pattern as select.ts:createSuspenseGetter
-// - If stale(): returns value (fallback/previous) - HIGHEST PRIORITY
-// - If loading: throws the atom (which is PromiseLike)
-// - If error: throws the error
-// - Otherwise: returns the value
-const createGetter = <T,>(a: MutableAtom<T>) => {
-  return () => {
-    // stale() check is HIGHEST priority
-    // If fallback mode enabled and loading/error → return value (never throw)
-    if (a.stale()) {
-      return a.value as T;
-    }
-
-    if (a.loading) {
-      // Atom is PromiseLike (has .then method), throw it directly
-      throw a;
-    }
-    if (a.error !== undefined) {
-      throw a.error;
-    }
-    return a.value as T;
-  };
-};
 
 // Atom definitions with their timing
 const ATOM_CONFIGS = [
@@ -63,7 +23,7 @@ const ATOM_CONFIGS = [
 const createAsyncAtom = (
   name: string,
   delayMs: number,
-  shouldFail: boolean
+  shouldFail: boolean,
 ): MutableAtom<AsyncAtomResult> => {
   return atom(
     (async () => {
@@ -71,7 +31,7 @@ const createAsyncAtom = (
       if (shouldFail) throw new Error(`${name} failed`);
       return { name, resolvedAt: new Date().toLocaleTimeString() };
     })(),
-    { key: `async-${name}-${Date.now()}` }
+    { key: `async-${name}-${Date.now()}` },
   );
 };
 
@@ -90,15 +50,7 @@ const createFreshAtoms = (): Atoms => ({
 });
 
 export function AsyncUtilitiesDemo() {
-  const [logs, setLogs] = useState<
-    {
-      id: number;
-      message: string;
-      timestamp: Date;
-      type?: "info" | "success" | "error" | "warning";
-    }[]
-  >([]);
-  const { log, clear, setSetLogs } = useLogger();
+  const { log, clear } = useEventLog();
 
   // Current atoms being observed
   const [atoms, setAtoms] = useState<Atoms | null>(null);
@@ -119,10 +71,6 @@ export function AsyncUtilitiesDemo() {
     return () => unsubs.forEach((u) => u());
   }, [atoms]);
 
-  useEffect(() => {
-    setSetLogs(setLogs);
-  }, [setSetLogs]);
-
   // Polling for demo results
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -138,7 +86,7 @@ export function AsyncUtilitiesDemo() {
   }, []);
 
   const getAtomStatus = (
-    a: MutableAtom<AsyncAtomResult> | undefined
+    a: MutableAtom<AsyncAtomResult> | undefined,
   ): "idle" | "loading" | "success" | "error" => {
     if (!a) return "idle";
     if (a.loading) return "loading";
@@ -157,26 +105,24 @@ export function AsyncUtilitiesDemo() {
     log("Starting all() demo with API A (1s), API B (2s), API C (3s)", "info");
     log("all() waits for ALL atoms to resolve...", "info");
 
+    // Create a derived atom that uses all()
+    const allDerived = derived(({ all }) => {
+      return all([freshAtoms.apiA, freshAtoms.apiB, freshAtoms.apiC]);
+    });
+
     pollIntervalRef.current = setInterval(() => {
-      try {
-        const results = all([
-          createGetter(freshAtoms.apiA),
-          createGetter(freshAtoms.apiB),
-          createGetter(freshAtoms.apiC),
-        ]);
+      if (!allDerived.loading && allDerived.error === undefined) {
         stopPolling();
+        const results = allDerived.value!;
         log(
           `✓ all() resolved after ~3s: [${results.map((r) => r.name).join(", ")}]`,
-          "success"
+          "success",
         );
         setActiveDemo(null);
-      } catch (thrown) {
-        if (!isPromiseLike(thrown)) {
-          stopPolling();
-          log(`✗ all() error: ${(thrown as Error).message}`, "error");
-          setActiveDemo(null);
-        }
-        // Still loading - continue polling
+      } else if (allDerived.error !== undefined) {
+        stopPolling();
+        log(`✗ all() error: ${(allDerived.error as Error).message}`, "error");
+        setActiveDemo(null);
       }
     }, 100);
   };
@@ -190,24 +136,33 @@ export function AsyncUtilitiesDemo() {
     setActiveDemo("race");
 
     log("Starting race() demo with API A (1s), API B (2s), API C (3s)", "info");
-    log("race() returns the FIRST atom to settle (resolve or reject)...", "info");
+    log(
+      "race() returns the FIRST atom to settle (resolve or reject)...",
+      "info",
+    );
+
+    // Create a derived atom that uses race()
+    const raceDerived = derived(({ race }) => {
+      return race({
+        apiA: freshAtoms.apiA,
+        apiB: freshAtoms.apiB,
+        apiC: freshAtoms.apiC,
+      });
+    });
 
     pollIntervalRef.current = setInterval(() => {
-      try {
-        const [winner, value] = race({
-          apiA: createGetter(freshAtoms.apiA),
-          apiB: createGetter(freshAtoms.apiB),
-          apiC: createGetter(freshAtoms.apiC),
-        });
+      if (!raceDerived.loading && raceDerived.error === undefined) {
         stopPolling();
-        log(`✓ race() winner after ~1s: "${winner}" = ${value.name}`, "success");
+        const [winner, value] = raceDerived.value!;
+        log(
+          `✓ race() winner after ~1s: "${winner}" = ${value.name}`,
+          "success",
+        );
         setActiveDemo(null);
-      } catch (thrown) {
-        if (!isPromiseLike(thrown)) {
-          stopPolling();
-          log(`✗ race() error: ${(thrown as Error).message}`, "error");
-          setActiveDemo(null);
-        }
+      } else if (raceDerived.error !== undefined) {
+        stopPolling();
+        log(`✗ race() error: ${(raceDerived.error as Error).message}`, "error");
+        setActiveDemo(null);
       }
     }, 100);
   };
@@ -222,35 +177,42 @@ export function AsyncUtilitiesDemo() {
 
     log(
       "Starting any() demo with Failing (1.5s, will fail), API A (1s), API C (3s)",
-      "info"
+      "info",
     );
-    log("any() returns the FIRST atom to RESOLVE (ignores rejections)...", "info");
+    log(
+      "any() returns the FIRST atom to RESOLVE (ignores rejections)...",
+      "info",
+    );
+
+    // Create a derived atom that uses any()
+    const anyDerived = derived(({ any }) => {
+      return any({
+        failing: freshAtoms.failing,
+        apiA: freshAtoms.apiA,
+        apiC: freshAtoms.apiC,
+      });
+    });
 
     pollIntervalRef.current = setInterval(() => {
-      try {
-        const [winner, value] = any({
-          failing: createGetter(freshAtoms.failing),
-          apiA: createGetter(freshAtoms.apiA),
-          apiC: createGetter(freshAtoms.apiC),
-        });
+      if (!anyDerived.loading && anyDerived.error === undefined) {
         stopPolling();
+        const [winner, value] = anyDerived.value!;
         log(
           `✓ any() winner after ~1s: "${winner}" = ${value.name} (Failing was ignored)`,
-          "success"
+          "success",
         );
         setActiveDemo(null);
-      } catch (thrown) {
-        if (isPromiseLike(thrown)) {
-          // Still loading
-        } else if (thrown instanceof AllGettersRejectedError) {
-          stopPolling();
-          log(`✗ any() all rejected: ${JSON.stringify(thrown.errors)}`, "error");
-          setActiveDemo(null);
+      } else if (anyDerived.error !== undefined) {
+        stopPolling();
+        if (anyDerived.error instanceof AllAtomsRejectedError) {
+          log(
+            `✗ any() all rejected: ${JSON.stringify(anyDerived.error.errors)}`,
+            "error",
+          );
         } else {
-          stopPolling();
-          log(`✗ any() error: ${(thrown as Error).message}`, "error");
-          setActiveDemo(null);
+          log(`✗ any() error: ${(anyDerived.error as Error).message}`, "error");
         }
+        setActiveDemo(null);
       }
     }, 100);
   };
@@ -265,29 +227,37 @@ export function AsyncUtilitiesDemo() {
 
     log(
       "Starting settled() demo with API A (1s), Failing (1.5s), API C (3s)",
-      "info"
+      "info",
     );
-    log("settled() waits for ALL atoms to settle, then returns their statuses...", "info");
+    log(
+      "settled() waits for ALL atoms to settle, then returns their statuses...",
+      "info",
+    );
+
+    // Create a derived atom that uses settled()
+    const settledDerived = derived(({ settled }) => {
+      return settled([freshAtoms.apiA, freshAtoms.failing, freshAtoms.apiC]);
+    });
 
     pollIntervalRef.current = setInterval(() => {
-      try {
-        const results = settled({
-          apiA: createGetter(freshAtoms.apiA),
-          failing: createGetter(freshAtoms.failing),
-          apiC: createGetter(freshAtoms.apiC),
-        });
+      if (!settledDerived.loading && settledDerived.error === undefined) {
         stopPolling();
-        const summary = Object.entries(results)
-          .map(([k, v]) => `${k}: ${v.status}`)
+        const results = settledDerived.value!;
+        const summary = results
+          .map((r, i) => {
+            const name = ["apiA", "failing", "apiC"][i];
+            return `${name}: ${r.status}`;
+          })
           .join(", ");
         log(`✓ settled() after ~3s: { ${summary} }`, "success");
         setActiveDemo(null);
-      } catch (thrown) {
-        if (!isPromiseLike(thrown)) {
-          stopPolling();
-          log(`✗ settled() error: ${(thrown as Error).message}`, "error");
-          setActiveDemo(null);
-        }
+      } else if (settledDerived.error !== undefined) {
+        stopPolling();
+        log(
+          `✗ settled() error: ${(settledDerived.error as Error).message}`,
+          "error",
+        );
+        setActiveDemo(null);
       }
     }, 100);
   };
@@ -320,20 +290,34 @@ export function AsyncUtilitiesDemo() {
       {/* Code Example */}
       <CodeBlock
         code={`
-import { all, any, race, settled } from "atomirx";
+// Using SelectContext utilities in derived/useSelector/effect/rx
 
 // all() - Wait for all to resolve (like Promise.all)
-const [user, settings] = all([getUser, getSettings]);
+const dashboard = derived(({ all }) => {
+  const [user, posts] = all([userAtom, postsAtom]);
+  return { user, posts };
+});
 
 // race() - First settled wins (like Promise.race)
-const [winner, value] = race({ cache: getCache, api: getApi });
+const fastest = derived(({ race }) => {
+  const [winner, value] = race({ cache: cacheAtom, api: apiAtom });
+  return { source: winner, data: value };
+});
 
 // any() - First resolved wins, ignores rejections (like Promise.any)
-const [winner, value] = any({ primary: getPrimary, fallback: getFallback });
+const data = derived(({ any }) => {
+  const [winner, value] = any({ primary: primaryAtom, fallback: fallbackAtom });
+  return value;
+});
 
 // settled() - Get all statuses (like Promise.allSettled)
-const results = settled({ user: getUser, settings: getSettings });
-// results.user.status === "resolved" | "rejected"
+const results = derived(({ settled }) => {
+  const [userResult, postsResult] = settled([userAtom, postsAtom]);
+  return {
+    user: userResult.status === "resolved" ? userResult.value : null,
+    posts: postsResult.status === "resolved" ? postsResult.value : [],
+  };
+});
         `}
       />
 
@@ -415,9 +399,7 @@ const results = settled({ user: getUser, settings: getSettings });
           >
             <div className="flex items-center gap-2 mb-2">
               <Play className="w-5 h-5 text-emerald-400" />
-              <span className="font-semibold text-emerald-300">
-                Run all()
-              </span>
+              <span className="font-semibold text-emerald-300">Run all()</span>
               {activeDemo === "all" && (
                 <Loader2 className="w-4 h-4 text-emerald-400 animate-spin ml-auto" />
               )}
@@ -493,16 +475,6 @@ const results = settled({ user: getUser, settings: getSettings });
             <p className="text-xs text-surface-500 mt-1">
               Like Promise.allSettled - includes failures
             </p>
-          </button>
-        </div>
-      </DemoSection>
-
-      {/* Event Log */}
-      <DemoSection title="Event Log">
-        <div className="space-y-3">
-          <LogPanel logs={logs} maxHeight="300px" />
-          <button onClick={clear} className="btn-secondary text-sm">
-            Clear Logs
           </button>
         </div>
       </DemoSection>
