@@ -1,16 +1,16 @@
-# `atomirx`
+# atomirx
 
 **The Official, Opinionated, Batteries-Included Reactive State Management for TypeScript**
 
-[![npm version](https://img.shields.io/npm/v/`atomirx`.svg?style=flat-square)](https://www.npmjs.com/package/`atomirx`)
-[![npm downloads](https://img.shields.io/npm/dm/`atomirx`.svg?style=flat-square)](https://www.npmjs.com/package/`atomirx`)
-[![Bundle Size](https://img.shields.io/bundlephobia/minzip/`atomirx`?style=flat-square)](https://bundlephobia.com/package/`atomirx`)
+[![npm version](https://img.shields.io/npm/v/atomirx.svg?style=flat-square)](https://www.npmjs.com/package/atomirx)
+[![npm downloads](https://img.shields.io/npm/dm/atomirx.svg?style=flat-square)](https://www.npmjs.com/package/atomirx)
+[![Bundle Size](https://img.shields.io/bundlephobia/minzip/atomirx?style=flat-square)](https://bundlephobia.com/package/atomirx)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 ## Purpose
 
-The **`atomirx`** package is intended to be the standard way to write reactive state logic in TypeScript and JavaScript applications. It was originally created to help address three common concerns about state management:
+The **atomirx** package is intended to be the standard way to write reactive state logic in TypeScript and JavaScript applications. It was originally created to help address three common concerns about state management:
 
 - "Setting up reactive state is too complicated"
 - "I have to add a lot of packages to handle async operations"
@@ -20,22 +20,26 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
 
 ## Table of Contents
 
-- [`atomirx`](#atomirx)
+- [atomirx](#atomirx)
   - [Purpose](#purpose)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
     - [Using Create React App](#using-create-react-app)
     - [Adding to an Existing Project](#adding-to-an-existing-project)
-  - [Why `atomirx`?](#why-atomirx)
+  - [Why atomirx?](#why-atomirx)
     - [The Problem](#the-problem)
     - [The Solution](#the-solution)
     - [Design Philosophy](#design-philosophy)
   - [What's Included](#whats-included)
     - [Core](#core)
-    - [React Bindings (\`\`atomirx`/react`)](#react-bindings-atomirxreact)
+    - [React Bindings (\`\atomirx/react`)](#react-bindings-atomirxreact)
   - [Getting Started](#getting-started)
     - [Basic Example: Counter](#basic-example-counter)
     - [React Example: Todo App](#react-example-todo-app)
+  - [Code Conventions](#code-conventions)
+    - [Naming: The `$` Suffix](#naming-the--suffix)
+    - [When to Use Each Primitive](#when-to-use-each-primitive)
+    - [Complete Example: Todo App with Async](#complete-example-todo-app-with-async)
   - [Usage Guide](#usage-guide)
     - [Atoms: The Foundation](#atoms-the-foundation)
       - [Creating Atoms](#creating-atoms)
@@ -88,7 +92,7 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
       - [`useStable`](#usestable)
   - [TypeScript Integration](#typescript-integration)
   - [Comparison with Other Libraries](#comparison-with-other-libraries)
-    - [When to Use `atomirx`](#when-to-use-atomirx)
+    - [When to Use atomirx](#when-to-use-atomirx)
   - [Resources \& Learning](#resources--learning)
     - [Documentation](#documentation)
     - [Examples](#examples)
@@ -102,27 +106,27 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
 The fastest way to get started is using our official template:
 
 ```bash
-npx create-react-app my-app --template `atomirx`
+npx create-react-app my-app --template atomirx
 ```
 
 ### Adding to an Existing Project
 
-`atomirx` is available as a package on NPM for use with a module bundler or in a Node application:
+atomirx is available as a package on NPM for use with a module bundler or in a Node application:
 
 ```bash
 # NPM
-npm install `atomirx`
+npm install atomirx
 
 # Yarn
-yarn add `atomirx`
+yarn add atomirx
 
 # PNPM
-pnpm add `atomirx`
+pnpm add atomirx
 ```
 
 The package includes precompiled ESM and CommonJS builds, along with TypeScript type definitions.
 
-## Why `atomirx`?
+## Why atomirx?
 
 ### The Problem
 
@@ -136,9 +140,9 @@ Traditional state management solutions often require:
 
 ### The Solution
 
-`atomirx` provides a **unified, minimal API** that handles all common state management patterns out of the box:
+atomirx provides a **unified, minimal API** that handles all common state management patterns out of the box:
 
-| Challenge         | `atomirx` Solution                                             |
+| Challenge         | atomirx Solution                                               |
 | ----------------- | -------------------------------------------------------------- |
 | Mutable state     | `atom()` - single source of truth with automatic subscriptions |
 | Computed values   | `derived()` - automatic dependency tracking and memoization    |
@@ -149,7 +153,7 @@ Traditional state management solutions often require:
 
 ### Design Philosophy
 
-`atomirx` is built on these core principles:
+atomirx is built on these core principles:
 
 1. **Minimal API Surface** - Learn three functions (`atom`, `derived`, `effect`) and you're productive
 2. **Async-First** - Promises are first-class citizens, not an afterthought
@@ -160,7 +164,7 @@ Traditional state management solutions often require:
 
 ## What's Included
 
-`atomirx` includes these APIs:
+atomirx includes these APIs:
 
 ### Core
 
@@ -170,7 +174,7 @@ Traditional state management solutions often require:
 - **`batch()`**: Groups multiple updates into a single notification cycle
 - **`define()`**: Creates swappable lazy singletons for dependency injection
 
-### React Bindings (``atomirx`/react`)
+### React Bindings (`atomirx/react`)
 
 - **`useValue()`**: Subscribe to atoms with automatic re-rendering
 - **`rx()`**: Inline reactive components for fine-grained updates
@@ -182,7 +186,7 @@ Traditional state management solutions often require:
 ### Basic Example: Counter
 
 ```typescript
-import { atom, derived, effect } from "`atomirx`";
+import { atom, derived, effect } from "atomirx";
 
 // Step 1: Create an atom (mutable state)
 const count$ = atom(0);
@@ -208,8 +212,8 @@ count$.set((n) => n + 1); // Logs: Current count: 6, Doubled value: 12
 ### React Example: Todo App
 
 ```tsx
-import { atom, derived } from "`atomirx`";
-import { useValue, rx } from "`atomirx`/react";
+import { atom, derived } from "atomirx";
+import { useValue, rx } from "atomirx/react";
 
 // Define your state
 interface Todo {
@@ -252,7 +256,7 @@ const addTodo = (text: string) => {
 
 const toggleTodo = (id: number) => {
   todos$.set((todos) =>
-    todos.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)),
+    todos.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
   );
 };
 
@@ -288,16 +292,227 @@ function Stats() {
 }
 ```
 
+## Code Conventions
+
+Following consistent conventions makes atomirx code more readable and maintainable across your team.
+
+### Naming: The `$` Suffix
+
+All atoms (both `atom()` and `derived()`) should use the `$` suffix. This convention:
+
+- Clearly distinguishes reactive state from regular variables
+- Makes it obvious when you're working with atoms vs plain values
+- Improves code readability at a glance
+
+```typescript
+// ✅ Good - clear that these are atoms
+const count$ = atom(0);
+const user$ = atom<User | null>(null);
+const filteredItems$ = derived(({ get }) => /* ... */);
+
+// ❌ Avoid - unclear what's reactive
+const count = atom(0);
+const user = atom<User | null>(null);
+```
+
+### When to Use Each Primitive
+
+| Primitive   | Purpose                 | Use When                                                                    |
+| ----------- | ----------------------- | --------------------------------------------------------------------------- |
+| `atom()`    | Store values            | You need mutable state (including Promises)                                 |
+| `derived()` | Compute reactive values | You need to transform or combine atom values                                |
+| `effect()`  | Trigger side effects    | You need to react to atom changes (sync to external systems, logging, etc.) |
+
+### Atom Storage: Stable Scopes Only
+
+**Never store atoms in component/local scope.** Atoms created inside React components (even with `useRef`) can lead to:
+
+- **Memory leaks** - atoms aren't properly disposed when components unmount
+- **Forgotten disposal** - easy to forget cleanup logic
+- **Multiple instances** - each component render may create new atoms
+
+```typescript
+// ❌ BAD - atoms in component scope
+function TodoList() {
+  // These atoms are created per component instance!
+  const todos$ = useRef(atom(() => fetchTodos())).current;
+  const filter$ = useRef(atom("all")).current;
+  // Memory leak: atoms not disposed on unmount
+}
+
+// ✅ GOOD - atoms at module scope
+const todos$ = atom(() => fetchTodos());
+const filter$ = atom("all");
+
+function TodoList() {
+  const todos = useValue(filteredTodos$);
+  // ...
+}
+```
+
+**Use `define()` to organize atoms into modules:**
+
+```typescript
+// ✅ BEST - atoms organized in a module with define()
+const TodoModule = define(() => {
+  // Atoms are created once, lazily
+  const todos$ = atom(() => fetchTodos(), { meta: { key: "todos" } });
+  const filter$ = atom<"all" | "active" | "completed">("all");
+
+  const filteredTodos$ = derived(({ get }) => {
+    const filter = get(filter$);
+    const todos = get(todos$);
+    return filter === "all" ? todos : todos.filter(/* ... */);
+  });
+
+  return {
+    todos$,
+    filter$,
+    filteredTodos$,
+    setFilter: (f: "all" | "active" | "completed") => filter$.set(f),
+    refetch: () => todos$.set(fetchTodos()),
+    reset: () => todos$.reset(),
+  };
+});
+
+// Usage in React
+function TodoList() {
+  const { filteredTodos$, setFilter } = TodoModule();
+  const todos = useValue(filteredTodos$);
+  // ...
+}
+```
+
+Benefits of `define()`:
+
+- **Lazy singleton** - module created on first access
+- **Testable** - use `.override()` to inject mocks
+- **Disposable** - use `.invalidate()` to clean up and recreate
+- **Organized** - group related atoms and actions together
+
+**`atom()`** - Store raw values, including Promises:
+
+```typescript
+// Synchronous values
+const filter$ = atom("all");
+const count$ = atom(0);
+
+// Async values - store the Promise directly
+const todoList$ = atom(() => fetchAllTodos()); // Lazy fetch on creation
+const userData$ = atom(fetchUser(userId)); // Fetch immediately
+```
+
+**`derived()`** - Handle reactive/async transformations:
+
+```typescript
+// derived() automatically unwraps Promises from atoms
+const filteredTodoList$ = derived(({ get }) => {
+  const filter = get(filter$);
+  const todoList = get(todoList$); // Promise is unwrapped automatically!
+
+  switch (filter) {
+    case "active":
+      return todoList.filter((t) => !t.completed);
+    case "completed":
+      return todoList.filter((t) => t.completed);
+    default:
+      return todoList;
+  }
+});
+```
+
+**`effect()`** - Coordinate updates across multiple atoms:
+
+```typescript
+// Sync local state to server when it changes
+effect(({ get, onCleanup }) => {
+  const settings = get(settings$);
+
+  const controller = new AbortController();
+  saveSettingsToServer(settings, { signal: controller.signal });
+
+  onCleanup(() => controller.abort());
+});
+
+// Update multiple atoms based on another atom's change
+effect(({ get }) => {
+  const user = get(currentUser$);
+
+  if (user) {
+    // Trigger fetches for user-specific data
+    userPosts$.set(fetchUserPosts(user.id));
+    userSettings$.set(fetchUserSettings(user.id));
+  }
+});
+```
+
+### Complete Example: Todo App with Async
+
+```typescript
+import { atom, derived } from "atomirx";
+import { useValue, rx } from "atomirx/react";
+import { Suspense } from "react";
+
+// Atoms store values (including Promises)
+const filter$ = atom<"all" | "active" | "completed">("all");
+const todoList$ = atom(() => fetchAllTodos()); // Lazy init, re-runs on reset()
+
+// Derived handles reactive transformations (auto-unwraps Promises)
+const filteredTodoList$ = derived(({ get }) => {
+  const filter = get(filter$);
+  const todoList = get(todoList$); // This is the resolved value, not a Promise!
+
+  switch (filter) {
+    case "active": return todoList.filter(t => !t.completed);
+    case "completed": return todoList.filter(t => t.completed);
+    default: return todoList;
+  }
+});
+
+// In UI - useValue suspends until data is ready
+function TodoList() {
+  const filteredTodoList = useValue(filteredTodoList$);
+
+  return (
+    <ul>
+      {filteredTodoList.map(todo => (
+        <li key={todo.id}>{todo.text}</li>
+      ))}
+    </ul>
+  );
+}
+
+// Or use rx() for inline reactive rendering
+function App() {
+  return (
+    <Suspense fallback={<div>Loading todos...</div>}>
+      {rx(({ get }) =>
+        get(filteredTodoList$).map(todo => <Todo key={todo.id} todo={todo} />)
+      )}
+    </Suspense>
+  );
+}
+
+// Refetch todos
+function RefreshButton() {
+  return (
+    <button onClick={() => todoList$.reset()}>
+      Refresh
+    </button>
+  );
+}
+```
+
 ## Usage Guide
 
 ### Atoms: The Foundation
 
-Atoms are the building blocks of `atomirx`. They hold mutable state and automatically notify subscribers when the value changes.
+Atoms are the building blocks of atomirx. They hold mutable state and automatically notify subscribers when the value changes.
 
 #### Creating Atoms
 
 ```typescript
-import { atom } from "`atomirx`";
+import { atom } from "atomirx";
 
 // Synchronous atom with initial value
 const count$ = atom(0);
@@ -317,14 +532,23 @@ const posts$ = atom(fetchPosts(), { fallback: [] });
 #### Reading Atom Values
 
 ```typescript
-// Direct access (outside reactive context)
-console.log(count$.value); // Current value
-console.log(userData$.loading); // true while Promise is pending
-console.log(userData$.error); // Error if Promise rejected
+import { getAtomState, isPending } from "atomirx";
 
-// Check state
-console.log(posts$.stale()); // true if using fallback during loading
-console.log(count$.dirty()); // true if modified since creation
+// Direct access (outside reactive context)
+console.log(count$.value); // Current value (T or Promise<T>)
+
+// Check atom state
+const state = getAtomState(userData$);
+if (state.status === "loading") {
+  console.log("Loading...");
+} else if (state.status === "error") {
+  console.log("Error:", state.error);
+} else {
+  console.log("User:", state.value);
+}
+
+// Quick loading check
+console.log(isPending(userData$.value)); // true while Promise is pending
 ```
 
 #### Updating Atoms
@@ -361,17 +585,33 @@ unsubscribe();
 
 #### Complete Atom API
 
-| Property/Method | Type             | Description                                                  |
-| --------------- | ---------------- | ------------------------------------------------------------ |
-| `value`         | `T \| undefined` | Current value. `undefined` during loading without fallback   |
-| `loading`       | `boolean`        | `true` while waiting for Promise to resolve                  |
-| `error`         | `unknown`        | Error from rejected Promise, `undefined` otherwise           |
-| `stale()`       | `boolean`        | `true` if using fallback/previous value during loading/error |
-| `dirty()`       | `boolean`        | `true` if value has been modified since creation             |
-| `set(value)`    | `void`           | Update with value, Promise, or updater function              |
-| `reset()`       | `void`           | Reset to initial state                                       |
-| `on(listener)`  | `() => void`     | Subscribe to changes, returns unsubscribe function           |
-| `then()`        | `Promise<T>`     | Makes atom awaitable: `await atom`                           |
+**MutableAtom** (created by `atom()`):
+
+| Property/Method | Type         | Description                                        |
+| --------------- | ------------ | -------------------------------------------------- |
+| `value`         | `T`          | Current value (may be a Promise for async atoms)   |
+| `set(value)`    | `void`       | Update with value, Promise, or updater function    |
+| `reset()`       | `void`       | Reset to initial value                             |
+| `on(listener)`  | `() => void` | Subscribe to changes, returns unsubscribe function |
+
+**DerivedAtom** (created by `derived()`):
+
+| Property/Method | Type             | Description                                    |
+| --------------- | ---------------- | ---------------------------------------------- |
+| `value`         | `Promise<T>`     | Always returns a Promise                       |
+| `staleValue`    | `T \| undefined` | Fallback or last resolved value during loading |
+| `state()`       | `AtomState<T>`   | Current state (ready/error/loading)            |
+| `refresh()`     | `void`           | Re-run the computation                         |
+| `on(listener)`  | `() => void`     | Subscribe to changes, returns unsubscribe      |
+
+**AtomState** (returned by `state()` or `getAtomState()`):
+
+```typescript
+type AtomState<T> =
+  | { status: "ready"; value: T }
+  | { status: "error"; error: unknown }
+  | { status: "loading"; promise: Promise<T> };
+```
 
 ### Derived State: Computed Values
 
@@ -380,7 +620,7 @@ Derived atoms automatically compute values based on other atoms. They track depe
 #### Basic Derived State
 
 ```typescript
-import { atom, derived } from "`atomirx`";
+import { atom, derived } from "atomirx";
 
 const firstName$ = atom("John");
 const lastName$ = atom("Doe");
@@ -390,15 +630,22 @@ const fullName$ = derived(({ get }) => {
   return `${get(firstName$)} ${get(lastName$)}`;
 });
 
-console.log(fullName$.value); // "John Doe"
+// Derived atoms always return Promise<T> for .value
+await fullName$.value; // "John Doe"
+
+// Or use staleValue for synchronous access (after first resolution)
+fullName$.staleValue; // "John Doe" (or undefined before first resolution)
+
+// Check state
+fullName$.state(); // { status: "ready", value: "John Doe" }
 
 firstName$.set("Jane");
-console.log(fullName$.value); // "Jane Doe"
+await fullName$.value; // "Jane Doe"
 ```
 
 #### Conditional Dependencies
 
-One of `atomirx`'s most powerful features is **conditional dependency tracking**. Dependencies are tracked based on actual runtime access, not static analysis:
+One of atomirx's most powerful features is **conditional dependency tracking**. Dependencies are tracked based on actual runtime access, not static analysis:
 
 ```typescript
 const showDetails$ = atom(false);
@@ -427,7 +674,7 @@ The `get()` function follows React Suspense semantics for async atoms:
 | ---------- | ----------------------------------------------- |
 | Loading    | Throws the Promise (caught by derived/Suspense) |
 | Error      | Throws the error                                |
-| Resolved   | Returns the value                               |
+| Ready      | Returns the value                               |
 
 ```typescript
 const user$ = atom(fetchUser());
@@ -438,9 +685,19 @@ const userName$ = derived(({ get }) => {
   return user.name;
 });
 
-// userName$.loading is true while user$ is loading
-// userName$.error is set if user$ has an error
-// userName$.value is available when user$ resolves
+// Check state
+const state = userName$.state();
+if (state.status === "loading") {
+  console.log("Loading...");
+} else if (state.status === "error") {
+  console.log("Error:", state.error);
+} else {
+  console.log("User name:", state.value);
+}
+
+// Or use staleValue with a fallback
+const userName = derived(({ get }) => get(user$).name, { fallback: "Guest" });
+userName.staleValue; // "Guest" during loading, then actual name
 ```
 
 #### Derived from Multiple Async Sources
@@ -459,7 +716,15 @@ const dashboard$ = derived(({ get }) => {
   };
 });
 
-// dashboard$.loading is true until BOTH user$ and posts$ resolve
+// Check state
+const state = dashboard$.state();
+// state.status is "loading" until BOTH user$ and posts$ resolve
+
+// Or use all() for explicit parallel loading
+const dashboard2$ = derived(({ all }) => {
+  const [user, posts] = all(user$, posts$);
+  return { userName: user.name, postCount: posts.length };
+});
 ```
 
 ### Effects: Side Effect Management
@@ -469,7 +734,7 @@ Effects run side effects whenever their dependencies change. They use the same r
 #### Basic Effects
 
 ```typescript
-import { atom, effect } from "`atomirx`";
+import { atom, effect } from "atomirx";
 
 const count$ = atom(0);
 
@@ -486,21 +751,42 @@ dispose();
 
 #### Effects with Cleanup
 
-Return a cleanup function to run before the next execution or disposal:
+Use `onCleanup()` to register cleanup functions that run before the next execution or on dispose:
 
 ```typescript
 const interval$ = atom(1000);
 
-const dispose = effect(({ get }) => {
+const dispose = effect(({ get, onCleanup }) => {
   const ms = get(interval$);
   const id = setInterval(() => console.log("tick"), ms);
 
   // Cleanup runs before next execution or on dispose
-  return () => clearInterval(id);
+  onCleanup(() => clearInterval(id));
 });
 
 interval$.set(500); // Clears old interval, starts new one
 dispose(); // Clears interval completely
+```
+
+#### Effects with Error Handling
+
+Use `onError()` to handle errors within the effect:
+
+```typescript
+const dispose = effect(({ get, onError }) => {
+  onError((e) => console.error("Effect failed:", e));
+
+  const data = get(dataAtom$);
+  riskyOperation(data);
+});
+
+// Or use options.onError for unhandled errors
+const dispose2 = effect(
+  ({ get }) => {
+    riskyOperation(get(dataAtom$));
+  },
+  { onError: (e) => console.error("Unhandled:", e) }
+);
 ```
 
 #### Effects with Multiple Dependencies
@@ -522,7 +808,7 @@ effect(({ get }) => {
 
 ### Async Patterns
 
-`atomirx` provides powerful utilities for working with multiple async atoms through the `SelectContext`.
+atomirx provides powerful utilities for working with multiple async atoms through the `SelectContext`.
 
 #### `all()` - Wait for All (like Promise.all)
 
@@ -532,29 +818,22 @@ const posts$ = atom(fetchPosts());
 const comments$ = atom(fetchComments());
 
 const dashboard$ = derived(({ all }) => {
-  // Suspends until ALL atoms resolve
-  const [user, posts, comments] = all([user$, posts$, comments$]);
+  // Suspends until ALL atoms resolve (variadic args)
+  const [user, posts, comments] = all(user$, posts$, comments$);
 
   return { user, posts, comments };
 });
 ```
 
-#### `any()` - First Resolved (like Promise.any)
+#### `any()` - First Ready (like Promise.any)
 
 ```typescript
 const primaryApi$ = atom(fetchFromPrimary());
 const fallbackApi$ = atom(fetchFromFallback());
 
 const data$ = derived(({ any }) => {
-  // Returns first successfully resolved value
-  // Object form returns [key, value] tuple
-  const [source, value] = any({
-    primary: primaryApi$,
-    fallback: fallbackApi$,
-  });
-
-  console.log(`Data from: ${source}`);
-  return value;
+  // Returns first successfully resolved value (variadic args)
+  return any(primaryApi$, fallbackApi$);
 });
 ```
 
@@ -565,13 +844,8 @@ const cache$ = atom(checkCache());
 const api$ = atom(fetchFromApi());
 
 const data$ = derived(({ race }) => {
-  // Returns first settled (resolved OR rejected)
-  const [source, value] = race({
-    cache: cache$,
-    api: api$,
-  });
-
-  return { source, value };
+  // Returns first settled (ready OR error) (variadic args)
+  return race(cache$, api$);
 });
 ```
 
@@ -582,33 +856,40 @@ const user$ = atom(fetchUser());
 const posts$ = atom(fetchPosts());
 
 const results$ = derived(({ settled }) => {
-  // Never suspends - returns status for each atom
-  const [userResult, postsResult] = settled([user$, posts$]);
+  // Returns status for each atom (variadic args)
+  const [userResult, postsResult] = settled(user$, posts$);
 
   return {
-    user: userResult.status === "resolved" ? userResult.value : null,
-    posts: postsResult.status === "resolved" ? postsResult.value : [],
-    hasErrors:
-      userResult.status === "rejected" || postsResult.status === "rejected",
+    user: userResult.status === "ready" ? userResult.value : null,
+    posts: postsResult.status === "ready" ? postsResult.value : [],
+    hasErrors: userResult.status === "error" || postsResult.status === "error",
   };
 });
 ```
 
 #### Async Utility Summary
 
-| Utility     | Input Form | Output               | Behavior                             |
-| ----------- | ---------- | -------------------- | ------------------------------------ |
-| `all()`     | Array      | Array of values      | Suspends until all resolve           |
-| `any()`     | Object     | `[key, value]` tuple | First to resolve wins                |
-| `race()`    | Object     | `[key, value]` tuple | First to settle wins                 |
-| `settled()` | Array      | Array of results     | Never suspends, returns all statuses |
+| Utility     | Input          | Output                 | Behavior                           |
+| ----------- | -------------- | ---------------------- | ---------------------------------- |
+| `all()`     | Variadic atoms | Array of values        | Suspends until all ready           |
+| `any()`     | Variadic atoms | First ready value      | First to resolve wins              |
+| `race()`    | Variadic atoms | First settled value    | First to settle (ready/error) wins |
+| `settled()` | Variadic atoms | Array of SettledResult | Suspends until all settled         |
+
+**SettledResult type:**
+
+```typescript
+type SettledResult<T> =
+  | { status: "ready"; value: T }
+  | { status: "error"; error: unknown };
+```
 
 ### Batching Updates
 
 When updating multiple atoms, use `batch()` to combine notifications:
 
 ```typescript
-import { atom, batch } from "`atomirx`";
+import { atom, batch } from "atomirx";
 
 const firstName$ = atom("John");
 const lastName$ = atom("Doe");
@@ -632,7 +913,7 @@ batch(() => {
 The `emitter()` function provides a lightweight pub/sub system:
 
 ```typescript
-import { emitter } from "`atomirx`";
+import { emitter } from "atomirx";
 
 // Create typed emitter
 const userEvents = emitter<{ type: "login" | "logout"; userId: string }>();
@@ -655,7 +936,7 @@ appReady.settle(config); // All current AND future subscribers receive config
 The `define()` function creates swappable lazy singletons, perfect for testing:
 
 ```typescript
-import { define, atom } from "`atomirx`";
+import { define, atom } from "atomirx";
 
 // Define a store factory
 const counterStore = define(() => {
@@ -687,15 +968,15 @@ counterStore.reset();
 
 ## React Integration
 
-`atomirx` provides first-class React integration through the ``atomirx`/react` package.
+atomirx provides first-class React integration through the `atomirx/react` package.
 
 ### useValue Hook
 
 Subscribe to atom values with automatic re-rendering:
 
 ```tsx
-import { useValue } from "`atomirx`/react";
-import { atom } from "`atomirx`";
+import { useValue } from "atomirx/react";
+import { atom } from "atomirx";
 
 const count$ = atom(0);
 const user$ = atom<User | null>(null);
@@ -724,7 +1005,7 @@ function Counter() {
 // Only re-render when specific fields change
 const userName = useValue(
   ({ get }) => get(user$)?.name,
-  (prev, next) => prev === next,
+  (prev, next) => prev === next
 );
 ```
 
@@ -733,7 +1014,7 @@ const userName = useValue(
 The `rx()` function creates inline reactive components for fine-grained updates:
 
 ```tsx
-import { rx } from "`atomirx`/react";
+import { rx } from "atomirx/react";
 
 function Dashboard() {
   return (
@@ -752,7 +1033,7 @@ function Dashboard() {
 
       {/* Async with utilities */}
       {rx(({ all }) => {
-        const [user, posts] = all([user$, posts$]);
+        const [user, posts] = all(user$, posts$);
         return <Feed user={user} posts={posts} />;
       })}
     </div>
@@ -767,7 +1048,7 @@ function Dashboard() {
 Handle async operations with built-in loading/error states:
 
 ```tsx
-import { useAction } from "`atomirx`/react";
+import { useAction } from "atomirx/react";
 
 function UserProfile({ userId }: { userId: string }) {
   const saveUser = useAction(async ({ signal }, data: UserData) => {
@@ -802,13 +1083,13 @@ function UserProfile({ userId }: { userId: string }) {
 // Execute immediately on mount
 const fetchUser = useAction(
   async ({ signal }) => fetchUserApi(userId, { signal }),
-  { lazy: false, deps: [userId] },
+  { lazy: false, deps: [userId] }
 );
 
 // Re-execute when atom changes
 const fetchPosts = useAction(
   async ({ signal }) => fetchPostsApi(filter$.value, { signal }),
-  { lazy: false, deps: [filter$] },
+  { lazy: false, deps: [filter$] }
 );
 ```
 
@@ -827,7 +1108,7 @@ const fetchPosts = useAction(
 Prevent unnecessary re-renders by stabilizing references:
 
 ```tsx
-import { useStable } from "`atomirx`/react";
+import { useStable } from "atomirx/react";
 
 function SearchResults({ query, filters }: Props) {
   const stable = useStable({
@@ -856,13 +1137,13 @@ function SearchResults({ query, filters }: Props) {
 
 ### Suspense Integration
 
-`atomirx` is designed to work seamlessly with React Suspense:
+atomirx is designed to work seamlessly with React Suspense:
 
 ```tsx
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
-import { atom } from "`atomirx`";
-import { useValue } from "`atomirx`/react";
+import { atom } from "atomirx";
+import { useValue } from "atomirx/react";
 
 const user$ = atom(fetchUser());
 
@@ -916,7 +1197,7 @@ Creates a mutable reactive atom.
 ```typescript
 function atom<T>(
   initialValue: T | Promise<T> | (() => T | Promise<T>),
-  options?: { fallback?: T },
+  options?: { fallback?: T }
 ): MutableAtom<T>;
 ```
 
@@ -932,17 +1213,23 @@ function derived<T, S>(source: Atom<S>, selector: (get: () => S) => T): Atom<T>;
 
 function derived<T, S extends readonly Atom<any>[]>(
   sources: S,
-  selector: (...getters: GetterTuple<S>) => T,
+  selector: (...getters: GetterTuple<S>) => T
 ): Atom<T>;
 ```
 
-#### `effect(fn)`
+#### `effect(fn, options?)`
 
 Creates a side effect that runs when dependencies change.
 
 ```typescript
+interface EffectContext extends SelectContext {
+  onCleanup: (cleanup: VoidFunction) => void;
+  onError: (handler: (error: unknown) => void) => void;
+}
+
 function effect(
-  fn: (context: SelectContext) => void | (() => void),
+  fn: (context: EffectContext) => void,
+  options?: { onError?: (error: Error) => void }
 ): () => void; // Returns dispose function
 ```
 
@@ -973,7 +1260,7 @@ Creates a swappable lazy singleton.
 ```typescript
 function define<T>(
   factory: () => T,
-  options?: { eager?: boolean },
+  options?: { eager?: boolean }
 ): {
   (): T;
   override: (factory: () => T) => void;
@@ -993,13 +1280,21 @@ function isAtom<T>(value: unknown): value is Atom<T>;
 
 Available in `derived()`, `effect()`, `useValue()`, and `rx()`:
 
-| Method    | Signature                                            | Description                                |
-| --------- | ---------------------------------------------------- | ------------------------------------------ |
-| `get`     | `<T>(atom: Atom<T>) => T`                            | Read atom value with dependency tracking   |
-| `all`     | `<T>(atoms: Atom<T>[]) => T[]`                       | Wait for all atoms (Promise.all semantics) |
-| `any`     | `<T>(atoms: Record<string, Atom<T>>) => [string, T]` | First resolved (Promise.any semantics)     |
-| `race`    | `<T>(atoms: Record<string, Atom<T>>) => [string, T]` | First settled (Promise.race semantics)     |
-| `settled` | `<T>(atoms: Atom<T>[]) => SettledResult<T>[]`        | All results (Promise.allSettled semantics) |
+| Method    | Signature                          | Description                                  |
+| --------- | ---------------------------------- | -------------------------------------------- |
+| `get`     | `<T>(atom: Atom<T>) => Awaited<T>` | Read atom value with dependency tracking     |
+| `all`     | `(...atoms) => [values...]`        | Wait for all atoms (Promise.all semantics)   |
+| `any`     | `(...atoms) => value`              | First ready value (Promise.any semantics)    |
+| `race`    | `(...atoms) => value`              | First settled value (Promise.race semantics) |
+| `settled` | `(...atoms) => SettledResult[]`    | All results (Promise.allSettled semantics)   |
+
+**Behavior:**
+
+- `get()`: Returns value if ready, throws error if error, throws Promise if loading
+- `all()`: Suspends until all atoms are ready, throws on first error
+- `any()`: Returns first ready value, throws AggregateError if all error
+- `race()`: Returns first settled (ready or error)
+- `settled()`: Returns `{ status: "ready", value }` or `{ status: "error", error }` for each atom
 
 ### React API
 
@@ -1012,7 +1307,7 @@ function useValue<T>(atom: Atom<T>): T;
 // Context selector
 function useValue<T>(
   selector: (context: SelectContext) => T,
-  equals?: (prev: T, next: T) => boolean,
+  equals?: (prev: T, next: T) => boolean
 ): T;
 ```
 
@@ -1025,7 +1320,7 @@ function rx<T>(atom: Atom<T>): ReactNode;
 // Context selector
 function rx<T>(
   selector: (context: SelectContext) => T,
-  equals?: (prev: T, next: T) => boolean,
+  equals?: (prev: T, next: T) => boolean
 ): ReactNode;
 ```
 
@@ -1037,7 +1332,7 @@ function useAction<T, Args extends any[]>(
   options?: {
     lazy?: boolean;
     deps?: (Atom<any> | any)[];
-  },
+  }
 ): {
   (...args: Args): void;
   status: "idle" | "loading" | "success" | "error";
@@ -1053,16 +1348,16 @@ function useAction<T, Args extends any[]>(
 ```typescript
 function useStable<T extends Record<string, any>>(
   input: T,
-  equals?: (prev: T[keyof T], next: T[keyof T]) => boolean,
+  equals?: (prev: T[keyof T], next: T[keyof T]) => boolean
 ): T;
 ```
 
 ## TypeScript Integration
 
-`atomirx` is written in TypeScript and provides full type inference:
+atomirx is written in TypeScript and provides full type inference:
 
 ```typescript
-import { atom, derived } from "`atomirx`";
+import { atom, derived } from "atomirx";
 
 // Types are automatically inferred
 const count$ = atom(0); // MutableAtom<number>
@@ -1102,7 +1397,7 @@ const todoList = createListAtom<Todo>();
 
 ## Comparison with Other Libraries
 
-| Feature              | `atomirx`   | Redux Toolkit | Zustand | Jotai       | Recoil   |
+| Feature              | atomirx     | Redux Toolkit | Zustand | Jotai       | Recoil   |
 | -------------------- | ----------- | ------------- | ------- | ----------- | -------- |
 | Bundle size          | ~3KB        | ~12KB         | ~3KB    | ~8KB        | ~20KB    |
 | Boilerplate          | Minimal     | Low           | Minimal | Minimal     | Medium   |
@@ -1113,9 +1408,9 @@ const todoList = createListAtom<Todo>();
 | DevTools             | Planned     | Yes           | Yes     | Yes         | Yes      |
 | Learning curve       | Low         | Medium        | Low     | Low         | Medium   |
 
-### When to Use `atomirx`
+### When to Use atomirx
 
-**Choose `atomirx` when you want:**
+**Choose atomirx when you want:**
 
 - Minimal API with maximum capability
 - First-class async support without additional packages
@@ -1146,14 +1441,14 @@ const todoList = createListAtom<Todo>();
 
 ### Community
 
-- [GitHub Issues](https://github.com/`atomirx`/`atomirx`/issues) - Bug reports and feature requests
-- [Discussions](https://github.com/`atomirx`/`atomirx`/discussions) - Questions and community support
+- [GitHub Issues](https://github.com/atomirx/atomirx/issues) - Bug reports and feature requests
+- [Discussions](https://github.com/atomirx/atomirx/discussions) - Questions and community support
 
 ## License
 
 MIT License
 
-Copyright (c) `atomirx` contributors
+Copyright (c) atomirx contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

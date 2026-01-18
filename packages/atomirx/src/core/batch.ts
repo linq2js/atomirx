@@ -143,13 +143,13 @@ export function batch<T>(fn: () => T): T {
     };
 
     try {
-      return hook.use([scheduleNotifyHook(scheduleListener)], fn);
+      return hook.use([scheduleNotifyHook(() => scheduleListener)], fn);
     } finally {
       batchDepth--;
 
       // Process pending listeners, handling cascading updates
       // Keep the hook active so any updates triggered by listeners are also batched
-      hook.use([scheduleNotifyHook(scheduleListener)], () => {
+      hook.use([scheduleNotifyHook(() => scheduleListener)], () => {
         while (pendingListeners.size > 0) {
           // Snapshot and clear before calling to handle re-entrancy
           const listeners = pendingListeners;

@@ -38,12 +38,12 @@ const fetchData = async (
   };
 };
 
-// Atom for auto-dispatch demo
-const userIdAtom = atom(1, { key: "userId" });
+// Atom for auto-dispatch demo (use $ suffix convention)
+const userId$ = atom(1, { meta: { key: "userId" } });
 
 export function UseActionDemo() {
   // Shorthand: pass atom directly to get its value
-  const userId = useValue(userIdAtom);
+  const userId = useValue(userId$);
   const { log } = useEventLog();
 
   // Basic manual dispatch (lazy: true by default)
@@ -64,7 +64,7 @@ export function UseActionDemo() {
     async ({ signal }) => {
       return fetchData(signal, 1500);
     },
-    { lazy: false, deps: [userIdAtom] },
+    { lazy: false, deps: [userId$] },
   );
 
   // Sync action
@@ -122,7 +122,7 @@ console.log(fetchPosts.error);  // Error if failed
 // Auto-dispatch on mount and when deps change
 const autoFetch = useAction(
   async ({ signal }) => fetchUser(userId, { signal }),
-  { lazy: false, deps: [userIdAtom] }
+  { lazy: false, deps: [userId$] }
 );
         `}
       />
@@ -255,7 +255,7 @@ const autoFetch = useAction(
             <label className="text-sm text-surface-400">User ID:</label>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => userIdAtom.set((prev) => Math.max(1, prev - 1))}
+                onClick={() => userId$.set((prev) => Math.max(1, prev - 1))}
                 className="btn-secondary px-3 py-1"
               >
                 -
@@ -264,7 +264,7 @@ const autoFetch = useAction(
                 {userId}
               </span>
               <button
-                onClick={() => userIdAtom.set((prev) => prev + 1)}
+                onClick={() => userId$.set((prev) => prev + 1)}
                 className="btn-secondary px-3 py-1"
               >
                 +

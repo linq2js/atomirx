@@ -6,18 +6,18 @@ import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
 import { Eye, RefreshCw, Layers } from "lucide-react";
 
-// Create atoms for demo
-const userAtom = atom(
+// Create atoms for demo (use $ suffix convention)
+const user$ = atom(
   { name: "John Doe", email: "john@example.com", age: 30 },
-  { key: "user" },
+  { meta: { key: "user" } },
 );
 
-const settingsAtom = atom(
+const settings$ = atom(
   { theme: "dark", notifications: true, language: "en" },
-  { key: "settings" },
+  { meta: { key: "settings" } },
 );
 
-const counterAtom = atom(0, { key: "counter" });
+const counter$ = atom(0, { meta: { key: "counter" } });
 
 // Render counter component - uses ref to avoid causing re-renders
 function RenderCounter({ name }: { name: string }) {
@@ -38,7 +38,7 @@ function RenderCounter({ name }: { name: string }) {
 
 // Component that selects only name - memoized to prevent parent re-renders
 const UserNameDisplay = memo(function UserNameDisplay() {
-  const name = useValue(({ get }) => get(userAtom).name);
+  const name = useValue(({ get }) => get(user$).name);
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -55,7 +55,7 @@ const UserNameDisplay = memo(function UserNameDisplay() {
 
 // Component that selects only email - memoized to prevent parent re-renders
 const UserEmailDisplay = memo(function UserEmailDisplay() {
-  const email = useValue(({ get }) => get(userAtom).email);
+  const email = useValue(({ get }) => get(user$).email);
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -72,7 +72,7 @@ const UserEmailDisplay = memo(function UserEmailDisplay() {
 
 // Component that selects entire user - memoized to prevent parent re-renders
 const FullUserDisplay = memo(function FullUserDisplay() {
-  const user = useValue(({ get }) => get(userAtom));
+  const user = useValue(({ get }) => get(user$));
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -91,8 +91,8 @@ const FullUserDisplay = memo(function FullUserDisplay() {
 // Multi-source selector component - memoized to prevent parent re-renders
 const CombinedDisplay = memo(function CombinedDisplay() {
   const combined = useValue(({ get }) => ({
-    userName: get(userAtom).name,
-    theme: get(settingsAtom).theme,
+    userName: get(user$).name,
+    theme: get(settings$).theme,
   }));
 
   return (
@@ -112,39 +112,39 @@ const CombinedDisplay = memo(function CombinedDisplay() {
 
 export function useValueDemo() {
   // Shorthand: pass atom directly to get its value
-  const counter = useValue(counterAtom);
+  const counter = useValue(counter$);
   const { log } = useEventLog();
 
   const updateName = () => {
     const names = ["John Doe", "Jane Smith", "Bob Wilson", "Alice Brown"];
     const newName = names[Math.floor(Math.random() * names.length)];
     log(`Updating name to: ${newName}`);
-    userAtom.set((prev) => ({ ...prev, name: newName }));
+    user$.set((prev) => ({ ...prev, name: newName }));
   };
 
   const updateEmail = () => {
     const emails = ["john@example.com", "jane@test.com", "bob@demo.com"];
     const newEmail = emails[Math.floor(Math.random() * emails.length)];
     log(`Updating email to: ${newEmail}`);
-    userAtom.set((prev) => ({ ...prev, email: newEmail }));
+    user$.set((prev) => ({ ...prev, email: newEmail }));
   };
 
   const updateAge = () => {
     const newAge = Math.floor(Math.random() * 50) + 20;
     log(`Updating age to: ${newAge} (not displayed, only Full re-renders)`);
-    userAtom.set((prev) => ({ ...prev, age: newAge }));
+    user$.set((prev) => ({ ...prev, age: newAge }));
   };
 
   const updateTheme = () => {
     const themes = ["dark", "light", "system"];
     const newTheme = themes[Math.floor(Math.random() * themes.length)];
     log(`Updating theme to: ${newTheme}`);
-    settingsAtom.set((prev) => ({ ...prev, theme: newTheme }));
+    settings$.set((prev) => ({ ...prev, theme: newTheme }));
   };
 
   const incrementCounter = () => {
     log("Incrementing counter");
-    counterAtom.set((prev) => prev + 1);
+    counter$.set((prev) => prev + 1);
   };
 
   return (
@@ -164,19 +164,19 @@ export function useValueDemo() {
 import { useValue } from "atomirx/react";
 
 // Shorthand: pass atom directly to get its value
-const user = useValue(userAtom);
+const user = useValue(user$);
 
 // Select with transformation (only re-render when name changes)
-const name = useValue(({ get }) => get(userAtom).name);
+const name = useValue(({ get }) => get(user$).name);
 
 // Multiple atoms
 const combined = useValue(({ get }) => ({
-  userName: get(userAtom).name,
-  theme: get(settingsAtom).theme,
+  userName: get(user$).name,
+  theme: get(settings$).theme,
 }));
 
 // With equals option
-const data = useValue(({ get }) => get(atom).data, "shallow");
+const data = useValue(({ get }) => get(data$).value, "shallow");
         `}
       />
 
@@ -250,7 +250,7 @@ const data = useValue(({ get }) => get(atom).data, "shallow");
           <CodeBlock
             code={`
 // Shorthand: pass atom directly
-const counter = useValue(counterAtom);
+const counter = useValue(counter$);
             `}
           />
         </div>

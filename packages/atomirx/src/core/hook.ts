@@ -15,21 +15,43 @@ export type HookSetup = () => VoidFunction;
  * // Read current value (fast - direct property access)
  * console.log(myHook.current); // "default"
  *
- * // Create a setup function
- * const setup = myHook("new value");
+ * // Create a setup function (reducer receives previous value)
+ * const setup = myHook(() => "new value");
  *
  * // Use with hook.use()
- * hook.use([myHook("temp")], () => {
+ * hook.use([myHook(() => "temp")], () => {
  *   console.log(myHook.current); // "temp"
  * });
  * console.log(myHook.current); // "default" (restored)
+ *
+ * // Compose with previous value
+ * myHook.override(prev => {
+ *   console.log("Previous:", prev);
+ *   return "next";
+ * });
  * ```
  */
 export interface Hook<T> {
   /**
-   * Creates a HookSetup that will set this hook to the given value.
+   * Creates a HookSetup that will set this hook using a reducer.
+   * The reducer receives the previous value and returns the next value.
+   *
+   * @param reducer - Function that receives previous value and returns next value
+   *
+   * @example Set new value (ignore previous)
+   * ```ts
+   * myHook(() => "new value")
+   * ```
+   *
+   * @example Compose with previous
+   * ```ts
+   * myHook(prev => {
+   *   prev?.(); // call previous handler
+   *   return newHandler;
+   * })
+   * ```
    */
-  (value: T): HookSetup;
+  (reducer: (prev: T) => T): HookSetup;
 
   /**
    * Current value of the hook. Direct property access for fast reads.
@@ -37,11 +59,30 @@ export interface Hook<T> {
   current: T;
 
   /**
-   * Override the current value directly.
+   * Override the current value using a reducer.
+   * The reducer receives the previous value and returns the next value.
    * Unlike the setup/release pattern, this is an immediate mutation.
+   *
+   * @param reducer - Function that receives previous value and returns next value
+   *
+   * @example Set new value (ignore previous)
+   * ```ts
+   * myHook.override(() => "new value")
+   * ```
+   *
+   * @example Compose with previous (middleware pattern)
+   * ```ts
+   * onCreateHook.override(prev => (info) => {
+   *   prev?.(info);  // call existing handler
+   *   console.log("Created:", info.key);
+   * });
+   * ```
    */
-  override(value: T): void;
+  override(reducer: (prev: T) => T): void;
 
+  /**
+   * Reset the hook to its initial value.
+   */
   reset(): void;
 }
 
@@ -63,9 +104,15 @@ export interface Hook<T> {
  * // Read
  * console.log(countHook.current); // 0
  *
- * // Use with hook.use()
- * hook.use([countHook(5)], () => {
+ * // Use with hook.use() - reducer receives previous value
+ * hook.use([countHook(() => 5)], () => {
  *   console.log(countHook.current); // 5
+ * });
+ *
+ * // Compose with previous (middleware pattern)
+ * myHook.override(prev => (info) => {
+ *   prev?.(info);  // call existing
+ *   newHandler(info);
  * });
  * ```
  */
@@ -74,10 +121,10 @@ function createHook<T>(): Hook<T | undefined>;
 function createHook<T>(initial?: T): Hook<T | undefined> {
   // The hook function creates a setup that returns a release
   const h = Object.assign(
-    (value: T | undefined): HookSetup => {
+    (reducer: (prev: T | undefined) => T | undefined): HookSetup => {
       return () => {
         const prev = h.current;
-        h.current = value;
+        h.current = reducer(prev);
         return () => {
           h.current = prev;
         };
@@ -85,9 +132,9 @@ function createHook<T>(initial?: T): Hook<T | undefined> {
     },
     {
       current: initial,
-      // Override method for direct mutation
-      override: (value: T | undefined) => {
-        h.current = value;
+      // Override method for direct mutation using reducer
+      override: (reducer: (prev: T | undefined) => T | undefined) => {
+        h.current = reducer(h.current);
       },
       reset: () => {
         h.current = initial;

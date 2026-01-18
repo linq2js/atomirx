@@ -51,7 +51,10 @@ export type ActionState<T> =
 /**
  * Action state without idle (used when lazy is false).
  */
-export type ActionStateWithoutIdle<T> = Exclude<ActionState<T>, ActionIdleState>;
+export type ActionStateWithoutIdle<T> = Exclude<
+  ActionState<T>,
+  ActionIdleState
+>;
 
 /**
  * A promise with an abort method for manual cancellation.
@@ -100,7 +103,9 @@ export type ActionApi = {
 /**
  * Dispatch function type - callable and returns AbortablePromise.
  */
-export type ActionDispatch<T> = () => AbortablePromise<T extends PromiseLike<infer U> ? U : T>;
+export type ActionDispatch<T> = () => AbortablePromise<
+  T extends PromiseLike<infer U> ? U : T
+>;
 
 /**
  * Return type for useAction - a callable dispatch function with state and API attached.
@@ -121,8 +126,13 @@ export type ActionDispatch<T> = () => AbortablePromise<T extends PromiseLike<inf
  * fetchPosts.reset()   // reset state to idle
  * ```
  */
-export type Action<TResult, TLazy extends boolean = true> = ActionDispatch<TResult> &
-  (TLazy extends true ? ActionState<Awaited<TResult>> : ActionStateWithoutIdle<Awaited<TResult>>) &
+export type Action<
+  TResult,
+  TLazy extends boolean = true,
+> = ActionDispatch<TResult> &
+  (TLazy extends true
+    ? ActionState<Awaited<TResult>>
+    : ActionStateWithoutIdle<Awaited<TResult>>) &
   ActionApi;
 
 // Reducer action types
@@ -144,7 +154,10 @@ const LOADING_STATE: ActionLoadingState = {
   error: undefined,
 };
 
-function reducer<T>(state: ActionState<T>, action: ReducerAction<T>): ActionState<T> {
+function reducer<T>(
+  state: ActionState<T>,
+  action: ReducerAction<T>
+): ActionState<T> {
   switch (action.type) {
     case "START":
       return LOADING_STATE;
@@ -449,7 +462,10 @@ export function useAction<TResult, TLazy extends boolean = true>(
 
   // Use loading as initial state when lazy is false (eager execution)
   const initialState = lazy ? IDLE_STATE : LOADING_STATE;
-  const [state, dispatchAction] = useReducer(reducer<Awaited<TResult>>, initialState);
+  const [state, dispatchAction] = useReducer(
+    reducer<Awaited<TResult>>,
+    initialState
+  );
 
   // Track current abort controller for auto-abort and stale result detection
   const currentAbortControllerRef = useRef<AbortController | null>(null);
@@ -469,10 +485,10 @@ export function useAction<TResult, TLazy extends boolean = true>(
   }, []);
 
   // Get atoms from deps for reactive tracking
-  const atomDeps = (lazy ? [] : (options.deps ?? [])).filter(isAtom);
+  const atomDeps = (lazy ? [] : (deps ?? [])).filter(isAtom);
 
-  // use useValue to track atom deps, no need to use returned value, just re-render when deps change
-  useValue(({ get }) => {
+  // Use useValue to track atom deps and get their values for effect deps comparison
+  const atomValues = useValue(({ get }) => {
     return atomDeps.map((atom) => get(atom));
   });
 
@@ -511,7 +527,8 @@ export function useAction<TResult, TLazy extends boolean = true>(
         },
         (error) => {
           // Check if this was an abort error
-          const isAbortError = error instanceof DOMException && error.name === "AbortError";
+          const isAbortError =
+            error instanceof DOMException && error.name === "AbortError";
 
           // If aborted, always dispatch the error to exit loading state
           if (isAbortError) {
@@ -551,13 +568,16 @@ export function useAction<TResult, TLazy extends boolean = true>(
     });
   }, [exclusive, abortCurrent]);
 
+  // Get non-atom deps for effect comparison
+  const nonAtomDeps = (deps ?? []).filter((dep) => !isAtom(dep));
+
   // Eager execution effect (when lazy is false)
   useEffect(() => {
     if (!lazy) {
       dispatch();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lazy, ...deps]);
+  }, [lazy, ...atomValues, ...nonAtomDeps]);
 
   // Cleanup on unmount
   useEffect(() => {

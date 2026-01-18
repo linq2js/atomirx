@@ -7,23 +7,28 @@ import { useEventLog } from "../App";
 import { Plus, Minus, RotateCcw, Edit3 } from "lucide-react";
 
 // Create atoms outside component to persist across renders
-const countAtom = atom(0, { key: "count" });
-const nameAtom = atom("atomirx", { key: "name" });
+// Convention: use $ suffix for all atoms
+const count$ = atom(0, { meta: { key: "count" } });
+const name$ = atom("atomirx", { meta: { key: "name" } });
+
+// Example of lazy initialization - value computed once at creation
+const timestamp$ = atom(() => Date.now(), { meta: { key: "timestamp" } });
 
 export function BasicAtomDemo() {
   // Shorthand: pass atom directly to get its value
-  const count = useValue(countAtom);
-  const name = useValue(nameAtom);
+  const count = useValue(count$);
+  const name = useValue(name$);
+  const timestamp = useValue(timestamp$);
   const { log } = useEventLog();
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Subscribe to changes for logging
   useEffect(() => {
-    const unsubCount = countAtom.on(() => {
-      log(`Count changed to: ${countAtom.value}`, "success");
+    const unsubCount = count$.on(() => {
+      log(`Count changed to: ${count$.value}`, "success");
     });
-    const unsubName = nameAtom.on(() => {
-      log(`Name changed to: "${nameAtom.value}"`, "success");
+    const unsubName = name$.on(() => {
+      log(`Name changed to: "${name$.value}"`, "success");
     });
     return () => {
       unsubCount();
@@ -32,24 +37,29 @@ export function BasicAtomDemo() {
   }, [log]);
 
   const increment = () => {
-    log("Calling countAtom.set(prev => prev + 1)");
-    countAtom.set((prev) => prev + 1);
+    log("Calling count$.set(prev => prev + 1)");
+    count$.set((prev) => prev + 1);
   };
 
   const decrement = () => {
-    log("Calling countAtom.set(prev => prev - 1)");
-    countAtom.set((prev) => prev - 1);
+    log("Calling count$.set(prev => prev - 1)");
+    count$.set((prev) => prev - 1);
   };
 
   const reset = () => {
-    log("Calling countAtom.reset()");
-    countAtom.reset();
+    log("Calling count$.reset()");
+    count$.reset();
   };
 
   const updateName = () => {
     const newName = inputRef.current?.value || "";
-    log(`Calling nameAtom.set("${newName}")`);
-    nameAtom.set(newName);
+    log(`Calling name$.set("${newName}")`);
+    name$.set(newName);
+  };
+
+  const refreshTimestamp = () => {
+    log("Calling timestamp$.reset() - re-runs lazy initializer");
+    timestamp$.reset();
   };
 
   return (
@@ -69,16 +79,22 @@ export function BasicAtomDemo() {
 import { atom } from "atomirx";
 import { useValue } from "atomirx/react";
 
-// Create an atom with initial value
-const countAtom = atom(0);
+// Create an atom with initial value (use $ suffix convention)
+const count$ = atom(0);
+
+// Lazy initialization - computed once at creation
+const timestamp$ = atom(() => Date.now());
 
 // In your component (shorthand: pass atom directly)
-const count = useValue(countAtom);
+const count = useValue(count$);
 
 // Update the atom
-countAtom.set(5);           // Direct value
-countAtom.set(prev => prev + 1); // Reducer function
-countAtom.reset();          // Reset to initial value
+count$.set(5);              // Direct value
+count$.set(prev => prev + 1); // Reducer function
+count$.reset();             // Reset to initial value
+
+// Lazy init: reset() re-runs the initializer
+timestamp$.reset();         // Gets new timestamp
         `}
       />
 
@@ -116,16 +132,6 @@ countAtom.reset();          // Reset to initial value
               <RotateCcw className="w-4 h-4" />
               Reset
             </button>
-            <div className="flex items-center gap-2 text-sm text-surface-400">
-              <span>Dirty:</span>
-              <span
-                className={
-                  countAtom.dirty() ? "text-amber-400" : "text-surface-500"
-                }
-              >
-                {countAtom.dirty() ? "Yes" : "No"}
-              </span>
-            </div>
           </div>
         </div>
       </DemoSection>
@@ -160,12 +166,33 @@ countAtom.reset();          // Reset to initial value
         </div>
       </DemoSection>
 
+      {/* Lazy Init Demo */}
+      <DemoSection
+        title="Lazy Initialization"
+        description="Pass a function to defer computation. reset() re-runs the initializer."
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-surface-800/50 rounded-lg">
+            <p className="text-sm text-surface-400 mb-1">Timestamp (lazy init):</p>
+            <p className="text-xl font-semibold text-surface-100">{timestamp}</p>
+          </div>
+
+          <button
+            onClick={refreshTimestamp}
+            className="btn-primary flex items-center gap-2"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Reset (gets new timestamp)
+          </button>
+        </div>
+      </DemoSection>
+
       {/* Features */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card">
           <h4 className="font-semibold text-surface-100 mb-2">Lazy Init</h4>
           <p className="text-sm text-surface-400">
-            State is created on first access, not at definition time.
+            Pass a function to defer computation. reset() re-runs the initializer.
           </p>
         </div>
         <div className="card">
@@ -178,10 +205,10 @@ countAtom.reset();          // Reset to initial value
         </div>
         <div className="card">
           <h4 className="font-semibold text-surface-100 mb-2">
-            Dirty Tracking
+            $ Suffix Convention
           </h4>
           <p className="text-sm text-surface-400">
-            Know if atom has been modified since creation.
+            Use $ suffix for all atoms to distinguish reactive state.
           </p>
         </div>
       </div>

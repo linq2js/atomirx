@@ -6,63 +6,55 @@ import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
 import { Calculator, ArrowRight, Shuffle } from "lucide-react";
 
-// Source atoms
-const priceAtom = atom(100, { key: "price" });
-const quantityAtom = atom(2, { key: "quantity" });
-const discountAtom = atom(0.1, { key: "discount" }); // 10%
+// Source atoms (use $ suffix convention)
+const price$ = atom(100, { meta: { key: "price" } });
+const quantity$ = atom(2, { meta: { key: "quantity" } });
+const discount$ = atom(0.1, { meta: { key: "discount" } }); // 10%
 
-// Derived atoms
-const subtotalAtom = derived(
-  [priceAtom, quantityAtom],
-  (getPrice, getQuantity) => getPrice() * getQuantity(),
+// Derived atoms (use context-based API)
+const subtotal$ = derived(({ get }) => get(price$) * get(quantity$));
+
+const discountAmount$ = derived(
+  ({ get }) => get(subtotal$) * get(discount$)
 );
 
-const discountAmountAtom = derived(
-  [subtotalAtom, discountAtom],
-  (getSubtotal, getDiscount) => getSubtotal() * getDiscount(),
-);
-
-const totalAtom = derived(
-  [subtotalAtom, discountAmountAtom],
-  (getSubtotal, getDiscountAmount) => getSubtotal() - getDiscountAmount(),
-);
+const total$ = derived(({ get }) => get(subtotal$) - get(discountAmount$));
 
 // Conditional dependency example
-const showDetailsAtom = atom(false, { key: "showDetails" });
-const basicInfoAtom = atom({ label: "Basic" }, { key: "basicInfo" });
-const detailedInfoAtom = atom(
+const showDetails$ = atom(false, { meta: { key: "showDetails" } });
+const basicInfo$ = atom({ label: "Basic" }, { meta: { key: "basicInfo" } });
+const detailedInfo$ = atom(
   { label: "Detailed", extra: "More info here" },
-  { key: "detailedInfo" },
+  { meta: { key: "detailedInfo" } },
 );
 
-const infoAtom = derived(
-  [showDetailsAtom, basicInfoAtom, detailedInfoAtom],
-  (getShowDetails, getBasicInfo, getDetailedInfo) =>
-    getShowDetails() ? getDetailedInfo() : getBasicInfo(),
+// Conditional dependencies - only subscribes to accessed atoms
+const info$ = derived(({ get }) =>
+  get(showDetails$) ? get(detailedInfo$) : get(basicInfo$)
 );
 
 export function DerivedAtomDemo() {
   // Shorthand: pass atom directly to get its value
-  const price = useValue(priceAtom);
-  const quantity = useValue(quantityAtom);
-  const discount = useValue(discountAtom);
-  const subtotal = useValue(subtotalAtom);
-  const discountAmount = useValue(discountAmountAtom);
-  const total = useValue(totalAtom);
-  const showDetails = useValue(showDetailsAtom);
-  const info = useValue(infoAtom);
+  const price = useValue(price$);
+  const quantity = useValue(quantity$);
+  const discount = useValue(discount$);
+  const subtotal = useValue(subtotal$);
+  const discountAmount = useValue(discountAmount$);
+  const total = useValue(total$);
+  const showDetails = useValue(showDetails$);
+  const info = useValue(info$);
 
   const { log } = useEventLog();
 
   useEffect(() => {
     const unsubs = [
-      priceAtom.on(() => log(`Price: $${priceAtom.value}`)),
-      quantityAtom.on(() => log(`Quantity: ${quantityAtom.value}`)),
-      subtotalAtom.on(() =>
-        log(`Subtotal recalculated: $${subtotalAtom.value}`, "success"),
+      price$.on(() => log(`Price: $${price$.value}`)),
+      quantity$.on(() => log(`Quantity: ${quantity$.value}`)),
+      subtotal$.on(() =>
+        log(`Subtotal recalculated: $${subtotal$.staleValue}`, "success"),
       ),
-      totalAtom.on(() =>
-        log(`Total recalculated: $${totalAtom.value?.toFixed(2)}`, "success"),
+      total$.on(() =>
+        log(`Total recalculated: $${total$.staleValue?.toFixed(2)}`, "success"),
       ),
     ];
     return () => unsubs.forEach((u) => u());
@@ -70,9 +62,9 @@ export function DerivedAtomDemo() {
 
   const randomize = () => {
     log("Randomizing values...");
-    priceAtom.set(Math.floor(Math.random() * 200) + 50);
-    quantityAtom.set(Math.floor(Math.random() * 10) + 1);
-    discountAtom.set(Math.random() * 0.3);
+    price$.set(Math.floor(Math.random() * 200) + 50);
+    quantity$.set(Math.floor(Math.random() * 10) + 1);
+    discount$.set(Math.random() * 0.3);
   };
 
   return (
@@ -91,24 +83,23 @@ export function DerivedAtomDemo() {
         code={`
 import { atom, derived } from "atomirx";
 
-const price = atom(100);
-const quantity = atom(2);
+const price$ = atom(100);
+const quantity$ = atom(2);
 
-// Single source
-const doubled = derived(price, (get) => get() * 2);
+// Context-based derived - automatic dependency tracking
+const doubled$ = derived(({ get }) => get(price$) * 2);
 
 // Multiple sources
-const total = derived(
-  [price, quantity],
-  (getPrice, getQuantity) => getPrice() * getQuantity()
-);
+const total$ = derived(({ get }) => get(price$) * get(quantity$));
 
 // Conditional dependencies - only subscribes to accessed atoms
-const info = derived(
-  [showDetails, basicInfo, detailedInfo],
-  (getShow, getBasic, getDetailed) =>
-    getShow() ? getDetailed() : getBasic()
+const info$ = derived(({ get }) =>
+  get(showDetails$) ? get(detailedInfo$) : get(basicInfo$)
 );
+
+// Async dependencies - get() auto-unwraps Promises
+const userData$ = atom(fetchUser());
+const userName$ = derived(({ get }) => get(userData$).name);
         `}
       />
 
@@ -127,7 +118,7 @@ const info = derived(
               <input
                 type="number"
                 value={price}
-                onChange={(e) => priceAtom.set(Number(e.target.value))}
+                onChange={(e) => price$.set(Number(e.target.value))}
                 className="input"
               />
             </div>
@@ -138,7 +129,7 @@ const info = derived(
               <input
                 type="number"
                 value={quantity}
-                onChange={(e) => quantityAtom.set(Number(e.target.value))}
+                onChange={(e) => quantity$.set(Number(e.target.value))}
                 className="input"
               />
             </div>
@@ -149,7 +140,7 @@ const info = derived(
               <input
                 type="number"
                 value={Math.round(discount * 100)}
-                onChange={(e) => discountAtom.set(Number(e.target.value) / 100)}
+                onChange={(e) => discount$.set(Number(e.target.value) / 100)}
                 className="input"
               />
             </div>
@@ -212,7 +203,7 @@ const info = derived(
               <input
                 type="checkbox"
                 checked={showDetails}
-                onChange={(e) => showDetailsAtom.set(e.target.checked)}
+                onChange={(e) => showDetails$.set(e.target.checked)}
                 className="w-4 h-4 rounded border-surface-600 bg-surface-800 text-primary-500 focus:ring-primary-500"
               />
               <span className="text-surface-300">Show detailed info</span>
@@ -234,7 +225,7 @@ const info = derived(
           <p className="text-sm text-surface-500">
             <Calculator className="w-4 h-4 inline mr-1" />
             When unchecked, changes to{" "}
-            <code className="text-primary-400">detailedInfoAtom</code> won't
+            <code className="text-primary-400">detailedInfo$</code> won't
             trigger recomputation.
           </p>
         </div>

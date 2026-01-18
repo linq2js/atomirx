@@ -6,18 +6,18 @@ import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
 import { Layers, Zap, ArrowRight, Users } from "lucide-react";
 
-// Create atoms for demo
-const counterAtom = atom(0, { key: "counter" });
-const atomA = atom(0, { key: "atomA" });
-const atomB = atom(0, { key: "atomB" });
-const atomC = atom(0, { key: "atomC" });
+// Create atoms for demo (use $ suffix convention)
+const counter$ = atom(0, { meta: { key: "counter" } });
+const a$ = atom(0, { meta: { key: "a" } });
+const b$ = atom(0, { meta: { key: "b" } });
+const c$ = atom(0, { meta: { key: "c" } });
 
 export function BatchDemo() {
   // Shorthand: pass atom directly to get its value
-  const counter = useValue(counterAtom);
-  const a = useValue(atomA);
-  const b = useValue(atomB);
-  const c = useValue(atomC);
+  const counter = useValue(counter$);
+  const a = useValue(a$);
+  const b = useValue(b$);
+  const c = useValue(c$);
 
   const { log, clear } = useEventLog();
   const [notificationCount, setNotificationCount] = useState(0);
@@ -27,10 +27,10 @@ export function BatchDemo() {
 
   // Track notifications for the counter atom
   useEffect(() => {
-    const unsub = counterAtom.on(() => {
+    const unsub = counter$.on(() => {
       notificationCountRef.current++;
       setNotificationCount(notificationCountRef.current);
-      log(`Counter notified: ${counterAtom.value}`, "success");
+      log(`Counter notified: ${counter$.value}`, "success");
     });
     return unsub;
   }, [log]);
@@ -41,15 +41,15 @@ export function BatchDemo() {
       sharedListenerCountRef.current++;
       setSharedListenerCount(sharedListenerCountRef.current);
       log(
-        `Shared listener called (A=${atomA.value}, B=${atomB.value}, C=${atomC.value})`,
+        `Shared listener called (A=${a$.value}, B=${b$.value}, C=${c$.value})`,
         "info",
       );
     };
 
     const unsubs = [
-      atomA.on(sharedListener),
-      atomB.on(sharedListener),
-      atomC.on(sharedListener),
+      a$.on(sharedListener),
+      b$.on(sharedListener),
+      c$.on(sharedListener),
     ];
     return () => unsubs.forEach((u) => u());
   }, [log]);
@@ -59,10 +59,10 @@ export function BatchDemo() {
     sharedListenerCountRef.current = 0;
     setNotificationCount(0);
     setSharedListenerCount(0);
-    counterAtom.reset();
-    atomA.reset();
-    atomB.reset();
-    atomC.reset();
+    counter$.reset();
+    a$.reset();
+    b$.reset();
+    c$.reset();
     clear();
     log("Reset all atoms and counters");
   };
@@ -71,9 +71,9 @@ export function BatchDemo() {
     log("Updating counter 3 times WITHOUT batch...", "warning");
     const startCount = notificationCountRef.current;
 
-    counterAtom.set((prev) => prev + 1);
-    counterAtom.set((prev) => prev + 1);
-    counterAtom.set((prev) => prev + 1);
+    counter$.set((prev) => prev + 1);
+    counter$.set((prev) => prev + 1);
+    counter$.set((prev) => prev + 1);
 
     const notifications = notificationCountRef.current - startCount;
     log(`Completed: ${notifications} notifications fired`, "warning");
@@ -84,9 +84,9 @@ export function BatchDemo() {
     const startCount = notificationCountRef.current;
 
     batch(() => {
-      counterAtom.set((prev) => prev + 1);
-      counterAtom.set((prev) => prev + 1);
-      counterAtom.set((prev) => prev + 1);
+      counter$.set((prev) => prev + 1);
+      counter$.set((prev) => prev + 1);
+      counter$.set((prev) => prev + 1);
     });
 
     const notifications = notificationCountRef.current - startCount;
@@ -98,9 +98,9 @@ export function BatchDemo() {
     log("Updating A, B, C WITHOUT batch...", "warning");
     const startCount = sharedListenerCountRef.current;
 
-    atomA.set((prev) => prev + 1);
-    atomB.set((prev) => prev + 1);
-    atomC.set((prev) => prev + 1);
+    a$.set((prev) => prev + 1);
+    b$.set((prev) => prev + 1);
+    c$.set((prev) => prev + 1);
 
     const calls = sharedListenerCountRef.current - startCount;
     log(`Shared listener called ${calls} times (once per atom)`, "warning");
@@ -112,9 +112,9 @@ export function BatchDemo() {
     const startCount = sharedListenerCountRef.current;
 
     batch(() => {
-      atomA.set((prev) => prev + 1);
-      atomB.set((prev) => prev + 1);
-      atomC.set((prev) => prev + 1);
+      a$.set((prev) => prev + 1);
+      b$.set((prev) => prev + 1);
+      c$.set((prev) => prev + 1);
     });
 
     const calls = sharedListenerCountRef.current - startCount;
@@ -127,17 +127,17 @@ export function BatchDemo() {
 
     batch(() => {
       log("  Outer batch: +1");
-      counterAtom.set((prev) => prev + 1);
+      counter$.set((prev) => prev + 1);
 
       batch(() => {
         log("  Inner batch: +1, +1");
-        counterAtom.set((prev) => prev + 1);
-        counterAtom.set((prev) => prev + 1);
+        counter$.set((prev) => prev + 1);
+        counter$.set((prev) => prev + 1);
       });
 
       log("  Back to outer: +1, +1");
-      counterAtom.set((prev) => prev + 1);
-      counterAtom.set((prev) => prev + 1);
+      counter$.set((prev) => prev + 1);
+      counter$.set((prev) => prev + 1);
     });
 
     const notifications = notificationCountRef.current - startCount;
@@ -161,34 +161,34 @@ export function BatchDemo() {
         code={`
 import { atom, batch } from "atomirx";
 
-const counter = atom(0);
+const counter$ = atom(0);
 
 // Without batch: 3 notifications (one per set)
-counter.set(1);  // → notify
-counter.set(2);  // → notify  
-counter.set(3);  // → notify
+counter$.set(1);  // → notify
+counter$.set(2);  // → notify  
+counter$.set(3);  // → notify
 
 // With batch: 1 notification (at the end)
 batch(() => {
-  counter.set(1);  // deferred
-  counter.set(2);  // deferred
-  counter.set(3);  // deferred
+  counter$.set(1);  // deferred
+  counter$.set(2);  // deferred
+  counter$.set(3);  // deferred
 });  // → notify once
 
 // Listener deduping across multiple atoms
-const a = atom(0), b = atom(0), c = atom(0);
+const a$ = atom(0), b$ = atom(0), c$ = atom(0);
 const sharedListener = () => console.log("updated!");
 
-a.on(sharedListener);
-b.on(sharedListener);
-c.on(sharedListener);
+a$.on(sharedListener);
+b$.on(sharedListener);
+c$.on(sharedListener);
 
 // Without batch: sharedListener called 3 times
-a.set(1); b.set(1); c.set(1);
+a$.set(1); b$.set(1); c$.set(1);
 
 // With batch: sharedListener called ONCE (deduped!)
 batch(() => {
-  a.set(1); b.set(1); c.set(1);
+  a$.set(1); b$.set(1); c$.set(1);
 });
         `}
       />

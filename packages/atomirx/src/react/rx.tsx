@@ -12,6 +12,25 @@ import { ContextSelectorFn } from "../core/select";
  * React component instead of a value. This enables fine-grained reactivity
  * without creating separate components for each reactive value.
  *
+ * ## IMPORTANT: Selector Must Return Synchronous Value
+ *
+ * **The selector function MUST NOT be async or return a Promise.**
+ *
+ * ```tsx
+ * // ❌ WRONG - Don't use async function
+ * rx(async ({ get }) => {
+ *   const data = await fetch('/api');
+ *   return data.name;
+ * });
+ *
+ * // ❌ WRONG - Don't return a Promise
+ * rx(({ get }) => fetch('/api').then(r => r.json()));
+ *
+ * // ✅ CORRECT - Create async atom and read with get()
+ * const data$ = atom(fetch('/api').then(r => r.json()));
+ * rx(({ get }) => get(data$).name); // Suspends until resolved
+ * ```
+ *
  * ## Why Use `rx`?
  *
  * Without `rx`, you need a separate component to subscribe to an atom:
@@ -84,10 +103,12 @@ import { ContextSelectorFn } from "../core/select";
  * ```
  *
  * @template T - The type of the selected/derived value
- * @param selector - Context-based selector function with `{ get, all, any, race, settled }`
+ * @param selector - Context-based selector function with `{ get, all, any, race, settled }`.
+ *                   Must return sync value, not a Promise.
  * @param equals - Equality function or shorthand ("strict", "shallow", "deep").
  *                 Defaults to "shallow".
  * @returns A React element that renders the selected value
+ * @throws Error if selector returns a Promise or PromiseLike
  *
  * @example Shorthand - render atom value directly
  * ```tsx
@@ -231,17 +252,22 @@ import { ContextSelectorFn } from "../core/select";
  * ```
  */
 // Overload: Pass atom directly to get its value (shorthand)
-export function rx<T>(atom: Atom<T, any>, equals?: Equality<T>): T;
+export function rx<T>(atom: Atom<T>, equals?: Equality<Awaited<T>>): Awaited<T>;
 
 // Overload: Context-based selector function
 export function rx<T>(selector: ContextSelectorFn<T>, equals?: Equality<T>): T;
 
 export function rx<T>(
-  selectorOrAtom: ContextSelectorFn<T> | Atom<T, any>,
-  equals?: Equality<T>,
+  selectorOrAtom: ContextSelectorFn<T> | Atom<T>,
+  equals?: Equality<unknown>
 ): T {
   return (
-    <Rx selectorOrAtom={selectorOrAtom} equals={equals} />
+    <Rx
+      selectorOrAtom={
+        selectorOrAtom as ContextSelectorFn<unknown> | Atom<unknown>
+      }
+      equals={equals}
+    />
   ) as unknown as T;
 }
 
@@ -257,18 +283,18 @@ export function rx<T>(
  */
 const Rx = memo(
   function Rx(props: {
-    selectorOrAtom: ContextSelectorFn<any> | Atom<any, any>;
-    equals?: Equality<any>;
+    selectorOrAtom: ContextSelectorFn<unknown> | Atom<unknown>;
+    equals?: Equality<unknown>;
   }) {
     // Convert atom shorthand to context selector
-    const selector: ContextSelectorFn<any> = isAtom(props.selectorOrAtom)
-      ? ({ get }) => get(props.selectorOrAtom as Atom<any, any>)
-      : (props.selectorOrAtom as ContextSelectorFn<any>);
+    const selector: ContextSelectorFn<unknown> = isAtom(props.selectorOrAtom)
+      ? ({ get }) => get(props.selectorOrAtom as Atom<unknown>)
+      : (props.selectorOrAtom as ContextSelectorFn<unknown>);
 
     const selected = useValue(selector, props.equals);
     return <>{selected ?? null}</>;
   },
   (prev, next) =>
     shallowEqual(prev.selectorOrAtom, next.selectorOrAtom) &&
-    prev.equals === next.equals,
+    prev.equals === next.equals
 );

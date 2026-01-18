@@ -1,14 +1,53 @@
 import { batch } from "./batch";
 import { derived } from "./derived";
+import { emitter } from "./emitter";
+import { isPromiseLike } from "./isPromiseLike";
 import { SelectContext } from "./select";
+import { EffectOptions } from "./types";
+
+/**
+ * Context object passed to effect functions.
+ * Extends `SelectContext` with cleanup and error handling utilities.
+ */
+export interface EffectContext extends SelectContext {
+  /**
+   * Register a cleanup function that runs before the next execution or on dispose.
+   * Multiple cleanup functions can be registered; they run in FIFO order.
+   *
+   * @param cleanup - Function to run during cleanup
+   *
+   * @example
+   * ```ts
+   * effect(({ get, onCleanup }) => {
+   *   const id = setInterval(() => console.log('tick'), 1000);
+   *   onCleanup(() => clearInterval(id));
+   * });
+   * ```
+   */
+  onCleanup: (cleanup: VoidFunction) => void;
+
+  /**
+   * Register an error handler for synchronous errors thrown in the effect.
+   * If registered, prevents errors from propagating to `options.onError`.
+   *
+   * @param handler - Function to handle errors
+   *
+   * @example
+   * ```ts
+   * effect(({ get, onError }) => {
+   *   onError((e) => console.error('Effect failed:', e));
+   *   riskyOperation();
+   * });
+   * ```
+   */
+  onError: (handler: (error: unknown) => void) => void;
+}
 
 /**
  * Callback function for effects.
- * Receives the select context with `{ get, all, any, race, settled }` utilities.
- * Can optionally return a cleanup function that runs before the next execution
- * or when the effect is disposed.
+ * Receives the effect context with `{ get, all, any, race, settled, onCleanup, onError }` utilities.
  */
-export type EffectFn = (context: SelectContext) => void | VoidFunction;
+export type EffectFn = (context: EffectContext) => void;
 
 /**
  * Creates a side-effect that runs when accessed atom(s) change.
@@ -18,7 +57,25 @@ export type EffectFn = (context: SelectContext) => void | VoidFunction;
  * - **Suspense-like async**: Waits for async atoms to resolve before running
  * - **Conditional dependencies**: Only tracks atoms actually accessed via `get()`
  * - **Automatic cleanup**: Previous cleanup runs before next execution
- * - **Batched updates**: Atom updates within the effect are batched (single notification)
+ * - **Batched updates**: Atom updates within the effect are batched
+ *
+ * ## IMPORTANT: Effect Function Must Be Synchronous
+ *
+ * **The effect function MUST NOT be async or return a Promise.**
+ *
+ * ```ts
+ * // ❌ WRONG - Don't use async function
+ * effect(async ({ get }) => {
+ *   const data = await fetch('/api');
+ *   console.log(data);
+ * });
+ *
+ * // ✅ CORRECT - Create async atom and read with get()
+ * const data$ = atom(fetch('/api').then(r => r.json()));
+ * effect(({ get }) => {
+ *   console.log(get(data$)); // Suspends until resolved
+ * });
+ * ```
  *
  * ## Basic Usage
  *
@@ -28,112 +85,100 @@ export type EffectFn = (context: SelectContext) => void | VoidFunction;
  * });
  * ```
  *
- * ## Multiple Atoms
- *
- * ```ts
- * const dispose = effect(({ get }) => {
- *   const user = get(userAtom);
- *   const settings = get(settingsAtom);
- *   analytics.identify(user.id, settings);
- * });
- * ```
- *
  * ## With Cleanup
  *
- * Return a function to clean up before the next run or on dispose:
+ * Use `onCleanup` to register cleanup functions that run before the next execution or on dispose:
  *
  * ```ts
- * const dispose = effect(({ get }) => {
+ * const dispose = effect(({ get, onCleanup }) => {
  *   const interval = get(intervalAtom);
  *   const id = setInterval(() => console.log('tick'), interval);
- *   return () => clearInterval(id); // Cleanup
+ *   onCleanup(() => clearInterval(id));
  * });
  * ```
  *
- * ## With Async Atoms
+ * ## Error Handling
  *
- * Effects wait for async atoms to resolve (Suspense-like behavior):
+ * Use `onError` callback to handle errors within the effect, or `options.onError` for unhandled errors:
  *
  * ```ts
- * const dispose = effect(({ all }) => {
- *   // Only runs when BOTH atoms are resolved
- *   const [user, config] = all([asyncUserAtom, asyncConfigAtom]);
- *   initializeApp(user, config);
- * });
- * ```
- *
- * ## Memory Behavior
- *
- * After dispose, the underlying derived atom continues to exist and recompute
- * on source changes, but the effect callback is skipped. This is a trade-off
- * for simpler implementation. For long-lived effects this is negligible;
- * for many short-lived effects, be aware of potential memory accumulation.
- *
- * @param fn - Effect callback receiving context with `{ get, all, any, race, settled }`.
- *             May return a cleanup function.
- * @returns Dispose function to stop the effect and run final cleanup
- *
- * @example Persisting state
- * ```ts
- * const dispose = effect(({ get }) => {
- *   localStorage.setItem('app-state', JSON.stringify(get(stateAtom)));
- * });
- * ```
- *
- * @example Syncing to external system
- * ```ts
- * const dispose = effect(({ get }) => {
- *   const auth = get(authAtom);
+ * // Callback-based error handling
+ * const dispose = effect(({ get, onError }) => {
+ *   onError((e) => console.error('Effect failed:', e));
  *   const data = get(dataAtom);
- *   const ws = new WebSocket(auth.endpoint);
- *   ws.send(JSON.stringify(data));
- *   return () => ws.close();
+ *   riskyOperation(data);
  * });
+ *
+ * // Option-based error handling (for unhandled errors)
+ * const dispose = effect(
+ *   ({ get }) => {
+ *     const data = get(dataAtom);
+ *     riskyOperation(data);
+ *   },
+ *   { onError: (e) => console.error('Effect failed:', e) }
+ * );
  * ```
  *
- * @example Using async utilities
- * ```ts
- * const dispose = effect(({ all }) => {
- *   const [user, posts] = all([userAtom, postsAtom]);
- *   console.log(`${user.name} has ${posts.length} posts`);
- * });
- * ```
+ * @param fn - Effect callback receiving context with `{ get, all, any, race, settled, onCleanup, onError }`.
+ *             Must be synchronous (not async).
+ * @param options - Optional configuration (key, onError for unhandled errors)
+ * @returns Dispose function to stop the effect and run final cleanup
+ * @throws Error if effect function returns a Promise
  */
-export function effect(fn: EffectFn): VoidFunction {
+export function effect(fn: EffectFn, options?: EffectOptions): VoidFunction {
   let disposed = false;
-  let cleanup: VoidFunction | undefined;
+  const cleanupEmitter = emitter();
+  const errorEmitter = emitter<unknown>();
 
   // Create a derived atom that runs the effect on each recomputation.
-  // Using derived gives us: dependency tracking, async handling, and batching.
-  void derived((context) => {
+  const derivedAtom = derived((context) => {
     // Run previous cleanup before next execution
-    cleanup?.();
+    errorEmitter.clear();
+    cleanupEmitter.emitAndClear();
 
     // Skip effect execution if disposed
     if (disposed) return;
 
-    // Run effect in a batch - multiple atom updates will only notify once
-    const nextCleanup = batch(() => fn(context));
-    if (typeof nextCleanup === "function") {
-      cleanup = () => {
-        try {
-          nextCleanup();
-        } finally {
-          cleanup = undefined;
-        }
-      };
+    try {
+      // Run effect in a batch - multiple atom updates will only notify once
+      batch(() =>
+        fn({
+          ...context,
+          onCleanup: cleanupEmitter.on,
+          onError: errorEmitter.on,
+        })
+      );
+    } catch (error) {
+      if (isPromiseLike(error)) {
+        // let derived atom handle the promise
+        throw error;
+      }
+      // Emit to registered handlers, or fall back to options.onError
+      if (errorEmitter.size() > 0) {
+        errorEmitter.emitAndClear(error);
+      } else if (options?.onError && error instanceof Error) {
+        options.onError(error);
+      }
     }
-  }).value; // Access .value to trigger initial computation (derived is lazy)
+  });
+
+  // Access .value to trigger initial computation (derived is lazy)
+  // Handle the promise
+  derivedAtom.value.catch((error) => {
+    if (options?.onError && error instanceof Error) {
+      options.onError(error);
+    }
+    // Silently ignore if no error handler
+  });
 
   return () => {
     // Guard against multiple dispose calls
     if (disposed) return;
 
-    // Mark as disposed - the derived atom continues to recompute on source
-    // changes, but the effect callback will be skipped (early return above)
+    // Mark as disposed
     disposed = true;
-
+    errorEmitter.clear();
     // Run final cleanup
-    cleanup?.();
+    cleanupEmitter.emitAndClear();
   };
 }

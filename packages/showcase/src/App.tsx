@@ -23,7 +23,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { BasicAtomDemo } from "./demos/BasicAtomDemo";
-import { AsyncAtomDemo } from "./demos/AsyncAtomDemo";
+import { TodoListDemo } from "./demos/TodoListDemo";
 import { DerivedAtomDemo } from "./demos/DerivedAtomDemo";
 import { BatchDemo } from "./demos/BatchDemo";
 import { UseActionDemo } from "./demos/UseActionDemo";
@@ -32,7 +32,7 @@ import { AsyncUtilitiesDemo } from "./demos/AsyncUtilitiesDemo";
 
 type DemoId =
   | "basic-atom"
-  | "async-atom"
+  | "todo-list"
   | "derived"
   | "batch"
   | "use-action"
@@ -52,8 +52,8 @@ const navItems: NavItem[] = [
     icon: <Atom className="w-4 h-4" />,
   },
   {
-    id: "async-atom",
-    label: "Async Atom",
+    id: "todo-list",
+    label: "Todo List",
     icon: <Zap className="w-4 h-4" />,
   },
   {
@@ -85,7 +85,7 @@ const navItems: NavItem[] = [
 
 const demoComponents: Record<DemoId, React.ComponentType> = {
   "basic-atom": BasicAtomDemo,
-  "async-atom": AsyncAtomDemo,
+  "todo-list": TodoListDemo,
   derived: DerivedAtomDemo,
   batch: BatchDemo,
   "use-action": UseActionDemo,
@@ -136,7 +136,7 @@ function EventLogProvider({ children }: { children: React.ReactNode }) {
       };
       setLogs((prev) => [...prev, entry].slice(-100)); // Keep last 100
     },
-    [],
+    []
   );
 
   const clear = useCallback(() => {

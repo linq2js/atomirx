@@ -1,48 +1,62 @@
 import { onCreateHook } from "./onCreateHook";
-import { atomState } from "./atomState";
-import { select, ContextSelectorFn } from "./select";
-import { AnyFunc, Atom, DerivedOptions, Getter, SYMBOL_ATOM } from "./types";
+import { emitter } from "./emitter";
+import { resolveEquality } from "./equality";
+import { scheduleNotifyHook } from "./scheduleNotifyHook";
+import { select, SelectContext } from "./select";
+import {
+  Atom,
+  AtomState,
+  DerivedAtom,
+  DerivedOptions,
+  Equality,
+  SYMBOL_ATOM,
+  SYMBOL_DERIVED,
+} from "./types";
 
 /**
- * Helper to check if a value is a function.
+ * Context object passed to derived atom selector functions.
+ * Provides utilities for reading atoms: `{ get, all, any, race, settled }`.
+ *
+ * Currently identical to `SelectContext`, but defined separately to allow
+ * future derived-specific extensions without breaking changes.
  */
-const isFunction = (value: unknown): value is AnyFunc =>
-  typeof value === "function";
+export interface DerivedContext extends SelectContext {}
 
 /**
  * Creates a derived (computed) atom from source atom(s).
  *
  * Derived atoms are **read-only** and automatically recompute when their
- * source atoms change. They provide a way to compute values from other atoms
- * without manual subscription management.
+ * source atoms change. The `.value` property always returns a `Promise<T>`,
+ * even for synchronous computations.
  *
- * ## Context API (Recommended)
+ * ## IMPORTANT: Selector Must Return Synchronous Value
  *
- * The context API provides `get()` and async utilities directly:
+ * **The selector function MUST NOT be async or return a Promise.**
  *
  * ```ts
- * const doubled = derived(({ get }) => get(count) * 2);
+ * // ❌ WRONG - Don't use async function
+ * derived(async ({ get }) => {
+ *   const data = await fetch('/api');
+ *   return data;
+ * });
  *
- * const fullName = derived(({ get }) =>
- *   `${get(firstName)} ${get(lastName)}`
- * );
+ * // ❌ WRONG - Don't return a Promise
+ * derived(({ get }) => fetch('/api').then(r => r.json()));
+ *
+ * // ✅ CORRECT - Create async atom and read with get()
+ * const data$ = atom(fetch('/api').then(r => r.json()));
+ * derived(({ get }) => get(data$)); // Suspends until resolved
  * ```
- *
- * ## Legacy Array API
- *
- * The array-based API is still supported:
- *
- * 1. **Single source**: `derived(atom, (get) => get() * 2)`
- * 2. **Array of atoms**: `derived([a, b], (getA, getB) => getA() + getB())`
  *
  * ## Key Features
  *
- * 1. **Lazy computation**: Value is computed on first access, not at creation
- * 2. **Automatic updates**: Recomputes when any source atom changes
- * 3. **Equality checking**: Only notifies subscribers if derived value actually changed
- * 4. **Suspense-like async**: `get()` throws promise if loading, throws error if errored
- * 5. **Race condition safe**: Stale promise resolutions are ignored
- * 6. **Conditional dependencies**: Only subscribes to atoms actually accessed
+ * 1. **Always async**: `.value` returns `Promise<T>`
+ * 2. **Lazy computation**: Value is computed on first access
+ * 3. **Automatic updates**: Recomputes when any source atom changes
+ * 4. **Equality checking**: Only notifies if derived value changed
+ * 5. **Fallback support**: Optional fallback for loading/error states
+ * 6. **Suspense-like async**: `get()` throws promise if loading
+ * 7. **Conditional dependencies**: Only subscribes to atoms accessed
  *
  * ## Suspense-Style get()
  *
@@ -51,206 +65,99 @@ const isFunction = (value: unknown): value is AnyFunc =>
  * - If source atom has **error**: `get()` throws the error
  * - If source atom has **value**: `get()` returns the value
  *
- * This means derived atoms automatically propagate loading/error states.
- *
- * ## Conditional Dependencies
- *
- * Only atoms that are actually accessed during computation become dependencies:
- *
- * ```ts
- * const content = derived(({ get }) =>
- *   get(showDetails) ? get(details) : get(summary)
- * );
- * // When showDetails is false, changes to details don't trigger recomputation
- * ```
- *
- * ## Context Utilities
- *
- * | Utility | Form | Description |
- * |---------|------|-------------|
- * | `get(atom)` | - | Read atom value with dependency tracking |
- * | `all(atoms)` | Array | Wait for all atoms (like Promise.all) |
- * | `any(atoms)` | Object | First resolved atom (like Promise.any) |
- * | `race(atoms)` | Object | First settled atom (like Promise.race) |
- * | `settled(atoms)` | Array | All results regardless of success/failure |
- *
- * ## Important: No Async Return Values
- *
- * The derivation function must return a **synchronous** value, not a Promise.
- * For async derived values, use an async source atom instead.
- *
  * @template T - Derived value type
- * @param fn - Context-based derivation function
- * @param options - Optional configuration (meta for devtools)
+ * @template F - Whether fallback is provided
+ * @param fn - Context-based derivation function (must return sync value, not Promise)
+ * @param options - Optional configuration (meta, equals, fallback)
  * @returns A read-only derived atom
+ * @throws Error if selector returns a Promise or PromiseLike
  *
- * @example Context API - simple derivation (recommended)
+ * @example Basic derived (no fallback)
  * ```ts
- * const count = atom(5);
- * const doubled = derived(({ get }) => get(count) * 2);
+ * const count$ = atom(5);
+ * const doubled$ = derived(({ get }) => get(count$) * 2);
  *
- * console.log(doubled.value); // 10
- *
- * count.set(10);
- * console.log(doubled.value); // 20
+ * await doubled$.value; // 10
+ * doubled$.staleValue;  // undefined (until first resolve) -> 10
+ * doubled$.state();     // { status: "ready", value: 10 }
  * ```
  *
- * @example Context API - multiple atoms
+ * @example With fallback
  * ```ts
- * const firstName = atom("John");
- * const lastName = atom("Doe");
+ * const posts$ = atom(fetchPosts());
+ * const count$ = derived(({ get }) => get(posts$).length, { fallback: 0 });
  *
- * const fullName = derived(({ get }) =>
- *   `${get(firstName)} ${get(lastName)}`
- * );
- *
- * console.log(fullName.value); // "John Doe"
+ * count$.staleValue; // 0 (during loading) -> 42 (after resolve)
+ * count$.state();    // { status: "loading", promise } during loading
+ *                    // { status: "ready", value: 42 } after resolve
  * ```
  *
- * @example Context API - conditional dependencies
- * ```ts
- * const showDetails = atom(false);
- * const summary = atom("Brief");
- * const details = atom("Detailed");
- *
- * const content = derived(({ get }) =>
- *   get(showDetails) ? get(details) : get(summary)
- * );
- * // Only subscribes to accessed atoms - efficient!
- * ```
- *
- * @example Context API - async utilities
+ * @example Async dependencies
  * ```ts
  * const user$ = atom(fetchUser());
  * const posts$ = atom(fetchPosts());
  *
- * // all() - array form for custom variable names
- * const dashboard = derived(({ all }) => {
- *   const [user, posts] = all([user$, posts$]);
+ * const dashboard$ = derived(({ all }) => {
+ *   const [user, posts] = all(user$, posts$);
  *   return { user, posts };
  * });
- *
- * // any() - object form to get winner key
- * const data = derived(({ any }) => {
- *   const [source, value] = any({ cache: cache$, api: api$ });
- *   return { source, value };
- * });
- *
- * // settled() - array form for custom variable names
- * const results = derived(({ settled }) => {
- *   const [userResult, postsResult] = settled([user$, posts$]);
- *   return {
- *     user: userResult.status === 'resolved' ? userResult.value : null,
- *     posts: postsResult.status === 'resolved' ? postsResult.value : [],
- *   };
- * });
  * ```
  *
- * @example Legacy API - single source
+ * @example Refresh
  * ```ts
- * const count = atom(5);
- * const doubled = derived(count, (get) => get() * 2);
- * ```
- *
- * @example Legacy API - multiple sources
- * ```ts
- * const fullName = derived(
- *   [firstName, lastName],
- *   (getFirst, getLast) => `${getFirst()} ${getLast()}`
- * );
- * ```
- *
- * @example Subscribing to changes
- * ```ts
- * const count = atom(0);
- * const doubled = derived(({ get }) => get(count) * 2);
- *
- * const unsubscribe = doubled.on(() => {
- *   console.log("Doubled changed:", doubled.value);
- * });
- *
- * count.set(5); // Logs: "Doubled changed: 10"
- * ```
- *
- * @example Awaiting derived atoms
- * ```ts
- * const asyncAtom = atom(fetchData());
- * const processed = derived(({ get }) => processData(get(asyncAtom)));
- *
- * const result = await processed;
- * console.log(result);
+ * const data$ = derived(({ get }) => get(source$));
+ * data$.refresh(); // Re-run computation
  * ```
  */
-/**
- * Context API: Create a derived atom with inline atom access.
- */
+
+// Overload: Without fallback - staleValue is T | undefined
 export function derived<T>(
-  fn: ContextSelectorFn<T>,
-  options?: DerivedOptions
-): T extends PromiseLike<any> ? never : Atom<T>;
+  fn: (ctx: DerivedContext) => T,
+  options?: DerivedOptions<T>
+): DerivedAtom<T, false>;
 
-/**
- * Legacy API: Single atom source with getter.
- */
-export function derived<D, T>(
-  source: Atom<D, any>,
-  fn: (source: Getter<D>) => T,
-  options?: DerivedOptions
-): T extends PromiseLike<any> ? never : Atom<T>;
+// Overload: With fallback - staleValue is guaranteed T
+export function derived<T>(
+  fn: (ctx: DerivedContext) => T,
+  options: DerivedOptions<T> & { fallback: T }
+): DerivedAtom<T, true>;
 
-/**
- * Legacy API: Array of atoms with positional getters.
- */
-export function derived<const D extends readonly Atom<any, any>[], T>(
-  source: D,
-  fn: (
-    ...values: {
-      [K in keyof D]: D[K] extends Atom<infer U, any> ? Getter<U> : never;
-    }
-  ) => T,
-  options?: DerivedOptions
-): T extends PromiseLike<any> ? never : Atom<T>;
+// Implementation
+export function derived<T>(
+  fn: (ctx: DerivedContext) => T,
+  options: DerivedOptions<T> & { fallback?: T } = {}
+): DerivedAtom<T, boolean> {
+  const changeEmitter = emitter();
+  const eq = resolveEquality(options.equals as Equality<unknown>);
 
-export function derived(
-  sourceOrFn: any,
-  fnOrOptions?: AnyFunc | DerivedOptions,
-  options?: DerivedOptions
-): Atom<any> {
-  // Detect which API is being used
-  let computeFn: () => ReturnType<typeof select>;
-  let derivedOptions: DerivedOptions | undefined;
+  // Fallback configuration
+  const hasFallback = "fallback" in options;
+  const fallbackValue = options.fallback as T;
 
-  if (typeof sourceOrFn === "function" && (fnOrOptions === undefined || !isFunction(fnOrOptions))) {
-    // Context API: derived(fn, options?)
-    const fn = sourceOrFn as ContextSelectorFn<any>;
-    derivedOptions = fnOrOptions as DerivedOptions | undefined;
-    computeFn = () => select(fn);
-  } else {
-    // Legacy API: derived(source, fn, options?)
-    const source = sourceOrFn;
-    const fn = fnOrOptions as AnyFunc;
-    derivedOptions = options;
-    computeFn = () => select(source, fn);
-  }
-
-  // Create state container for the derived value
-  const state = atomState<any>();
-
-  // Track pending promise for loading state
-  let pendingPromise: PromiseLike<any> | null = null;
-
-  // Track if initialized
+  // State
+  let lastResolved: { value: T } | undefined;
+  let lastError: unknown = undefined;
+  let currentPromise: Promise<T> | null = null;
   let isInitialized = false;
+  let isLoading = false;
+  let version = 0;
 
   // Track current subscriptions (atom -> unsubscribe function)
-  const subscriptions = new Map<Atom<any>, VoidFunction>();
+  const subscriptions = new Map<Atom<unknown>, VoidFunction>();
+
+  /**
+   * Schedules notification to all subscribers.
+   */
+  const notify = () => {
+    changeEmitter.forEach((listener) => {
+      scheduleNotifyHook.current(listener);
+    });
+  };
 
   /**
    * Updates subscriptions based on new dependencies.
-   * Unsubscribes from atoms that are no longer accessed,
-   * subscribes to newly accessed atoms.
    */
-  const updateSubscriptions = (newDeps: Set<Atom<any>>) => {
+  const updateSubscriptions = (newDeps: Set<Atom<unknown>>) => {
     // Unsubscribe from atoms that are no longer accessed
     for (const [atom, unsubscribe] of subscriptions) {
       if (!newDeps.has(atom)) {
@@ -271,51 +178,66 @@ export function derived(
   };
 
   /**
-   * Computes the derived value using the selector utility.
-   * Handles thrown promises (suspense) and errors.
-   * Tracks dependencies and updates subscriptions.
+   * Computes the derived value.
+   * Creates a new Promise that resolves when the computation completes.
    */
   const compute = (silent = false) => {
-    const version = state.getVersion();
+    const computeVersion = ++version;
+    isLoading = true;
+    lastError = undefined; // Clear error when starting new computation
 
-    // Run select to compute value and track dependencies
-    const result = computeFn();
+    // Create a new promise for this computation
+    currentPromise = new Promise<T>((resolve, reject) => {
+      // Run select to compute value and track dependencies
+      const attemptCompute = () => {
+        const result = select(fn);
 
-    // Update subscriptions based on accessed deps
-    updateSubscriptions(result.dependencies);
+        // Update subscriptions based on accessed deps
+        updateSubscriptions(result.dependencies);
 
-    if (result.promise !== undefined) {
-      // Promise thrown - enter loading state
-      pendingPromise = result.promise;
+        if (result.promise) {
+          // Promise thrown - wait for it and retry
+          result.promise.then(
+            () => {
+              // Check if we're still the current computation
+              if (version !== computeVersion) return;
+              attemptCompute();
+            },
+            (error) => {
+              // Check if we're still the current computation
+              if (version !== computeVersion) return;
+              isLoading = false;
+              lastError = error;
+              reject(error);
+              if (!silent) notify();
+            }
+          );
+        } else if (result.error !== undefined) {
+          // Error thrown
+          isLoading = false;
+          lastError = result.error;
+          reject(result.error);
+          if (!silent) notify();
+        } else {
+          // Success - update lastResolved and resolve
+          const newValue = result.value as T;
+          isLoading = false;
+          lastError = undefined;
 
-      // Wait for promise and recompute
-      result.promise.then(
-        () => {
-          // Race condition check: ignore if a newer compute started
-          if (state.isVersionStale(version)) return;
-          compute();
-        },
-        (error) => {
-          // Race condition check
-          if (state.isVersionStale(version)) return;
-          pendingPromise = null;
-          state.setError(error);
+          // Only update and notify if value changed
+          if (!lastResolved || !eq(newValue, lastResolved.value)) {
+            lastResolved = { value: newValue };
+            if (!silent) notify();
+          }
+
+          resolve(newValue);
         }
-      );
+      };
 
-      // Notify if transitioning to loading (only if not silent)
-      if (!silent) {
-        state.setLoading(result.promise, silent);
-      }
-    } else if (result.error !== undefined) {
-      // Error thrown - enter error state
-      pendingPromise = null;
-      state.setError(result.error, silent);
-    } else {
-      // Success - clear pending and update value
-      pendingPromise = null;
-      state.setValue(result.value, silent);
-    }
+      attemptCompute();
+    });
+
+    return currentPromise;
   };
 
   /**
@@ -327,90 +249,89 @@ export function derived(
     isInitialized = true;
 
     // Initial computation (silent - don't notify on init)
-    // Subscriptions are set up automatically based on accessed deps
     compute(true);
   };
 
-  const derivedAtom: Atom<any, any> = {
-    [SYMBOL_ATOM]: true,
-    key: undefined,
-    meta: options?.meta,
+  const derivedAtom: DerivedAtom<T, boolean> = {
+    [SYMBOL_ATOM]: true as const,
+    [SYMBOL_DERIVED]: true as const,
+    meta: options.meta,
 
-    get value() {
+    /**
+     * The computed value as a Promise.
+     * Always returns Promise<T>, even for sync computations.
+     */
+    get value(): Promise<T> {
       init();
-      return state.getValue();
-    },
-
-    get loading() {
-      init();
-      return pendingPromise !== null;
-    },
-
-    get error() {
-      init();
-      return state.getError();
+      return currentPromise!;
     },
 
     /**
-     * Derived atoms don't have fallback mode, so stale() always returns false.
-     * This method exists for API consistency with mutable atoms.
+     * The stale value - fallback or last resolved value.
+     * - Without fallback: T | undefined
+     * - With fallback: T (guaranteed)
      */
-    stale() {
-      return false;
+    get staleValue(): T | undefined {
+      init();
+      // Return lastResolvedValue if available, otherwise fallback (if configured)
+      if (lastResolved) {
+        return lastResolved.value;
+      }
+      if (hasFallback) {
+        return fallbackValue;
+      }
+      return undefined;
     },
 
-    then(onfulfilled?: any, onrejected?: any) {
+    /**
+     * Get the current state of the derived atom.
+     * Returns the actual underlying state (loading/ready/error).
+     * Use staleValue if you need fallback/cached value during loading.
+     */
+    state(): AtomState<T> {
       init();
 
-      // If loading, wait for pending promise then recompute
-      if (pendingPromise !== null) {
-        const currentVersion = state.getVersion();
-        return pendingPromise.then(
-          () => {
-            // If version changed, someone else already recomputed
-            if (state.isVersionStale(currentVersion)) {
-              compute();
-            }
-            // Now check final state
-            const error = state.getError();
-            if (error !== undefined) {
-              return onrejected ? onrejected(error) : Promise.reject(error);
-            }
-            const value = state.getValue();
-            return onfulfilled ? onfulfilled(value) : value;
-          },
-          (error) => {
-            return onrejected ? onrejected(error) : Promise.reject(error);
-          }
-        );
+      if (isLoading) {
+        return { status: "loading", promise: currentPromise! };
       }
 
-      // If error, reject
-      const error = state.getError();
-      if (error !== undefined) {
-        return onrejected
-          ? Promise.resolve(onrejected(error))
-          : Promise.reject(error);
+      if (lastError !== undefined) {
+        return { status: "error", error: lastError };
       }
 
-      // Otherwise resolve with current value
-      const value = state.getValue();
-      return onfulfilled
-        ? Promise.resolve(onfulfilled(value))
-        : Promise.resolve(value);
+      if (lastResolved) {
+        return { status: "ready", value: lastResolved.value };
+      }
+
+      // Initial state before first computation completes
+      return { status: "loading", promise: currentPromise! };
     },
 
-    on(listener: VoidFunction) {
+    /**
+     * Re-run the computation.
+     */
+    refresh(): void {
+      if (!isInitialized) {
+        init();
+      } else {
+        compute();
+      }
+    },
+
+    /**
+     * Subscribe to value changes.
+     */
+    on(listener: VoidFunction): VoidFunction {
       init();
-      return state.on(listener);
+      return changeEmitter.on(listener);
     },
   };
 
   // Notify devtools/plugins of derived atom creation
   onCreateHook.current?.({
     type: "derived",
-    key: undefined,
-    meta: derivedOptions?.meta,
+    key: options.meta?.key,
+    meta: options.meta,
     atom: derivedAtom,
   });
 

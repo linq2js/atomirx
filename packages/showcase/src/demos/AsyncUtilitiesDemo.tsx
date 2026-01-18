@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { atom, derived, MutableAtom, AllAtomsRejectedError } from "atomirx";
+import {
+  atom,
+  derived,
+  MutableAtom,
+  DerivedAtom,
+  AllAtomsRejectedError,
+} from "atomirx";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
@@ -23,53 +29,61 @@ const ATOM_CONFIGS = [
 const createAsyncAtom = (
   name: string,
   delayMs: number,
-  shouldFail: boolean,
-): MutableAtom<AsyncAtomResult> => {
+  shouldFail: boolean
+): MutableAtom<Promise<AsyncAtomResult>> => {
   return atom(
     (async () => {
       await delay(delayMs);
       if (shouldFail) throw new Error(`${name} failed`);
       return { name, resolvedAt: new Date().toLocaleTimeString() };
     })(),
-    { key: `async-${name}-${Date.now()}` },
+    { meta: { key: `async-${name}-${Date.now()}` } }
   );
 };
 
 type Atoms = {
-  apiA: MutableAtom<AsyncAtomResult>;
-  apiB: MutableAtom<AsyncAtomResult>;
-  apiC: MutableAtom<AsyncAtomResult>;
-  failing: MutableAtom<AsyncAtomResult>;
+  apiA$: MutableAtom<Promise<AsyncAtomResult>>;
+  apiB$: MutableAtom<Promise<AsyncAtomResult>>;
+  apiC$: MutableAtom<Promise<AsyncAtomResult>>;
+  failing$: MutableAtom<Promise<AsyncAtomResult>>;
 };
 
 const createFreshAtoms = (): Atoms => ({
-  apiA: createAsyncAtom("API A", 1000, false),
-  apiB: createAsyncAtom("API B", 2000, false),
-  apiC: createAsyncAtom("API C", 3000, false),
-  failing: createAsyncAtom("Failing", 1500, true),
+  apiA$: createAsyncAtom("API A", 1000, false),
+  apiB$: createAsyncAtom("API B", 2000, false),
+  apiC$: createAsyncAtom("API C", 3000, false),
+  failing$: createAsyncAtom("Failing", 1500, true),
 });
 
 export function AsyncUtilitiesDemo() {
   const { log, clear } = useEventLog();
 
-  // Current atoms being observed
-  const [atoms, setAtoms] = useState<Atoms | null>(null);
+  // Current atoms being observed (kept for potential future use)
+  const [, setAtoms] = useState<Atoms | null>(null);
   const [activeDemo, setActiveDemo] = useState<string | null>(null);
+
+  // Derived atoms for tracking state
+  const [derivedAtoms, setDerivedAtoms] = useState<{
+    apiA$: DerivedAtom<AsyncAtomResult>;
+    apiB$: DerivedAtom<AsyncAtomResult>;
+    apiC$: DerivedAtom<AsyncAtomResult>;
+    failing$: DerivedAtom<AsyncAtomResult>;
+  } | null>(null);
 
   // Force re-render when atoms change
   const [, forceUpdate] = useState({});
 
-  // Subscribe to atom changes for UI updates
+  // Subscribe to derived atom changes for UI updates
   useEffect(() => {
-    if (!atoms) return;
+    if (!derivedAtoms) return;
     const unsubs = [
-      atoms.apiA.on(() => forceUpdate({})),
-      atoms.apiB.on(() => forceUpdate({})),
-      atoms.apiC.on(() => forceUpdate({})),
-      atoms.failing.on(() => forceUpdate({})),
+      derivedAtoms.apiA$.on(() => forceUpdate({})),
+      derivedAtoms.apiB$.on(() => forceUpdate({})),
+      derivedAtoms.apiC$.on(() => forceUpdate({})),
+      derivedAtoms.failing$.on(() => forceUpdate({})),
     ];
     return () => unsubs.forEach((u) => u());
-  }, [atoms]);
+  }, [derivedAtoms]);
 
   // Polling for demo results
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -86,42 +100,56 @@ export function AsyncUtilitiesDemo() {
   }, []);
 
   const getAtomStatus = (
-    a: MutableAtom<AsyncAtomResult> | undefined,
+    d: DerivedAtom<AsyncAtomResult> | undefined
   ): "idle" | "loading" | "success" | "error" => {
-    if (!a) return "idle";
-    if (a.loading) return "loading";
-    if (a.error) return "error";
+    if (!d) return "idle";
+    const state = d.state();
+    if (state.status === "loading") return "loading";
+    if (state.status === "error") return "error";
     return "success";
+  };
+
+  // Create fresh atoms and derived wrappers
+  const initializeAtoms = () => {
+    const fresh = createFreshAtoms();
+    setAtoms(fresh);
+    setDerivedAtoms({
+      apiA$: derived(({ get }) => get(fresh.apiA$)),
+      apiB$: derived(({ get }) => get(fresh.apiB$)),
+      apiC$: derived(({ get }) => get(fresh.apiC$)),
+      failing$: derived(({ get }) => get(fresh.failing$)),
+    });
+    return fresh;
   };
 
   // Demo: all() - waits for all to resolve
   const runAllDemo = () => {
     clear();
     stopPolling();
-    const freshAtoms = createFreshAtoms();
-    setAtoms(freshAtoms);
+    const freshAtoms = initializeAtoms();
     setActiveDemo("all");
 
     log("Starting all() demo with API A (1s), API B (2s), API C (3s)", "info");
     log("all() waits for ALL atoms to resolve...", "info");
 
     // Create a derived atom that uses all()
-    const allDerived = derived(({ all }) => {
-      return all([freshAtoms.apiA, freshAtoms.apiB, freshAtoms.apiC]);
+    const allDerived$ = derived(({ all }) => {
+      return all(freshAtoms.apiA$, freshAtoms.apiB$, freshAtoms.apiC$);
     });
 
     pollIntervalRef.current = setInterval(() => {
-      if (!allDerived.loading && allDerived.error === undefined) {
+      const state = allDerived$.state();
+      if (state.status === "ready") {
         stopPolling();
-        const results = allDerived.value!;
+        const results = state.value;
         log(
           `✓ all() resolved after ~3s: [${results.map((r) => r.name).join(", ")}]`,
-          "success",
+          "success"
         );
         setActiveDemo(null);
-      } else if (allDerived.error !== undefined) {
+      } else if (state.status === "error") {
         stopPolling();
-        log(`✗ all() error: ${(allDerived.error as Error).message}`, "error");
+        log(`✗ all() error: ${(state.error as Error).message}`, "error");
         setActiveDemo(null);
       }
     }, 100);
@@ -131,37 +159,30 @@ export function AsyncUtilitiesDemo() {
   const runRaceDemo = () => {
     clear();
     stopPolling();
-    const freshAtoms = createFreshAtoms();
-    setAtoms(freshAtoms);
+    const freshAtoms = initializeAtoms();
     setActiveDemo("race");
 
     log("Starting race() demo with API A (1s), API B (2s), API C (3s)", "info");
     log(
       "race() returns the FIRST atom to settle (resolve or reject)...",
-      "info",
+      "info"
     );
 
     // Create a derived atom that uses race()
-    const raceDerived = derived(({ race }) => {
-      return race({
-        apiA: freshAtoms.apiA,
-        apiB: freshAtoms.apiB,
-        apiC: freshAtoms.apiC,
-      });
+    const raceDerived$ = derived(({ race }) => {
+      return race(freshAtoms.apiA$, freshAtoms.apiB$, freshAtoms.apiC$);
     });
 
     pollIntervalRef.current = setInterval(() => {
-      if (!raceDerived.loading && raceDerived.error === undefined) {
+      const state = raceDerived$.state();
+      if (state.status === "ready") {
         stopPolling();
-        const [winner, value] = raceDerived.value!;
-        log(
-          `✓ race() winner after ~1s: "${winner}" = ${value.name}`,
-          "success",
-        );
+        const value = state.value;
+        log(`✓ race() winner after ~1s: ${value.name}`, "success");
         setActiveDemo(null);
-      } else if (raceDerived.error !== undefined) {
+      } else if (state.status === "error") {
         stopPolling();
-        log(`✗ race() error: ${(raceDerived.error as Error).message}`, "error");
+        log(`✗ race() error: ${(state.error as Error).message}`, "error");
         setActiveDemo(null);
       }
     }, 100);
@@ -171,46 +192,42 @@ export function AsyncUtilitiesDemo() {
   const runAnyDemo = () => {
     clear();
     stopPolling();
-    const freshAtoms = createFreshAtoms();
-    setAtoms(freshAtoms);
+    const freshAtoms = initializeAtoms();
     setActiveDemo("any");
 
     log(
       "Starting any() demo with Failing (1.5s, will fail), API A (1s), API C (3s)",
-      "info",
+      "info"
     );
     log(
       "any() returns the FIRST atom to RESOLVE (ignores rejections)...",
-      "info",
+      "info"
     );
 
     // Create a derived atom that uses any()
-    const anyDerived = derived(({ any }) => {
-      return any({
-        failing: freshAtoms.failing,
-        apiA: freshAtoms.apiA,
-        apiC: freshAtoms.apiC,
-      });
+    const anyDerived$ = derived(({ any }) => {
+      return any(freshAtoms.failing$, freshAtoms.apiA$, freshAtoms.apiC$);
     });
 
     pollIntervalRef.current = setInterval(() => {
-      if (!anyDerived.loading && anyDerived.error === undefined) {
+      const state = anyDerived$.state();
+      if (state.status === "ready") {
         stopPolling();
-        const [winner, value] = anyDerived.value!;
+        const value = state.value;
         log(
-          `✓ any() winner after ~1s: "${winner}" = ${value.name} (Failing was ignored)`,
-          "success",
+          `✓ any() winner after ~1s: ${value.name} (Failing was ignored)`,
+          "success"
         );
         setActiveDemo(null);
-      } else if (anyDerived.error !== undefined) {
+      } else if (state.status === "error") {
         stopPolling();
-        if (anyDerived.error instanceof AllAtomsRejectedError) {
+        if (state.error instanceof AllAtomsRejectedError) {
           log(
-            `✗ any() all rejected: ${JSON.stringify(anyDerived.error.errors)}`,
-            "error",
+            `✗ any() all rejected: ${JSON.stringify(state.error.errors)}`,
+            "error"
           );
         } else {
-          log(`✗ any() error: ${(anyDerived.error as Error).message}`, "error");
+          log(`✗ any() error: ${(state.error as Error).message}`, "error");
         }
         setActiveDemo(null);
       }
@@ -221,53 +238,70 @@ export function AsyncUtilitiesDemo() {
   const runSettledDemo = () => {
     clear();
     stopPolling();
-    const freshAtoms = createFreshAtoms();
-    setAtoms(freshAtoms);
+    const freshAtoms = initializeAtoms();
     setActiveDemo("settled");
 
     log(
       "Starting settled() demo with API A (1s), Failing (1.5s), API C (3s)",
-      "info",
+      "info"
     );
     log(
       "settled() waits for ALL atoms to settle, then returns their statuses...",
-      "info",
+      "info"
     );
 
     // Create a derived atom that uses settled()
-    const settledDerived = derived(({ settled }) => {
-      return settled([freshAtoms.apiA, freshAtoms.failing, freshAtoms.apiC]);
+    const settledDerived$ = derived(({ settled }) => {
+      return settled(freshAtoms.apiA$, freshAtoms.failing$, freshAtoms.apiC$);
     });
 
     pollIntervalRef.current = setInterval(() => {
-      if (!settledDerived.loading && settledDerived.error === undefined) {
+      const state = settledDerived$.state();
+      if (state.status === "ready") {
         stopPolling();
-        const results = settledDerived.value!;
+        const results = state.value;
         const summary = results
           .map((r, i) => {
-            const name = ["apiA", "failing", "apiC"][i];
+            const name = ["apiA$", "failing$", "apiC$"][i];
             return `${name}: ${r.status}`;
           })
           .join(", ");
         log(`✓ settled() after ~3s: { ${summary} }`, "success");
         setActiveDemo(null);
-      } else if (settledDerived.error !== undefined) {
+      } else if (state.status === "error") {
         stopPolling();
-        log(
-          `✗ settled() error: ${(settledDerived.error as Error).message}`,
-          "error",
-        );
+        log(`✗ settled() error: ${(state.error as Error).message}`, "error");
         setActiveDemo(null);
       }
     }, 100);
   };
 
-  const atomsList = atoms
+  const atomsList = derivedAtoms
     ? [
-        { name: "API A", atom: atoms.apiA, delay: "1s", willFail: false },
-        { name: "API B", atom: atoms.apiB, delay: "2s", willFail: false },
-        { name: "API C", atom: atoms.apiC, delay: "3s", willFail: false },
-        { name: "Failing", atom: atoms.failing, delay: "1.5s", willFail: true },
+        {
+          name: "API A",
+          atom: derivedAtoms.apiA$,
+          delay: "1s",
+          willFail: false,
+        },
+        {
+          name: "API B",
+          atom: derivedAtoms.apiB$,
+          delay: "2s",
+          willFail: false,
+        },
+        {
+          name: "API C",
+          atom: derivedAtoms.apiC$,
+          delay: "3s",
+          willFail: false,
+        },
+        {
+          name: "Failing",
+          atom: derivedAtoms.failing$,
+          delay: "1.5s",
+          willFail: true,
+        },
       ]
     : null;
 
@@ -293,29 +327,29 @@ export function AsyncUtilitiesDemo() {
 // Using SelectContext utilities in derived/useValue/effect/rx
 
 // all() - Wait for all to resolve (like Promise.all)
-const dashboard = derived(({ all }) => {
-  const [user, posts] = all([userAtom, postsAtom]);
+const dashboard$ = derived(({ all }) => {
+  const [user, posts] = all(user$, posts$);
   return { user, posts };
 });
 
 // race() - First settled wins (like Promise.race)
-const fastest = derived(({ race }) => {
-  const [winner, value] = race({ cache: cacheAtom, api: apiAtom });
-  return { source: winner, data: value };
+const fastest$ = derived(({ race }) => {
+  const value = race(cache$, api$);
+  return value;
 });
 
 // any() - First resolved wins, ignores rejections (like Promise.any)
-const data = derived(({ any }) => {
-  const [winner, value] = any({ primary: primaryAtom, fallback: fallbackAtom });
+const data$ = derived(({ any }) => {
+  const value = any(primary$, fallback$);
   return value;
 });
 
 // settled() - Get all statuses (like Promise.allSettled)
-const results = derived(({ settled }) => {
-  const [userResult, postsResult] = settled([userAtom, postsAtom]);
+const results$ = derived(({ settled }) => {
+  const [userResult, postsResult] = settled(user$, posts$);
   return {
-    user: userResult.status === "resolved" ? userResult.value : null,
-    posts: postsResult.status === "resolved" ? postsResult.value : [],
+    user: userResult.status === "ready" ? userResult.value : null,
+    posts: postsResult.status === "ready" ? postsResult.value : [],
   };
 });
         `}
@@ -355,32 +389,37 @@ const results = derived(({ settled }) => {
           description={`Running: ${activeDemo}() - watch atoms resolve/reject`}
         >
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {atomsList.map(({ name, atom: a, delay: d, willFail }) => (
-              <div
-                key={name}
-                className={`p-3 rounded-lg transition-all ${
-                  a.loading
-                    ? "bg-amber-500/10 border border-amber-500/30"
-                    : a.error
-                      ? "bg-red-500/10 border border-red-500/30"
-                      : "bg-emerald-500/10 border border-emerald-500/30"
-                }`}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <p className="text-sm font-medium text-surface-200">{name}</p>
-                  <span className="text-xs text-surface-500">{d}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={getAtomStatus(a)} />
-                  {a.loading && (
-                    <Loader2 className="w-3 h-3 text-amber-400 animate-spin" />
+            {atomsList.map(({ name, atom: a, delay: d, willFail }) => {
+              const status = getAtomStatus(a);
+              return (
+                <div
+                  key={name}
+                  className={`p-3 rounded-lg transition-all ${
+                    status === "loading"
+                      ? "bg-amber-500/10 border border-amber-500/30"
+                      : status === "error"
+                        ? "bg-red-500/10 border border-red-500/30"
+                        : "bg-emerald-500/10 border border-emerald-500/30"
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <p className="text-sm font-medium text-surface-200">
+                      {name}
+                    </p>
+                    <span className="text-xs text-surface-500">{d}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={status} />
+                    {status === "loading" && (
+                      <Loader2 className="w-3 h-3 text-amber-400 animate-spin" />
+                    )}
+                  </div>
+                  {willFail && status === "error" && (
+                    <p className="text-xs text-red-400 mt-1">Rejected!</p>
                   )}
                 </div>
-                {willFail && !a.loading && a.error !== undefined && (
-                  <p className="text-xs text-red-400 mt-1">Rejected!</p>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </DemoSection>
       )}
@@ -502,13 +541,13 @@ const results = derived(({ settled }) => {
             <tbody className="text-surface-300">
               <tr className="border-b border-surface-800">
                 <td className="py-2 px-3 font-mono text-primary-400">all()</td>
-                <td className="py-2 px-3">All values</td>
+                <td className="py-2 px-3">Array of values</td>
                 <td className="py-2 px-3">Throws first error</td>
                 <td className="py-2 px-3">Need all data</td>
               </tr>
               <tr className="border-b border-surface-800">
                 <td className="py-2 px-3 font-mono text-primary-400">race()</td>
-                <td className="py-2 px-3">[key, value]</td>
+                <td className="py-2 px-3">First value</td>
                 <td className="py-2 px-3">
                   Throws if first settles with error
                 </td>
@@ -516,7 +555,7 @@ const results = derived(({ settled }) => {
               </tr>
               <tr className="border-b border-surface-800">
                 <td className="py-2 px-3 font-mono text-primary-400">any()</td>
-                <td className="py-2 px-3">[key, value]</td>
+                <td className="py-2 px-3">First resolved value</td>
                 <td className="py-2 px-3">Ignores until all fail</td>
                 <td className="py-2 px-3">Fallback patterns</td>
               </tr>

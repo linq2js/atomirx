@@ -1,6 +1,21 @@
-import { isAtom } from "./isAtom";
 import { isPromiseLike } from "./isPromiseLike";
-import { Atom, Getter } from "./types";
+import { getAtomState, trackPromise } from "./promiseCache";
+import { Atom, AtomValue, SettledResult } from "./types";
+
+// AggregateError polyfill for environments that don't support it
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare const AggregateError: any;
+const AggregateErrorClass =
+  typeof AggregateError !== "undefined"
+    ? AggregateError
+    : class AggregateErrorPolyfill extends Error {
+        errors: unknown[];
+        constructor(errors: unknown[], message?: string) {
+          super(message);
+          this.name = "AggregateError";
+          this.errors = errors;
+        }
+      };
 
 /**
  * Result of a select computation.
@@ -11,11 +26,11 @@ export interface SelectResult<T> {
   /** The computed value (undefined if error or loading) */
   value: T | undefined;
   /** Error thrown during computation (undefined if success or loading) */
-  error: any;
-  /** Promise thrown during computation - indicates loading state (undefined if success or error) */
-  promise: PromiseLike<any> | undefined;
+  error: unknown;
+  /** Promise thrown during computation - indicates loading state */
+  promise: PromiseLike<unknown> | undefined;
   /** Set of atoms that were accessed during computation */
-  dependencies: Set<Atom<any, any>>;
+  dependencies: Set<Atom<unknown>>;
 }
 
 /**
@@ -27,143 +42,81 @@ export interface SelectContext {
    * Read the current value of an atom.
    * Tracks the atom as a dependency.
    *
-   * Suspense-like behavior:
-   * - If atom has fallback and is stale: returns fallback/previous value
-   * - If atom is loading: throws the promise
-   * - If atom has error: throws the error
-   * - Otherwise: returns the value
+   * Suspense-like behavior using getAtomState():
+   * - If ready: returns value
+   * - If error: throws error
+   * - If loading: throws Promise (Suspense)
    *
    * @param atom - The atom to read
-   * @returns The atom's current value
-   *
-   * @example
-   * ```ts
-   * derived(({ get }) => {
-   *   const user = get(user$);
-   *   const settings = get(settings$);
-   *   return { user, theme: settings.theme };
-   * });
-   * ```
+   * @returns The atom's current value (Awaited<T>)
    */
-  get<T>(atom: Atom<T, any>): T;
+  get<T>(atom: Atom<T>): Awaited<T>;
 
   /**
    * Wait for all atoms to resolve (like Promise.all).
-   * Array-only - use destructuring for custom variable names.
+   * Variadic form - pass atoms as arguments.
    *
-   * - If all atoms are resolved → returns array of values
-   * - If any atom has error → throws that error immediately
-   * - If any atom is loading (and none errored) → throws combined promise
+   * - If all atoms are ready → returns array of values
+   * - If any atom has error → throws that error
+   * - If any atom is loading (no fallback) → throws Promise
+   * - If loading with fallback → uses staleValue
    *
-   * @param atoms - Array of atoms
+   * @param atoms - Atoms to wait for (variadic)
    * @returns Array of resolved values (same order as input)
    *
    * @example
    * ```ts
-   * derived(({ all }) => {
-   *   const [user, posts, customName] = all([user$, posts$, comments$]);
-   *   return { user, posts, comments: customName };
-   * });
+   * const [user, posts] = all(user$, posts$);
    * ```
    */
-  all<const T extends readonly Atom<any, any>[]>(
-    atoms: T
-  ): { [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never };
+  all<A extends Atom<unknown>[]>(
+    ...atoms: A
+  ): { [K in keyof A]: AtomValue<A[K]> };
 
   /**
-   * Return the first resolved atom's value (like Promise.any).
-   * Object-only - returns [key, value] tuple to identify the winner.
+   * Return the first settled value (like Promise.race).
+   * Variadic form - pass atoms as arguments.
    *
-   * - If any atom is resolved → returns [key, value] tuple (skips errors)
-   * - If all atoms have errors → throws AllAtomsRejectedError
-   * - If some are loading and rest errored → throws promise that resolves to first success
+   * - If any atom is ready → returns first ready value
+   * - If any atom has error → throws first error
+   * - If all atoms are loading → throws first Promise
    *
-   * @param atoms - Object of atoms
-   * @returns Tuple of [winner key, value]
+   * Note: race() does NOT use fallback - it's meant for first "real" settled value.
    *
-   * @example
-   * ```ts
-   * derived(({ any }) => {
-   *   const [source, data] = any({ cache: cache$, api: api$ });
-   *   console.log(`Data from: ${source}`);
-   *   return data;
-   * });
-   * ```
+   * @param atoms - Atoms to race (variadic)
+   * @returns First settled value
    */
-  any<T extends Record<string, Atom<any, any>>>(
-    atoms: T
-  ): [keyof T & string, T[keyof T] extends Atom<infer U, any> ? U : never];
+  race<A extends Atom<unknown>[]>(...atoms: A): AtomValue<A[number]>;
 
   /**
-   * Return the first settled atom's value (like Promise.race).
-   * Object-only - returns [key, value] tuple to identify the winner.
+   * Return the first ready value (like Promise.any).
+   * Variadic form - pass atoms as arguments.
    *
-   * - If any atom is resolved → returns [key, value] tuple
-   * - If any atom has error (and none resolved before it) → throws that error
-   * - If all atoms are loading → throws combined promise
+   * - If any atom is ready → returns first ready value
+   * - If all atoms have errors → throws AggregateError
+   * - If any loading (not all errored) → throws Promise
    *
-   * @param atoms - Object of atoms
-   * @returns Tuple of [winner key, value]
+   * Note: any() does NOT use fallback - it waits for a real ready value.
    *
-   * @example
-   * ```ts
-   * derived(({ race }) => {
-   *   const [source, data] = race({ fast: fast$, slow: slow$ });
-   *   console.log(`Winner: ${source}`);
-   *   return data;
-   * });
-   * ```
+   * @param atoms - Atoms to check (variadic)
+   * @returns First ready value
    */
-  race<T extends Record<string, Atom<any, any>>>(
-    atoms: T
-  ): [keyof T & string, T[keyof T] extends Atom<infer U, any> ? U : never];
+  any<A extends Atom<unknown>[]>(...atoms: A): AtomValue<A[number]>;
 
   /**
    * Get all atom statuses when all are settled (like Promise.allSettled).
-   * Array-only - use destructuring for custom variable names.
+   * Variadic form - pass atoms as arguments.
    *
-   * - If all atoms are settled (resolved or rejected) → returns array of statuses
-   * - If any atom is loading → throws combined promise
+   * - If all atoms are settled → returns array of statuses
+   * - If any atom is loading (no fallback) → throws Promise
+   * - If loading with fallback → { status: "ready", value: staleValue }
    *
-   * @param atoms - Array of atoms
-   * @returns Array of settled results (same order as input)
-   *
-   * @example
-   * ```ts
-   * derived(({ settled }) => {
-   *   const [userResult, postsResult] = settled([user$, posts$]);
-   *   return {
-   *     user: userResult.status === 'resolved' ? userResult.value : null,
-   *     posts: postsResult.status === 'resolved' ? postsResult.value : [],
-   *   };
-   * });
-   * ```
+   * @param atoms - Atoms to check (variadic)
+   * @returns Array of settled results
    */
-  settled<const T extends readonly Atom<any, any>[]>(
-    atoms: T
-  ): {
-    [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
-  };
-}
-
-/**
- * Result type for settled operations.
- */
-export type SettledResult<T> =
-  | { status: "resolved"; value: T }
-  | { status: "rejected"; error: unknown };
-
-/**
- * Custom error for when all atoms in `any()` are rejected.
- */
-export class AllAtomsRejectedError extends Error {
-  readonly errors: Record<string, unknown>;
-
-  constructor(errors: Record<string, unknown>, message = "All atoms rejected") {
-    super(message);
-    this.name = "AllAtomsRejectedError";
-    this.errors = errors;
-  }
+  settled<A extends Atom<unknown>[]>(
+    ...atoms: A
+  ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> };
 }
 
 /**
@@ -172,13 +125,17 @@ export class AllAtomsRejectedError extends Error {
 export type ContextSelectorFn<T> = (context: SelectContext) => T;
 
 /**
- * Legacy selector function type for array-based API.
+ * Custom error for when all atoms in `any()` are rejected.
  */
-export type LegacySelectorFn<D extends readonly Atom<any, any>[], T> = (
-  ...values: {
-    [K in keyof D]: D[K] extends Atom<infer U, any> ? Getter<U> : never;
+export class AllAtomsRejectedError extends Error {
+  readonly errors: unknown[];
+
+  constructor(errors: unknown[], message = "All atoms rejected") {
+    super(message);
+    this.name = "AllAtomsRejectedError";
+    this.errors = errors;
   }
-) => T;
+}
 
 // ============================================================================
 // select() - Core selection/computation function
@@ -192,148 +149,217 @@ export type LegacySelectorFn<D extends readonly Atom<any, any>[], T> = (
  * 2. Tracks which atoms are accessed during computation
  * 3. Returns a result with value/error/promise and dependencies
  *
- * ## Context API (Recommended)
+ * All context methods use `getAtomState()` internally.
+ *
+ * ## IMPORTANT: Selector Must Return Synchronous Value
+ *
+ * **The selector function MUST NOT return a Promise or PromiseLike value.**
+ *
+ * If your selector returns a Promise, it will throw an error. This is because:
+ * - `select()` is designed for synchronous derivation from atoms
+ * - Async atoms should be created using `atom(Promise)` directly
+ * - Use `get()` to read async atoms - it handles Suspense-style loading
  *
  * ```ts
- * select(({ get, all }) => {
- *   const user = get(user$);
- *   const [posts, comments] = all([posts$, comments$]);
- *   return { user, posts, comments };
- * });
- * ```
+ * // ❌ WRONG - Don't return a Promise from selector
+ * select(({ get }) => fetch('/api/data'));
  *
- * ## Utility Forms
- *
- * | Utility | Form | Reason |
- * |---------|------|--------|
- * | `all()` | Array | Custom names via destructuring |
- * | `settled()` | Array | Custom names via destructuring |
- * | `race()` | Object | Need winner key in result |
- * | `any()` | Object | Need winner key in result |
- *
- * ## Legacy Array API (Still Supported)
- *
- * ```ts
- * select([user$, posts$], (getUser, getPosts) => ({
- *   user: getUser(),
- *   posts: getPosts(),
- * }));
+ * // ✅ CORRECT - Create async atom and read with get()
+ * const data$ = atom(fetch('/api/data').then(r => r.json()));
+ * select(({ get }) => get(data$)); // Suspends until resolved
  * ```
  *
  * @template T - The type of the computed value
- * @param fn - Context-based selector function
+ * @param fn - Context-based selector function (must return sync value)
  * @returns SelectResult with value, error, promise, and dependencies
+ * @throws Error if selector returns a Promise or PromiseLike
+ *
+ * @example
+ * ```ts
+ * select(({ get, all }) => {
+ *   const user = get(user$);
+ *   const [posts, comments] = all(posts$, comments$);
+ *   return { user, posts, comments };
+ * });
+ * ```
  */
-export function select<T>(fn: ContextSelectorFn<T>): SelectResult<T>;
-
-/**
- * Legacy: Single atom source with getter.
- * @deprecated Use context API: `select(({ get }) => get(atom))`
- */
-export function select<D, T>(
-  source: Atom<D, any>,
-  fn: (source: Getter<D>) => T
-): SelectResult<T>;
-
-/**
- * Legacy: Array of atoms with positional getters.
- * @deprecated Use context API: `select(({ get }) => { get(a); get(b); })`
- */
-export function select<const D extends readonly Atom<any, any>[], T>(
-  source: D,
-  fn: LegacySelectorFn<D, T>
-): SelectResult<T>;
-
-export function select(sourceOrFn: any, fn?: any): SelectResult<any> {
-  // Detect which API is being used
-  if (typeof sourceOrFn === "function" && fn === undefined) {
-    // New context API: select(({ get }) => ...)
-    return selectWithContext(sourceOrFn);
-  } else {
-    // Legacy API: select(source, fn) or select([sources], fn)
-    return selectLegacy(sourceOrFn, fn);
-  }
-}
-
-// ============================================================================
-// Context-based implementation
-// ============================================================================
-
-function selectWithContext<T>(fn: ContextSelectorFn<T>): SelectResult<T> {
+export function select<T>(fn: ContextSelectorFn<T>): SelectResult<T> {
   // Track accessed dependencies during computation
-  const dependencies = new Set<Atom<any>>();
+  const dependencies = new Set<Atom<unknown>>();
 
   /**
-   * Creates a suspense-like getter for an atom.
-   * - Tracks the atom as a dependency when accessed
-   * - If stale(): returns value (fallback/previous) - HIGHEST PRIORITY
-   * - If loading: throws the atom's promise
-   * - If error: throws the error
-   * - Otherwise: returns the value
+   * Read atom value using getAtomState().
+   * Implements the v2 get() behavior from spec.
    */
-  const get = <T>(atom: Atom<T, any>): T => {
+  const get = <V>(atom: Atom<V>): Awaited<V> => {
     // Track this atom as accessed dependency
-    dependencies.add(atom);
+    dependencies.add(atom as Atom<unknown>);
 
-    // stale() check is HIGHEST priority
-    // If fallback mode enabled and loading/error → return value (never throw)
-    if (atom.stale()) {
-      return atom.value as T;
+    const state = getAtomState(atom);
+
+    switch (state.status) {
+      case "ready":
+        return state.value;
+      case "error":
+        throw state.error;
+      case "loading":
+        throw state.promise; // Suspense pattern
+    }
+  };
+
+  /**
+   * all() - like Promise.all
+   */
+  const all = <A extends Atom<unknown>[]>(
+    ...atoms: A
+  ): { [K in keyof A]: AtomValue<A[K]> } => {
+    const results: unknown[] = [];
+    let loadingPromise: Promise<unknown> | null = null;
+
+    for (const atom of atoms) {
+      dependencies.add(atom);
+      const state = getAtomState(atom);
+
+      switch (state.status) {
+        case "ready":
+          results.push(state.value);
+          break;
+
+        case "error":
+          // Any error → throw immediately
+          throw state.error;
+
+        case "loading":
+          // First loading without fallback → will throw
+          if (!loadingPromise) {
+            loadingPromise = state.promise;
+          }
+          break;
+      }
     }
 
-    if (atom.loading) {
-      throw atom; // Atom is PromiseLike, throw it
+    // If any loading without fallback → throw Promise
+    if (loadingPromise) {
+      throw loadingPromise;
     }
-    if (atom.error !== undefined) {
-      throw atom.error;
+
+    return results as { [K in keyof A]: AtomValue<A[K]> };
+  };
+
+  /**
+   * race() - like Promise.race
+   */
+  const race = <A extends Atom<unknown>[]>(
+    ...atoms: A
+  ): AtomValue<A[number]> => {
+    let firstLoadingPromise: Promise<unknown> | null = null;
+
+    for (const atom of atoms) {
+      dependencies.add(atom);
+
+      // For race(), we need raw state without fallback handling
+      const state = getAtomStateRaw(atom);
+
+      switch (state.status) {
+        case "ready":
+          return state.value as AtomValue<A[number]>;
+
+        case "error":
+          throw state.error;
+
+        case "loading":
+          if (!firstLoadingPromise) {
+            firstLoadingPromise = state.promise;
+          }
+          break;
+      }
     }
-    return atom.value as T;
+
+    // All loading → throw first Promise
+    if (firstLoadingPromise) {
+      throw firstLoadingPromise;
+    }
+
+    throw new Error("race() called with no atoms");
   };
 
   /**
-   * Wait for all atoms to resolve (like Promise.all).
-   * Array-only for simpler API.
+   * any() - like Promise.any
    */
-  const all = <const T extends readonly Atom<any, any>[]>(
-    atoms: T
-  ): { [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never } => {
-    return allArray(atoms, get) as {
-      [K in keyof T]: T[K] extends Atom<infer U, any> ? U : never;
-    };
+  const any = <A extends Atom<unknown>[]>(
+    ...atoms: A
+  ): AtomValue<A[number]> => {
+    const errors: unknown[] = [];
+    let firstLoadingPromise: Promise<unknown> | null = null;
+
+    for (const atom of atoms) {
+      dependencies.add(atom);
+
+      // For any(), we need raw state without fallback handling
+      const state = getAtomStateRaw(atom);
+
+      switch (state.status) {
+        case "ready":
+          return state.value as AtomValue<A[number]>;
+
+        case "error":
+          errors.push(state.error);
+          break;
+
+        case "loading":
+          if (!firstLoadingPromise) {
+            firstLoadingPromise = state.promise;
+          }
+          break;
+      }
+    }
+
+    // If any loading → throw Promise (might still fulfill)
+    if (firstLoadingPromise) {
+      throw firstLoadingPromise;
+    }
+
+    // All errored → throw AggregateError
+    throw new AggregateErrorClass(errors, "All atoms rejected");
   };
 
   /**
-   * Return the first resolved atom (like Promise.any).
-   * Object-only to return winner key.
+   * settled() - like Promise.allSettled
    */
-  const any = <T extends Record<string, Atom<any, any>>>(
-    atoms: T
-  ): [keyof T & string, T[keyof T] extends Atom<infer U, any> ? U : never] => {
-    return anyImpl(atoms, get);
-  };
+  const settled = <A extends Atom<unknown>[]>(
+    ...atoms: A
+  ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> } => {
+    const results: SettledResult<unknown>[] = [];
+    let pendingPromise: Promise<unknown> | null = null;
 
-  /**
-   * Return the first settled atom (like Promise.race).
-   * Object-only to return winner key.
-   */
-  const race = <T extends Record<string, Atom<any, any>>>(
-    atoms: T
-  ): [keyof T & string, T[keyof T] extends Atom<infer U, any> ? U : never] => {
-    return raceImpl(atoms, get);
-  };
+    for (const atom of atoms) {
+      dependencies.add(atom);
+      const state = getAtomState(atom);
 
-  /**
-   * Get all atom statuses when settled (like Promise.allSettled).
-   * Array-only for simpler API.
-   */
-  const settled = <const T extends readonly Atom<any, any>[]>(
-    atoms: T
-  ): {
-    [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
-  } => {
-    return settledArray(atoms, get) as {
-      [K in keyof T]: T[K] extends Atom<infer U, any> ? SettledResult<U> : never;
-    };
+      switch (state.status) {
+        case "ready":
+          results.push({ status: "ready", value: state.value });
+          break;
+
+        case "error":
+          results.push({ status: "error", error: state.error });
+          break;
+
+        case "loading":
+          // Loading without fallback → will throw
+          if (!pendingPromise) {
+            pendingPromise = state.promise;
+          }
+          break;
+      }
+    }
+
+    // If any loading without fallback → throw Promise
+    if (pendingPromise) {
+      throw pendingPromise;
+    }
+
+    return results as { [K in keyof A]: SettledResult<AtomValue<A[K]>> };
   };
 
   // Create the context
@@ -343,6 +369,14 @@ function selectWithContext<T>(fn: ContextSelectorFn<T>): SelectResult<T> {
   try {
     const result = fn(context);
 
+    // Selector must return synchronous value, not a Promise
+    if (isPromiseLike(result)) {
+      throw new Error(
+        "select() selector must return a synchronous value, not a Promise. " +
+          "For async data, create an async atom with atom(Promise) and use get() to read it."
+      );
+    }
+
     return {
       value: result,
       error: undefined,
@@ -369,279 +403,52 @@ function selectWithContext<T>(fn: ContextSelectorFn<T>): SelectResult<T> {
 }
 
 // ============================================================================
-// Async utility implementations
+// Internal helpers
 // ============================================================================
+
+// Note: trackPromise is already imported at the top
 
 /**
- * Helper to get atom status via get().
+ * Gets raw atom state WITHOUT fallback handling.
+ * Used by race() and any() which need the actual loading state.
  */
-type AtomStatus<T> =
-  | { status: "resolved"; value: T }
-  | { status: "rejected"; error: unknown }
-  | { status: "loading"; promise: PromiseLike<unknown> };
+function getAtomStateRaw<T>(
+  atom: Atom<T>
+):
+  | { status: "ready"; value: Awaited<T> }
+  | { status: "error"; error: unknown }
+  | { status: "loading"; promise: Promise<Awaited<T>> } {
+  const value = atom.value;
 
-function getAtomStatus<T>(
-  atom: Atom<T, any>,
-  get: <U>(a: Atom<U, any>) => U
-): AtomStatus<T> {
-  try {
-    const value = get(atom);
-    return { status: "resolved", value };
-  } catch (thrown) {
-    if (isPromiseLike(thrown)) {
-      return { status: "loading", promise: thrown };
-    }
-    return { status: "rejected", error: thrown };
-  }
-}
-
-function allArray<T>(
-  atoms: readonly Atom<T, any>[],
-  get: <U>(a: Atom<U, any>) => U
-): T[] {
-  if (atoms.length === 0) return [];
-
-  const results: T[] = [];
-  const loadingPromises: PromiseLike<unknown>[] = [];
-  let firstError: unknown = undefined;
-  let hasError = false;
-
-  for (const atom of atoms) {
-    const status = getAtomStatus(atom, get);
-
-    if (status.status === "resolved") {
-      results.push(status.value);
-    } else if (status.status === "rejected") {
-      if (!hasError) {
-        firstError = status.error;
-        hasError = true;
-      }
-    } else {
-      loadingPromises.push(status.promise);
-    }
-  }
-
-  // Errors take priority over loading
-  if (hasError) {
-    throw firstError;
-  }
-
-  // If any loading, throw combined promise
-  if (loadingPromises.length > 0) {
-    throw Promise.all(loadingPromises);
-  }
-
-  return results;
-}
-
-function anyImpl<T extends Record<string, Atom<any, any>>>(
-  atoms: T,
-  get: <U>(a: Atom<U, any>) => U
-): [keyof T & string, T[keyof T] extends Atom<infer U, any> ? U : never] {
-  const keys = Object.keys(atoms) as (keyof T & string)[];
-
-  if (keys.length === 0) {
-    throw new AllAtomsRejectedError({});
-  }
-
-  const errors: Record<string, unknown> = {};
-  const loadingPromises: PromiseLike<unknown>[] = [];
-
-  for (const key of keys) {
-    const status = getAtomStatus(atoms[key], get);
-
-    if (status.status === "resolved") {
-      return [key, status.value] as [
-        keyof T & string,
-        T[keyof T] extends Atom<infer U, any> ? U : never
-      ];
-    }
-
-    if (status.status === "rejected") {
-      errors[key] = status.error;
-    } else {
-      loadingPromises.push(status.promise);
-    }
-  }
-
-  // If some are still loading, throw combined promise
-  if (loadingPromises.length > 0) {
-    throw promiseAny(loadingPromises, () => new AllAtomsRejectedError(errors));
-  }
-
-  // All rejected
-  throw new AllAtomsRejectedError(errors);
-}
-
-function raceImpl<T extends Record<string, Atom<any, any>>>(
-  atoms: T,
-  get: <U>(a: Atom<U, any>) => U
-): [keyof T & string, T[keyof T] extends Atom<infer U, any> ? U : never] {
-  const keys = Object.keys(atoms) as (keyof T & string)[];
-
-  if (keys.length === 0) {
-    return undefined as unknown as [
-      keyof T & string,
-      T[keyof T] extends Atom<infer U, any> ? U : never
-    ];
-  }
-
-  const loadingPromises: PromiseLike<unknown>[] = [];
-
-  for (const key of keys) {
-    const status = getAtomStatus(atoms[key], get);
-
-    if (status.status === "resolved") {
-      return [key, status.value] as [
-        keyof T & string,
-        T[keyof T] extends Atom<infer U, any> ? U : never
-      ];
-    }
-
-    if (status.status === "rejected") {
-      throw status.error;
-    }
-
-    // Loading - collect promise
-    loadingPromises.push(status.promise);
-  }
-
-  // All are loading - throw combined promise
-  throw Promise.race(loadingPromises);
-}
-
-function settledArray<T>(
-  atoms: readonly Atom<T, any>[],
-  get: <U>(a: Atom<U, any>) => U
-): SettledResult<T>[] {
-  if (atoms.length === 0) return [];
-
-  const results: SettledResult<T>[] = [];
-  const loadingPromises: PromiseLike<unknown>[] = [];
-
-  for (const atom of atoms) {
-    const status = getAtomStatus(atom, get);
-
-    if (status.status === "resolved") {
-      results.push({ status: "resolved", value: status.value });
-    } else if (status.status === "rejected") {
-      results.push({ status: "rejected", error: status.error });
-    } else {
-      loadingPromises.push(status.promise);
-    }
-  }
-
-  // If any loading, throw combined promise
-  if (loadingPromises.length > 0) {
-    throw Promise.all(loadingPromises);
-  }
-
-  return results;
-}
-
-/**
- * Polyfill for Promise.any behavior.
- */
-function promiseAny<T>(
-  promises: PromiseLike<T>[],
-  errorFactory: () => AllAtomsRejectedError
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    if (promises.length === 0) {
-      reject(errorFactory());
-      return;
-    }
-
-    const errors: unknown[] = new Array(promises.length);
-    let rejectedCount = 0;
-
-    promises.forEach((promise, index) => {
-      Promise.resolve(promise).then(resolve, (error) => {
-        errors[index] = error;
-        rejectedCount++;
-        if (rejectedCount === promises.length) {
-          reject(errorFactory());
-        }
-      });
-    });
-  });
-}
-
-// ============================================================================
-// Legacy implementation (for backward compatibility)
-// ============================================================================
-
-function selectLegacy(source: any, fn: any): SelectResult<any> {
-  // Track accessed dependencies during computation
-  const dependencies = new Set<Atom<any>>();
-
-  /**
-   * Creates a suspense-like getter for an atom.
-   */
-  const createSuspenseGetter = (a: Atom<any, any>): Getter<any> => {
-    return () => {
-      // Track this atom as accessed dependency
-      dependencies.add(a);
-
-      // stale() check is HIGHEST priority
-      if (a.stale()) {
-        return a.value;
-      }
-
-      if (a.loading) {
-        throw a;
-      }
-      if (a.error !== undefined) {
-        throw a.error;
-      }
-      return a.value;
-    };
-  };
-
-  // Create getters based on source form
-  let getters: any;
-  if (isAtom(source)) {
-    getters = createSuspenseGetter(source);
-  } else {
-    // Array form
-    const atoms = source as Atom<any>[];
-    getters = atoms.map((a) => createSuspenseGetter(a));
-  }
-
-  // Execute the select function
-  try {
-    let result: any;
-    if (isAtom(source)) {
-      result = fn(getters);
-    } else {
-      // Array form - spread getters as arguments
-      result = fn(...getters);
-    }
-
-    // Success
+  // 1. Sync value - ready
+  if (!isPromiseLike(value)) {
     return {
-      value: result,
-      error: undefined,
-      promise: undefined,
-      dependencies,
+      status: "ready",
+      value: value as Awaited<T>,
     };
-  } catch (thrown) {
-    if (isPromiseLike(thrown)) {
-      // Promise thrown - loading state
+  }
+
+  // 2. Promise value - check state via promiseCache
+  const state = trackPromise(value);
+
+  switch (state.status) {
+    case "fulfilled":
       return {
-        value: undefined,
-        error: undefined,
-        promise: thrown,
-        dependencies,
+        status: "ready",
+        value: state.value as Awaited<T>,
       };
-    } else {
-      // Error thrown
+
+    case "rejected":
       return {
-        value: undefined,
-        error: thrown,
-        promise: undefined,
-        dependencies,
+        status: "error",
+        error: state.error,
       };
-    }
+
+    case "pending":
+      // Raw - don't use fallback
+      return {
+        status: "loading",
+        promise: state.promise as Promise<Awaited<T>>,
+      };
   }
 }

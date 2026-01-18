@@ -32,10 +32,10 @@ import { hook } from "./hook";
  *
  * ```ts
  * // Schedule notifications as microtasks
- * scheduleNotifyHook.override((fn) => queueMicrotask(fn));
+ * scheduleNotifyHook.override(() => (fn) => queueMicrotask(fn));
  *
  * // Schedule notifications on next animation frame
- * scheduleNotifyHook.override((fn) => requestAnimationFrame(fn));
+ * scheduleNotifyHook.override(() => (fn) => requestAnimationFrame(fn));
  *
  * // Reset to default synchronous behavior
  * scheduleNotifyHook.reset();
@@ -44,9 +44,9 @@ import { hook } from "./hook";
  * ## API
  *
  * - `scheduleNotifyHook.current` - Get/set the current scheduler function
- * - `scheduleNotifyHook.override(fn)` - Override with custom scheduler
+ * - `scheduleNotifyHook.override(reducer)` - Override with custom scheduler (reducer receives previous)
  * - `scheduleNotifyHook.reset()` - Reset to default synchronous behavior
- * - `scheduleNotifyHook(fn)` - Create a HookSetup for use with `hook.use()`
+ * - `scheduleNotifyHook(reducer)` - Create a HookSetup for use with `hook.use()`
  *
  * @internal Used internally by atomState and batch. Not typically needed by users.
  */

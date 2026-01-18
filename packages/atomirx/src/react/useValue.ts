@@ -8,7 +8,26 @@ import { isAtom } from "../core/isAtom";
  * React hook that selects/derives a value from atom(s) with automatic subscriptions.
  *
  * Uses `useSyncExternalStore` for proper React 18+ concurrent mode support.
- * Only subscribes to atoms that are actually accessed during selection (conditional dependencies).
+ * Only subscribes to atoms that are actually accessed during selection.
+ *
+ * ## IMPORTANT: Selector Must Return Synchronous Value
+ *
+ * **The selector function MUST NOT be async or return a Promise.**
+ *
+ * ```tsx
+ * // ❌ WRONG - Don't use async function
+ * useValue(async ({ get }) => {
+ *   const data = await fetch('/api');
+ *   return data;
+ * });
+ *
+ * // ❌ WRONG - Don't return a Promise
+ * useValue(({ get }) => fetch('/api').then(r => r.json()));
+ *
+ * // ✅ CORRECT - Create async atom and read with get()
+ * const data$ = atom(fetch('/api').then(r => r.json()));
+ * useValue(({ get }) => get(data$)); // Suspends until resolved
+ * ```
  *
  * ## IMPORTANT: Suspense-Style API
  *
@@ -18,60 +37,45 @@ import { isAtom } from "../core/isAtom";
  * - When an atom is **resolved**, the getter returns the value
  *
  * This means:
- * - **You MUST wrap components using async atoms with `<Suspense>`** to handle loading states
- * - **You MUST wrap components using async atoms with `<ErrorBoundary>`** to handle errors
- * - Without these boundaries, thrown promises/errors will propagate up and crash your app
+ * - **You MUST wrap components with `<Suspense>`** to handle loading states
+ * - **You MUST wrap components with `<ErrorBoundary>`** to handle errors
  *
- * ## When to Use useValue
+ * ## Alternative: Using staleValue for Non-Suspense
  *
- * ✅ **Good for:**
- * - Synchronous atoms (no async initial value)
- * - Async atoms when you want Suspense-style loading/error handling
- * - Derived values from multiple atoms
- * - Fine-grained subscriptions (only re-render when selected value changes)
- * - Computations that need component state (e.g., filter by local search term)
- *
- * ❌ **Not suitable for:**
- * - Displaying loading/error states inline (without Suspense boundaries)
- * - Accessing `atom.loading`, `atom.error`, `atom.stale()` directly
- * - Cases where you need to show loading spinners within the same component
- *
- * ## Alternative: Manual Subscription for Inline Loading States
- *
- * If you need to display loading/error states inline without Suspense, use manual subscription:
+ * If you want to show loading states without Suspense:
  *
  * ```tsx
- * function useAtomState<T>(atom: Atom<T>) {
- *   const [, forceUpdate] = useState({});
- *   useEffect(() => atom.on(() => forceUpdate({})), [atom]);
- *   return { value: atom.value, loading: atom.loading, error: atom.error };
- * }
- *
  * function MyComponent() {
- *   const { value, loading, error } = useAtomState(myAsyncAtom);
- *   if (loading) return <Spinner />;
- *   if (error) return <Error error={error} />;
- *   return <div>{value}</div>;
+ *   // Access staleValue directly - always has a value (with fallback)
+ *   const count = myDerivedAtom$.staleValue;
+ *   const isLoading = isPending(myDerivedAtom$.value);
+ *
+ *   return (
+ *     <div>
+ *       {isLoading && <Spinner />}
+ *       Count: {count}
+ *     </div>
+ *   );
  * }
  * ```
  *
  * @template T - The type of the selected value
- * @param selector - Context-based selector function with `{ get, all, any, race, settled }`
- * @param equals - Equality function or shorthand ("strict", "shallow", "deep"). Defaults to "shallow"
- * @returns The selected value (throws Promise if loading, throws Error if errored)
+ * @param selectorOrAtom - Atom or context-based selector function (must return sync value)
+ * @param equals - Equality function or shorthand. Defaults to "shallow"
+ * @returns The selected value (Awaited<T>)
+ * @throws Error if selector returns a Promise or PromiseLike
  *
  * @example Single atom (shorthand)
  * ```tsx
  * const count = atom(5);
  *
  * function Counter() {
- *   // Shorthand: pass atom directly to get its value
  *   const value = useValue(count);
  *   return <div>{value}</div>;
  * }
  * ```
  *
- * @example Single atom (with selector)
+ * @example With selector
  * ```tsx
  * const count = atom(5);
  *
@@ -94,38 +98,11 @@ import { isAtom } from "../core/isAtom";
  * }
  * ```
  *
- * @example With equals option
- * ```tsx
- * const user = atom({ name: "John", age: 30 });
- *
- * function UserName() {
- *   // Only re-render when name actually changes (shallow comparison)
- *   const name = useValue(({ get }) => get(user)?.name, "shallow");
- *   return <div>{name}</div>;
- * }
- * ```
- *
- * @example Conditional dependencies
- * ```tsx
- * const showDetails = atom(false);
- * const basicInfo = atom({ name: "John" });
- * const detailedInfo = atom({ name: "John", email: "john@example.com" });
- *
- * function UserInfo() {
- *   // Only subscribes to showDetails + the accessed info atom
- *   const info = useValue(({ get }) =>
- *     get(showDetails) ? get(detailedInfo) : get(basicInfo)
- *   );
- *   return <div>{info.name}</div>;
- * }
- * ```
- *
- * @example Async atom with Suspense (REQUIRED for async atoms)
+ * @example Async atom with Suspense
  * ```tsx
  * const userAtom = atom(fetchUser());
  *
  * function UserProfile() {
- *   // This will suspend until the atom resolves
  *   const user = useValue(({ get }) => get(userAtom));
  *   return <div>{user.name}</div>;
  * }
@@ -142,58 +119,26 @@ import { isAtom } from "../core/isAtom";
  * }
  * ```
  *
- * @example Combining multiple async atoms with async utilities
+ * @example Using all() for multiple async atoms
  * ```tsx
  * const userAtom = atom(fetchUser());
  * const postsAtom = atom(fetchPosts());
  *
  * function Dashboard() {
  *   const data = useValue(({ all }) => {
- *     // Use all() to wait for multiple atoms
- *     const [user, posts] = all([userAtom, postsAtom]);
+ *     const [user, posts] = all(userAtom, postsAtom);
  *     return { user, posts };
  *   });
  *
  *   return <DashboardContent user={data.user} posts={data.posts} />;
  * }
  * ```
- *
- * @example Using settled for partial failures
- * ```tsx
- * const userAtom = atom(fetchUser());
- * const postsAtom = atom(fetchPosts());
- *
- * function Dashboard() {
- *   const data = useValue(({ settled }) => {
- *     const [userResult, postsResult] = settled([userAtom, postsAtom]);
- *     return {
- *       user: userResult.status === 'resolved' ? userResult.value : null,
- *       posts: postsResult.status === 'resolved' ? postsResult.value : [],
- *     };
- *   });
- *
- *   return <DashboardContent user={data.user} posts={data.posts} />;
- * }
- * ```
- *
- * @example Using race for first resolved
- * ```tsx
- * const cacheAtom = atom(fetchFromCache());
- * const apiAtom = atom(fetchFromApi());
- *
- * function Data() {
- *   const [source, data] = useValue(({ race }) =>
- *     race({ cache: cacheAtom, api: apiAtom })
- *   );
- *   return <div>Data from {source}: {data}</div>;
- * }
- * ```
  */
-// Overload: Pass atom directly to get its value
+// Overload: Pass atom directly
 export function useValue<T>(
-  atom: Atom<T, any>,
-  equals?: Equality<T>
-): T;
+  atom: Atom<T>,
+  equals?: Equality<Awaited<T>>
+): Awaited<T>;
 
 // Overload: Context-based selector function
 export function useValue<T>(
@@ -202,15 +147,16 @@ export function useValue<T>(
 ): T;
 
 export function useValue<T>(
-  selectorOrAtom: ContextSelectorFn<T> | Atom<T, any>,
+  selectorOrAtom: ContextSelectorFn<T> | Atom<T>,
   equals?: Equality<T>
 ): T {
   // Convert atom shorthand to context selector
   const selector: ContextSelectorFn<T> = isAtom(selectorOrAtom)
-    ? ({ get }) => get(selectorOrAtom as Atom<T, any>)
+    ? ({ get }) => get(selectorOrAtom as Atom<T>) as T
     : (selectorOrAtom as ContextSelectorFn<T>);
-  // Default to shallow equality to handle object-returning selectors properly
-  const eq = resolveEquality(equals as Equality<any> ?? "shallow");
+
+  // Default to shallow equality
+  const eq = resolveEquality((equals as Equality<unknown>) ?? "shallow");
 
   // Store selector in ref to avoid recreating callbacks
   const selectorRef = useRef(selector);
@@ -221,19 +167,17 @@ export function useValue<T>(
   eqRef.current = eq;
 
   // Track current dependencies and their unsubscribe functions
-  const subscriptionsRef = useRef<Map<Atom<any>, VoidFunction>>(new Map());
-  const dependenciesRef = useRef<Set<Atom<any>>>(new Set());
+  const subscriptionsRef = useRef<Map<Atom<unknown>, VoidFunction>>(new Map());
+  const dependenciesRef = useRef<Set<Atom<unknown>>>(new Set());
 
-  // Cache the last snapshot to avoid unnecessary re-renders
-  const snapshotRef = useRef<{ value: any; initialized: boolean }>({
-    value: undefined,
+  // Cache the last snapshot
+  const snapshotRef = useRef<{ value: T; initialized: boolean }>({
+    value: undefined as T,
     initialized: false,
   });
 
   /**
    * Get the current snapshot by running the selector.
-   * This is called by React during render to get the current value.
-   * We collect dependencies here but don't subscribe yet.
    */
   const getSnapshot = useCallback(() => {
     const result = select(selectorRef.current);
@@ -241,26 +185,19 @@ export function useValue<T>(
     // Update dependencies
     dependenciesRef.current = result.dependencies;
 
-    // Handle different result states (Suspense-style)
-    // NOTE: This is where the Suspense behavior comes from:
-    // - Loading atoms cause the getter to throw a Promise
-    // - Errored atoms cause the getter to throw the error
-    // The `select()` function captures these thrown values in result.promise/result.error
-
+    // Handle Suspense-style states
     if (result.promise !== undefined) {
-      // Loading state - the selector threw a Promise (atom is loading)
-      // Throw the promise to trigger React Suspense
+      // Loading state - throw Promise
       throw result.promise;
     }
 
     if (result.error !== undefined) {
-      // Error state - throw the error to be caught by ErrorBoundary
-      // This propagates the error up to the nearest ErrorBoundary
+      // Error state - throw error
       throw result.error;
     }
 
     // Success - check equality and update cache
-    const newValue = result.value;
+    const newValue = result.value as T;
 
     if (
       !snapshotRef.current.initialized ||
@@ -274,20 +211,14 @@ export function useValue<T>(
 
   /**
    * Subscribe to atom changes.
-   * Called by React after commit to set up subscriptions.
-   * We subscribe to the dependencies collected during getSnapshot.
    */
   const subscribe = useCallback((onStoreChange: () => void) => {
     const subscriptions = subscriptionsRef.current;
 
-    /**
-     * Updates subscriptions based on current dependencies.
-     * Called initially and after each re-render to sync subscriptions.
-     */
     const updateSubscriptions = () => {
       const currentDeps = dependenciesRef.current;
 
-      // Unsubscribe from atoms that are no longer dependencies
+      // Unsubscribe from atoms no longer dependencies
       for (const [atom, unsubscribe] of subscriptions) {
         if (!currentDeps.has(atom)) {
           unsubscribe();
@@ -299,14 +230,14 @@ export function useValue<T>(
       for (const atom of currentDeps) {
         if (!subscriptions.has(atom)) {
           const unsubscribe = atom.on(() => {
-            // Re-run selector to update dependencies and check equality
+            // Re-run selector to update dependencies
             const result = select(selectorRef.current);
             dependenciesRef.current = result.dependencies;
 
             // Update subscriptions if dependencies changed
             updateSubscriptions();
 
-            // Notify React of potential change
+            // Notify React
             onStoreChange();
           });
           subscriptions.set(atom, unsubscribe);
@@ -326,6 +257,5 @@ export function useValue<T>(
     };
   }, []);
 
-  // Use React's useSyncExternalStore for concurrent mode support
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
