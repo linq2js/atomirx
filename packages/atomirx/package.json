@@ -16,7 +16,7 @@
     "url": "https://github.com/linq2js/atomirx"
   },
   "homepage": "https://github.com/linq2js/atomirx",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "main": "./dist/atomirx.umd.cjs",
   "module": "./dist/atomirx.js",
