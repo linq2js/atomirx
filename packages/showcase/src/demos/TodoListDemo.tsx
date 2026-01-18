@@ -1,5 +1,5 @@
 import { useState, useEffect, Suspense, useCallback, useRef } from "react";
-import { atom, derived, define, DerivedAtom } from "atomirx";
+import { atom, derived, define, DerivedAtom, onCreateHook } from "atomirx";
 import { useValue } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
@@ -26,6 +26,29 @@ interface Todo {
   completed: boolean;
 }
 
+declare module "atomirx" {
+  interface MutableAtomMeta {
+    /** Whether the atom is persisted to local storage */
+    persisted?: boolean;
+  }
+}
+
+onCreateHook.override((prev) => (info) => {
+  prev?.(info);
+  if (info.type === "mutable" && info.meta?.persisted && info.meta?.key) {
+    const key = `todo-app-demo-${info.meta.key}`;
+    if (!info.atom.dirty()) {
+      const value = localStorage.getItem(key);
+      if (value) {
+        info.atom.set(JSON.parse(value));
+      }
+    }
+    info.atom.on(() => {
+      localStorage.setItem(key, JSON.stringify(info.atom.value));
+    });
+  }
+});
+
 type FilterType = "all" | "active" | "completed";
 
 // =============================================================================
@@ -51,7 +74,7 @@ const TodoListModule = define(() => {
   // atom() - stores local changes (optimistic updates, edits, etc.)
   const localTodoList$ = atom<Record<string, Partial<Todo>>>(
     {},
-    { meta: { key: "localTodos" } }
+    { meta: { key: "localTodos", persisted: true } }
   );
 
   // atom() - stores the current filter

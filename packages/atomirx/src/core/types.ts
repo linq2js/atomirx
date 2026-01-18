@@ -96,7 +96,7 @@ export interface Atom<T> {
  * ```
  */
 export interface MutableAtom<T> extends Atom<T>, Pipeable {
-  /** Reset atom to its initial state */
+  /** Reset atom to its initial state (also clears dirty flag) */
   reset(): void;
   /**
    * Update the atom's value.
@@ -104,6 +104,28 @@ export interface MutableAtom<T> extends Atom<T>, Pipeable {
    * @param value - New value or reducer function (prev) => newValue
    */
   set(value: T | ((prev: T) => T)): void;
+  /**
+   * Returns `true` if the value has changed since initialization or last `reset()`.
+   *
+   * Useful for:
+   * - Tracking unsaved changes
+   * - Enabling/disabling save buttons
+   * - Detecting form modifications
+   *
+   * @example
+   * ```ts
+   * const form$ = atom({ name: "", email: "" });
+   *
+   * form$.dirty(); // false - just initialized
+   *
+   * form$.set({ name: "John", email: "" });
+   * form$.dirty(); // true - value changed
+   *
+   * form$.reset();
+   * form$.dirty(); // false - reset clears dirty flag
+   * ```
+   */
+  dirty(): boolean;
 }
 
 /**
@@ -195,10 +217,14 @@ export type SettledResult<T> =
  */
 export interface AtomOptions<T> {
   /** Optional metadata for the atom */
-  meta?: AtomMeta;
+  meta?: MutableAtomMeta;
   /** Equality strategy for change detection (default: "strict") */
   equals?: Equality<T>;
 }
+
+export interface MutableAtomMeta extends AtomMeta {}
+
+export interface DerivedAtomMeta extends AtomMeta {}
 
 /**
  * Configuration options for creating a derived atom.
@@ -207,7 +233,7 @@ export interface AtomOptions<T> {
  */
 export interface DerivedOptions<T> {
   /** Optional metadata for the atom */
-  meta?: AtomMeta;
+  meta?: DerivedAtomMeta;
   /** Equality strategy for change detection (default: "strict") */
   equals?: Equality<T>;
 }

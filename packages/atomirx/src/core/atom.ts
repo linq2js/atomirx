@@ -84,6 +84,9 @@ export function atom<T>(
   // Current value
   let value: T = initialValue;
 
+  // Track if value has changed since init/reset
+  let isDirty = false;
+
   isPromiseLike(value) && trackPromise(value);
 
   /**
@@ -116,15 +119,40 @@ export function atom<T>(
     }
 
     value = nextValue;
+    isDirty = true;
     isPromiseLike(value) && trackPromise(value);
     notify();
   };
 
   /**
-   * Resets the atom to its initial value.
+   * Resets the atom to its initial value and clears dirty flag.
    */
   const reset = () => {
-    set(valueOrInit);
+    // Re-run initializer if function, otherwise use initial value
+    const nextValue: T =
+      typeof valueOrInit === "function"
+        ? (valueOrInit as () => T)()
+        : valueOrInit;
+
+    // Track promise if needed
+    isPromiseLike(nextValue) && trackPromise(nextValue);
+
+    // Check if value actually changed
+    const changed = !eq(nextValue, value);
+
+    value = nextValue;
+    isDirty = false; // Always clear dirty flag on reset
+
+    if (changed) {
+      notify();
+    }
+  };
+
+  /**
+   * Returns true if the value has changed since initialization or last reset().
+   */
+  const dirty = (): boolean => {
+    return isDirty;
   };
 
   // Create the atom object
@@ -141,6 +169,7 @@ export function atom<T>(
 
     set,
     reset,
+    dirty,
 
     /**
      * Subscribe to value changes.

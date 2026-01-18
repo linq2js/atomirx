@@ -32,13 +32,14 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
     - [Design Philosophy](#design-philosophy)
   - [What's Included](#whats-included)
     - [Core](#core)
-    - [React Bindings (\`\atomirx/react`)](#react-bindings-atomirxreact)
+    - [React Bindings (`atomirx/react`)](#react-bindings-atomirxreact)
   - [Getting Started](#getting-started)
     - [Basic Example: Counter](#basic-example-counter)
     - [React Example: Todo App](#react-example-todo-app)
   - [Code Conventions](#code-conventions)
     - [Naming: The `$` Suffix](#naming-the--suffix)
     - [When to Use Each Primitive](#when-to-use-each-primitive)
+    - [Atom Storage: Stable Scopes Only](#atom-storage-stable-scopes-only)
     - [Complete Example: Todo App with Async](#complete-example-todo-app-with-async)
   - [Usage Guide](#usage-guide)
     - [Atoms: The Foundation](#atoms-the-foundation)
@@ -55,16 +56,23 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
     - [Effects: Side Effect Management](#effects-side-effect-management)
       - [Basic Effects](#basic-effects)
       - [Effects with Cleanup](#effects-with-cleanup)
+      - [Effects with Error Handling](#effects-with-error-handling)
       - [Effects with Multiple Dependencies](#effects-with-multiple-dependencies)
     - [Async Patterns](#async-patterns)
       - [`all()` - Wait for All (like Promise.all)](#all---wait-for-all-like-promiseall)
-      - [`any()` - First Resolved (like Promise.any)](#any---first-resolved-like-promiseany)
+      - [`any()` - First Ready (like Promise.any)](#any---first-ready-like-promiseany)
       - [`race()` - First Settled (like Promise.race)](#race---first-settled-like-promiserace)
       - [`settled()` - All Results (like Promise.allSettled)](#settled---all-results-like-promiseallsettled)
       - [Async Utility Summary](#async-utility-summary)
     - [Batching Updates](#batching-updates)
     - [Event System](#event-system)
     - [Dependency Injection](#dependency-injection)
+    - [Atom Metadata and Middleware](#atom-metadata-and-middleware)
+      - [Extending AtomMeta with TypeScript](#extending-atommeta-with-typescript)
+      - [Using onCreateHook for Middleware](#using-oncreatehook-for-middleware)
+      - [Creating Persisted Atoms](#creating-persisted-atoms)
+      - [Multiple Middleware Example](#multiple-middleware-example)
+      - [Hook Info Types](#hook-info-types)
   - [React Integration](#react-integration)
     - [useValue Hook](#usevalue-hook)
       - [Custom Equality](#custom-equality)
@@ -79,7 +87,7 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
     - [Core API](#core-api)
       - [`atom<T>(initialValue, options?)`](#atomtinitialvalue-options)
       - [`derived<T>(selector)`](#derivedtselector)
-      - [`effect(fn)`](#effectfn)
+      - [`effect(fn, options?)`](#effectfn-options)
       - [`batch(fn)`](#batchfn)
       - [`emitter<T>()`](#emittert)
       - [`define<T>(factory, options?)`](#definetfactory-options)
@@ -964,6 +972,195 @@ counterStore.override(() => ({
 
 // Reset to original implementation
 counterStore.reset();
+```
+
+### Atom Metadata and Middleware
+
+atomirx supports custom metadata on atoms via the `meta` option. Combined with `onCreateHook`, you can implement cross-cutting concerns like persistence, logging, or validation.
+
+#### Extending AtomMeta with TypeScript
+
+Use TypeScript's module augmentation to add custom properties to `AtomMeta`:
+
+```typescript
+// Extend the meta interfaces with your custom properties
+declare module "atomirx" {
+  // MutableAtomMeta - for atom() specific options
+  interface MutableAtomMeta {
+    /** Whether the atom should be persisted to localStorage */
+    persisted?: boolean;
+    /**
+     * Custom validation function.
+     * Return true to allow the update, false to reject it.
+     */
+    validate?: (value: unknown) => boolean;
+    /** Optional error handler for validation failures */
+    onValidationError?: (value: unknown, key?: string) => void;
+  }
+
+  // DerivedAtomMeta - for derived() specific options
+  interface DerivedAtomMeta {
+    /** Custom cache key for memoization */
+    cacheKey?: string;
+  }
+
+  // AtomMeta - base type, shared by both (key, etc.)
+  // interface AtomMeta { ... }
+}
+```
+
+#### Using onCreateHook for Middleware
+
+The `onCreateHook` fires whenever an atom or module is created. Use the reducer pattern to compose multiple middlewares:
+
+```typescript
+import { onCreateHook } from "atomirx";
+
+// Persistence middleware
+onCreateHook.override((prev) => (info) => {
+  // Call previous middleware first (composition)
+  prev?.(info);
+
+  // Only handle mutable atoms with persisted flag
+  if (info.type === "mutable" && info.meta?.persisted && info.meta?.key) {
+    const storageKey = `my-app-${info.meta.key}`;
+
+    // Restore from localStorage on creation (if not dirty)
+    if (!info.atom.dirty()) {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        try {
+          info.atom.set(JSON.parse(stored));
+        } catch {
+          // Invalid JSON, ignore
+        }
+      }
+    }
+
+    // Save to localStorage on every change
+    info.atom.on(() => {
+      localStorage.setItem(storageKey, JSON.stringify(info.atom.value));
+    });
+  }
+});
+```
+
+#### Creating Persisted Atoms
+
+Now atoms with `persisted: true` automatically sync with localStorage:
+
+```typescript
+// This atom will persist across page reloads
+const settings$ = atom(
+  { theme: "dark", language: "en" },
+  { meta: { key: "settings", persisted: true } }
+);
+
+// Changes are automatically saved
+settings$.set({ theme: "light", language: "en" });
+
+// On next page load, value is restored from localStorage
+```
+
+#### Multiple Middleware Example
+
+Compose multiple middlewares using the reducer pattern:
+
+```typescript
+// Logging middleware
+onCreateHook.override((prev) => (info) => {
+  prev?.(info);
+  console.log(
+    `[atomirx] Created ${info.type}: ${info.meta?.key ?? "anonymous"}`
+  );
+});
+
+// Validation middleware - wraps set() to validate before applying
+onCreateHook.override((prev) => (info) => {
+  prev?.(info);
+
+  if (info.type === "mutable" && info.meta?.validate) {
+    const validate = info.meta.validate;
+    const originalSet = info.atom.set.bind(info.atom);
+
+    // Wrap set() with validation
+    info.atom.set = (valueOrReducer) => {
+      // Resolve the next value (handle both direct value and reducer)
+      const nextValue =
+        typeof valueOrReducer === "function"
+          ? (valueOrReducer as (prev: unknown) => unknown)(info.atom.value)
+          : valueOrReducer;
+
+      // Validate before applying
+      if (!validate(nextValue)) {
+        console.warn(
+          `[atomirx] Validation failed for ${info.meta?.key}`,
+          nextValue
+        );
+        return; // Reject the update
+      }
+
+      originalSet(valueOrReducer);
+    };
+  }
+});
+
+// Usage: atom with validation
+const age$ = atom(25, {
+  meta: {
+    key: "age",
+    validate: (value) =>
+      typeof value === "number" && value >= 0 && value <= 150,
+  },
+});
+
+age$.set(30); // OK
+age$.set(-5); // Rejected: "Validation failed for age"
+age$.set(200); // Rejected: "Validation failed for age"
+```
+
+> **Note:** This validation approach intercepts `set()` at runtime. For compile-time type safety, use TypeScript's type system. This pattern is useful for runtime constraints like ranges, formats, or business rules that can't be expressed in types.
+
+```typescript
+// DevTools middleware
+onCreateHook.override((prev) => (info) => {
+  prev?.(info);
+
+  if (info.type === "mutable" || info.type === "derived") {
+    // Register with your devtools
+    window.__ATOMIRX_DEVTOOLS__?.register(info);
+  }
+});
+```
+
+#### Hook Info Types
+
+The `onCreateHook` receives different info objects based on what's being created:
+
+```typescript
+// Mutable atom
+interface MutableAtomCreateInfo {
+  type: "mutable";
+  key: string | undefined;
+  meta: AtomMeta | undefined;
+  atom: MutableAtom<unknown>;
+}
+
+// Derived atom
+interface DerivedAtomCreateInfo {
+  type: "derived";
+  key: string | undefined;
+  meta: AtomMeta | undefined;
+  atom: DerivedAtom<unknown, boolean>;
+}
+
+// Module (from define())
+interface ModuleCreateInfo {
+  type: "module";
+  key: string | undefined;
+  meta: ModuleMeta | undefined;
+  module: unknown;
+}
 ```
 
 ## React Integration

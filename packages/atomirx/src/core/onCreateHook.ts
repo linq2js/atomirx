@@ -1,5 +1,11 @@
 import { hook } from "./hook";
-import { AtomMeta, MutableAtom, DerivedAtom, ModuleMeta } from "./types";
+import {
+  MutableAtomMeta,
+  DerivedAtomMeta,
+  MutableAtom,
+  DerivedAtom,
+  ModuleMeta,
+} from "./types";
 
 /**
  * Information provided when a mutable atom is created.
@@ -10,7 +16,7 @@ export interface MutableAtomCreateInfo {
   /** Optional key from atom options (for debugging/devtools) */
   key: string | undefined;
   /** Optional metadata from atom options */
-  meta: AtomMeta | undefined;
+  meta: MutableAtomMeta | undefined;
   /** The created mutable atom instance */
   atom: MutableAtom<unknown>;
 }
@@ -24,7 +30,7 @@ export interface DerivedAtomCreateInfo {
   /** Optional key from derived options (for debugging/devtools) */
   key: string | undefined;
   /** Optional metadata from derived options */
-  meta: AtomMeta | undefined;
+  meta: DerivedAtomMeta | undefined;
   /** The created derived atom instance */
   atom: DerivedAtom<unknown, boolean>;
 }

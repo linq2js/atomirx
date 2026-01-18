@@ -21,20 +21,26 @@ export {
 // Types
 export type {
   Atom,
+  AtomMeta,
   AtomOptions,
   AtomState,
   AtomValue,
   AnyAtom,
   DerivedAtom,
+  DerivedAtomMeta,
   DerivedOptions,
   EffectOptions,
   Equality,
   EqualityShorthand,
   Getter,
   MutableAtom,
+  MutableAtomMeta,
   Pipeable,
   SettledResult,
 } from "./core/types";
+
+export { onCreateHook } from "./core/onCreateHook";
+export type { AtomCreateInfo, ModuleCreateInfo } from "./core/onCreateHook";
 
 export type {
   SelectContext,

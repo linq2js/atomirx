@@ -122,6 +122,70 @@ describe("atom", () => {
     });
   });
 
+  describe("dirty", () => {
+    it("should return false when just initialized", () => {
+      const count$ = atom(42);
+      expect(count$.dirty()).toBe(false);
+    });
+
+    it("should return true after value is set", () => {
+      const count$ = atom(0);
+      expect(count$.dirty()).toBe(false);
+
+      count$.set(10);
+      expect(count$.dirty()).toBe(true);
+    });
+
+    it("should return false after reset", () => {
+      const count$ = atom(0);
+      count$.set(10);
+      expect(count$.dirty()).toBe(true);
+
+      count$.reset();
+      expect(count$.dirty()).toBe(false);
+    });
+
+    it("should stay dirty after multiple sets", () => {
+      const count$ = atom(0);
+      count$.set(1);
+      count$.set(2);
+      count$.set(3);
+      expect(count$.dirty()).toBe(true);
+    });
+
+    it("should not become dirty if set to same value (equality check)", () => {
+      const count$ = atom(42);
+      count$.set(42); // Same value, equality check prevents change
+      expect(count$.dirty()).toBe(false);
+    });
+
+    it("should work with objects and shallow equality", () => {
+      const obj$ = atom({ a: 1 }, { equals: "shallow" });
+      expect(obj$.dirty()).toBe(false);
+
+      obj$.set({ a: 1 }); // Shallow equal, no change
+      expect(obj$.dirty()).toBe(false);
+
+      obj$.set({ a: 2 }); // Different value
+      expect(obj$.dirty()).toBe(true);
+
+      obj$.reset();
+      expect(obj$.dirty()).toBe(false);
+    });
+
+    it("should be useful for tracking unsaved changes", () => {
+      const form$ = atom({ name: "", email: "" });
+
+      expect(form$.dirty()).toBe(false); // No changes yet
+
+      form$.set({ name: "John", email: "" });
+      expect(form$.dirty()).toBe(true); // Has unsaved changes
+
+      form$.reset();
+      expect(form$.dirty()).toBe(false); // Changes discarded
+    });
+  });
+
   describe("equality options", () => {
     it("should use strict equality by default", () => {
       const obj$ = atom({ a: 1 });
