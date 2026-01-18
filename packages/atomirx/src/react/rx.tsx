@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Atom, Equality } from "../core/types";
-import { useSelector } from "./useSelector";
+import { useValue } from "./useValue";
 import { shallowEqual } from "../core/equality";
 import { isAtom } from "../core/isAtom";
 import { ContextSelectorFn } from "../core/select";
@@ -8,7 +8,7 @@ import { ContextSelectorFn } from "../core/select";
 /**
  * Reactive inline component that renders atom values directly in JSX.
  *
- * `rx` is a convenience wrapper around `useSelector` that returns a memoized
+ * `rx` is a convenience wrapper around `useValue` that returns a memoized
  * React component instead of a value. This enables fine-grained reactivity
  * without creating separate components for each reactive value.
  *
@@ -17,7 +17,7 @@ import { ContextSelectorFn } from "../core/select";
  * Without `rx`, you need a separate component to subscribe to an atom:
  * ```tsx
  * function PostsList() {
- *   const posts = useSelector(postsAtom);
+ *   const posts = useValue(postsAtom);
  *   return posts.map((post) => <Post post={post} />);
  * }
  *
@@ -54,7 +54,7 @@ import { ContextSelectorFn } from "../core/select";
  *
  * ## Async Atoms (Suspense-Style API)
  *
- * `rx` inherits the Suspense-style API from `useSelector`:
+ * `rx` inherits the Suspense-style API from `useValue`:
  * - **Loading state**: The getter throws a Promise (triggers Suspense)
  * - **Error state**: The getter throws the error (triggers ErrorBoundary)
  * - **Resolved state**: The getter returns the value
@@ -238,7 +238,7 @@ export function rx<T>(selector: ContextSelectorFn<T>, equals?: Equality<T>): T;
 
 export function rx<T>(
   selectorOrAtom: ContextSelectorFn<T> | Atom<T, any>,
-  equals?: Equality<T>
+  equals?: Equality<T>,
 ): T {
   return (
     <Rx selectorOrAtom={selectorOrAtom} equals={equals} />
@@ -265,10 +265,10 @@ const Rx = memo(
       ? ({ get }) => get(props.selectorOrAtom as Atom<any, any>)
       : (props.selectorOrAtom as ContextSelectorFn<any>);
 
-    const selected = useSelector(selector, props.equals);
+    const selected = useValue(selector, props.equals);
     return <>{selected ?? null}</>;
   },
   (prev, next) =>
     shallowEqual(prev.selectorOrAtom, next.selectorOrAtom) &&
-    prev.equals === next.equals
+    prev.equals === next.equals,
 );

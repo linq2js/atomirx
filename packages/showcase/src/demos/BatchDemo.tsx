@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { atom, batch } from "atomirx";
-import { useSelector } from "atomirx/react";
+import { useValue } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
@@ -14,10 +14,10 @@ const atomC = atom(0, { key: "atomC" });
 
 export function BatchDemo() {
   // Shorthand: pass atom directly to get its value
-  const counter = useSelector(counterAtom);
-  const a = useSelector(atomA);
-  const b = useSelector(atomB);
-  const c = useSelector(atomC);
+  const counter = useValue(counterAtom);
+  const a = useValue(atomA);
+  const b = useValue(atomB);
+  const c = useValue(atomC);
 
   const { log, clear } = useEventLog();
   const [notificationCount, setNotificationCount] = useState(0);
@@ -42,7 +42,7 @@ export function BatchDemo() {
       setSharedListenerCount(sharedListenerCountRef.current);
       log(
         `Shared listener called (A=${atomA.value}, B=${atomB.value}, C=${atomC.value})`,
-        "info"
+        "info",
       );
     };
 
@@ -433,7 +433,6 @@ batch(() => {
           </p>
         </div>
       </div>
-
     </div>
   );
 }

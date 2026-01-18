@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Suspense, useRef } from "react";
 import { atom, MutableAtom } from "atomirx";
-import { useSelector } from "atomirx/react";
+import { useValue } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { StatusBadge } from "../components/StatusBadge";
@@ -27,7 +27,7 @@ const fetchUser = (shouldFail = false): Promise<User> =>
   });
 
 /**
- * Component that uses useSelector with async atom.
+ * Component that uses useValue with async atom.
  * This will suspend while loading and throw on error.
  * MUST be wrapped with Suspense and ErrorBoundary.
  */
@@ -36,10 +36,10 @@ function UserDisplay({
 }: {
   userAtom: ReturnType<typeof atom<User>>;
 }) {
-  // useSelector throws Promise while loading (triggers Suspense)
-  // useSelector throws Error on rejection (triggers ErrorBoundary)
+  // useValue throws Promise while loading (triggers Suspense)
+  // useValue throws Error on rejection (triggers ErrorBoundary)
   // Shorthand: pass atom directly to get its value
-  const user = useSelector(userAtom);
+  const user = useValue(userAtom);
 
   return (
     <div className="flex items-center gap-3 text-emerald-400">
@@ -53,7 +53,7 @@ function UserDisplay({
 }
 
 /**
- * Component that uses useSelector with fallback atom.
+ * Component that uses useValue with fallback atom.
  * With fallback, value is always available (fallback during loading/error).
  * stale() indicates if the value is from fallback or previous value.
  */
@@ -65,7 +65,7 @@ function UserWithFallbackDisplay({
   onStaleChange: (stale: boolean) => void;
 }) {
   // Shorthand: pass atom directly to get its value
-  const user = useSelector(userAtom);
+  const user = useValue(userAtom);
   const isStale = userAtom.stale();
 
   // Report stale status to parent
@@ -154,7 +154,7 @@ export function AsyncAtomDemo() {
 
   // Track status for UI display (outside Suspense boundary)
   const [userStatus, setUserStatus] = useState<"loading" | "success" | "error">(
-    "loading"
+    "loading",
   );
   const [fallbackStale, setFallbackStale] = useState(true);
 
@@ -166,7 +166,7 @@ export function AsyncAtomDemo() {
   useEffect(() => {
     // Initial status
     setUserStatus(
-      userAtom.loading ? "loading" : userAtom.error ? "error" : "success"
+      userAtom.loading ? "loading" : userAtom.error ? "error" : "success",
     );
     setFallbackStale(userWithFallbackAtom.stale());
 
@@ -174,21 +174,21 @@ export function AsyncAtomDemo() {
       const status = userAtom.loading
         ? "loading"
         : userAtom.error
-        ? "error"
-        : "success";
+          ? "error"
+          : "success";
       setUserStatus(status);
       logRef(
         `userAtom changed - loading: ${
           userAtom.loading
         }, error: ${!!userAtom.error}`,
-        userAtom.error ? "error" : userAtom.loading ? "warning" : "success"
+        userAtom.error ? "error" : userAtom.loading ? "warning" : "success",
       );
     });
     const unsub2 = userWithFallbackAtom.on(() => {
       setFallbackStale(userWithFallbackAtom.stale());
       logRef(
         `userWithFallbackAtom changed - stale: ${userWithFallbackAtom.stale()}`,
-        userWithFallbackAtom.stale() ? "warning" : "success"
+        userWithFallbackAtom.stale() ? "warning" : "success",
       );
     });
     return () => {
@@ -222,8 +222,8 @@ export function AsyncAtomDemo() {
         <h2 className="text-3xl font-bold text-gradient mb-2">Async Atom</h2>
         <p className="text-surface-400">
           Atoms seamlessly handle Promise values with built-in loading and error
-          states. Use with <code className="text-primary-400">useSelector</code>
-          , <code className="text-primary-400">Suspense</code>, and{" "}
+          states. Use with <code className="text-primary-400">useValue</code>,{" "}
+          <code className="text-primary-400">Suspense</code>, and{" "}
           <code className="text-primary-400">ErrorBoundary</code>.
         </p>
       </div>
@@ -232,18 +232,18 @@ export function AsyncAtomDemo() {
       <CodeBlock
         code={`
 import { atom } from "atomirx";
-import { useSelector } from "atomirx/react";
+import { useValue } from "atomirx/react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 
 // Async initial value
 const userAtom = atom(fetchUser());
 
-// Component using useSelector (MUST be wrapped with Suspense + ErrorBoundary)
+// Component using useValue (MUST be wrapped with Suspense + ErrorBoundary)
 function UserDisplay() {
   // Suspends while loading, throws on error
   // Shorthand: pass atom directly
-  const user = useSelector(userAtom);
+  const user = useValue(userAtom);
   return <div>{user.name}</div>;
 }
 
@@ -269,7 +269,7 @@ console.log(userAtom.stale()); // true during loading/error
       {/* Basic Async Demo with Suspense */}
       <DemoSection
         title="Basic Async Atom (with Suspense)"
-        description="useSelector suspends while loading and throws on error. Wrap with Suspense and ErrorBoundary."
+        description="useValue suspends while loading and throws on error. Wrap with Suspense and ErrorBoundary."
       >
         <div className="space-y-4">
           <div className="flex items-center gap-3 mb-4">
@@ -281,8 +281,8 @@ console.log(userAtom.stale()); // true during loading/error
 
           <div className="p-4 bg-surface-800/50 rounded-lg">
             {/* 
-              ErrorBoundary catches errors thrown by useSelector
-              Suspense catches promises thrown by useSelector during loading
+              ErrorBoundary catches errors thrown by useValue
+              Suspense catches promises thrown by useValue during loading
             */}
             <ErrorBoundary
               key={errorBoundaryKey}
@@ -329,7 +329,7 @@ console.log(userAtom.stale()); // true during loading/error
           <div className="p-3 bg-primary-500/10 border border-primary-500/30 rounded-lg">
             <p className="text-sm text-primary-300">
               <strong>Note:</strong> The <code>UserDisplay</code> component uses{" "}
-              <code>useSelector(userAtom)</code> which throws a Promise while
+              <code>useValue(userAtom)</code> which throws a Promise while
               loading (caught by Suspense) and throws an Error on rejection
               (caught by ErrorBoundary).
             </p>
@@ -354,7 +354,7 @@ console.log(userAtom.stale()); // true during loading/error
 
           <div className="p-4 bg-surface-800/50 rounded-lg">
             {/* 
-              With fallback, useSelector never throws - it returns the fallback value.
+              With fallback, useValue never throws - it returns the fallback value.
               We still wrap with Suspense/ErrorBoundary for safety.
             */}
             <ErrorBoundary
@@ -383,7 +383,7 @@ console.log(userAtom.stale()); // true during loading/error
           <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
             <p className="text-sm text-amber-300">
               <strong>Note:</strong> With <code>fallback</code> option,{" "}
-              <code>useSelector</code> returns the fallback value during
+              <code>useValue</code> returns the fallback value during
               loading/error instead of suspending. Use <code>atom.stale()</code>{" "}
               to check if the value is stale.
             </p>

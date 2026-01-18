@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { atom } from "atomirx";
-import { useSelector } from "atomirx/react";
+import { useValue } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
@@ -12,8 +12,8 @@ const nameAtom = atom("atomirx", { key: "name" });
 
 export function BasicAtomDemo() {
   // Shorthand: pass atom directly to get its value
-  const count = useSelector(countAtom);
-  const name = useSelector(nameAtom);
+  const count = useValue(countAtom);
+  const name = useValue(nameAtom);
   const { log } = useEventLog();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -67,13 +67,13 @@ export function BasicAtomDemo() {
       <CodeBlock
         code={`
 import { atom } from "atomirx";
-import { useSelector } from "atomirx/react";
+import { useValue } from "atomirx/react";
 
 // Create an atom with initial value
 const countAtom = atom(0);
 
 // In your component (shorthand: pass atom directly)
-const count = useSelector(countAtom);
+const count = useValue(countAtom);
 
 // Update the atom
 countAtom.set(5);           // Direct value
@@ -109,7 +109,10 @@ countAtom.reset();          // Reset to initial value
           </div>
 
           <div className="flex justify-center gap-3">
-            <button onClick={reset} className="btn-secondary flex items-center gap-2">
+            <button
+              onClick={reset}
+              className="btn-secondary flex items-center gap-2"
+            >
               <RotateCcw className="w-4 h-4" />
               Reset
             </button>
@@ -141,7 +144,10 @@ countAtom.reset();          // Reset to initial value
               placeholder="Enter a name"
               className="input flex-1"
             />
-            <button onClick={updateName} className="btn-primary flex items-center gap-2">
+            <button
+              onClick={updateName}
+              className="btn-primary flex items-center gap-2"
+            >
               <Edit3 className="w-4 h-4" />
               Update
             </button>
@@ -163,13 +169,17 @@ countAtom.reset();          // Reset to initial value
           </p>
         </div>
         <div className="card">
-          <h4 className="font-semibold text-surface-100 mb-2">Equality Check</h4>
+          <h4 className="font-semibold text-surface-100 mb-2">
+            Equality Check
+          </h4>
           <p className="text-sm text-surface-400">
             Configurable equality for smart re-render prevention.
           </p>
         </div>
         <div className="card">
-          <h4 className="font-semibold text-surface-100 mb-2">Dirty Tracking</h4>
+          <h4 className="font-semibold text-surface-100 mb-2">
+            Dirty Tracking
+          </h4>
           <p className="text-sm text-surface-400">
             Know if atom has been modified since creation.
           </p>

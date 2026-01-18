@@ -1,16 +1,24 @@
 import { atom } from "atomirx";
-import { useAction, useSelector } from "atomirx/react";
+import { useAction, useValue } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { StatusBadge } from "../components/StatusBadge";
 import { useEventLog } from "../App";
-import { Play, Square, RefreshCw, Loader2, CheckCircle, AlertCircle, Clock } from "lucide-react";
+import {
+  Play,
+  Square,
+  RefreshCw,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+} from "lucide-react";
 
 // Simulated API calls
 const fetchData = async (
   signal: AbortSignal,
   delay = 2000,
-  shouldFail = false
+  shouldFail = false,
 ): Promise<{ id: number; data: string }> => {
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(resolve, delay);
@@ -35,7 +43,7 @@ const userIdAtom = atom(1, { key: "userId" });
 
 export function UseActionDemo() {
   // Shorthand: pass atom directly to get its value
-  const userId = useSelector(userIdAtom);
+  const userId = useValue(userIdAtom);
   const { log } = useEventLog();
 
   // Basic manual dispatch (lazy: true by default)
@@ -48,7 +56,7 @@ export function UseActionDemo() {
     async ({ signal }) => {
       return fetchData(signal, 3000);
     },
-    { exclusive: false }
+    { exclusive: false },
   );
 
   // Auto-dispatch with deps (lazy: false)
@@ -56,7 +64,7 @@ export function UseActionDemo() {
     async ({ signal }) => {
       return fetchData(signal, 1500);
     },
-    { lazy: false, deps: [userIdAtom] }
+    { lazy: false, deps: [userIdAtom] },
   );
 
   // Sync action
@@ -74,7 +82,9 @@ export function UseActionDemo() {
     }
   };
 
-  const getStatusFromAction = (action: { status: string }): "idle" | "loading" | "success" | "error" => {
+  const getStatusFromAction = (action: {
+    status: string;
+  }): "idle" | "loading" | "success" | "error" => {
     return action.status as "idle" | "loading" | "success" | "error";
   };
 
@@ -146,7 +156,9 @@ const autoFetch = useAction(
             {basicAction.status === "success" && (
               <div className="flex items-center gap-2 text-emerald-400">
                 <CheckCircle className="w-5 h-5" />
-                <pre className="text-sm">{JSON.stringify(basicAction.result, null, 2)}</pre>
+                <pre className="text-sm">
+                  {JSON.stringify(basicAction.result, null, 2)}
+                </pre>
               </div>
             )}
             {basicAction.status === "error" && (
@@ -219,8 +231,9 @@ const autoFetch = useAction(
           </div>
 
           <p className="text-sm text-surface-400">
-            With <code className="text-primary-400">exclusive: false</code>, multiple dispatches
-            can run in parallel. Use <code className="text-primary-400">abort()</code> to cancel.
+            With <code className="text-primary-400">exclusive: false</code>,
+            multiple dispatches can run in parallel. Use{" "}
+            <code className="text-primary-400">abort()</code> to cancel.
           </p>
         </div>
       </DemoSection>
@@ -267,14 +280,16 @@ const autoFetch = useAction(
               </div>
             ) : autoAction.status === "success" ? (
               <div className="text-emerald-400">
-                <pre className="text-sm">{JSON.stringify(autoAction.result, null, 2)}</pre>
+                <pre className="text-sm">
+                  {JSON.stringify(autoAction.result, null, 2)}
+                </pre>
               </div>
             ) : null}
           </div>
 
           <p className="text-sm text-surface-400">
-            Change the User ID to trigger an automatic re-fetch. Previous requests are
-            automatically aborted.
+            Change the User ID to trigger an automatic re-fetch. Previous
+            requests are automatically aborted.
           </p>
         </div>
       </DemoSection>
@@ -292,7 +307,10 @@ const autoFetch = useAction(
           <div className="p-4 bg-surface-800/50 rounded-lg">
             {syncAction.status === "success" && (
               <p className="text-emerald-400">
-                Computed: {(syncAction.result as { computed: number })?.computed.toFixed(2)}
+                Computed:{" "}
+                {(syncAction.result as { computed: number })?.computed.toFixed(
+                  2,
+                )}
               </p>
             )}
           </div>
@@ -316,9 +334,12 @@ const autoFetch = useAction(
           </p>
         </div>
         <div className="card">
-          <h4 className="font-semibold text-surface-100 mb-2">Stale Prevention</h4>
+          <h4 className="font-semibold text-surface-100 mb-2">
+            Stale Prevention
+          </h4>
           <p className="text-sm text-surface-400">
-            Outdated results are automatically ignored when a new dispatch starts.
+            Outdated results are automatically ignored when a new dispatch
+            starts.
           </p>
         </div>
       </div>

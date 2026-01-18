@@ -228,6 +228,7 @@ export function atom<TValue>(
     const error = state.getError();
     const promise = state.getPromise();
 
+    // reducer
     if (typeof value === "function") {
       try {
         const reducer = value as (prev: Awaited<TValue>) => Awaited<TValue>;

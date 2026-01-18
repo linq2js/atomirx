@@ -22,7 +22,7 @@ import { isAtom } from "../core/isAtom";
  * - **You MUST wrap components using async atoms with `<ErrorBoundary>`** to handle errors
  * - Without these boundaries, thrown promises/errors will propagate up and crash your app
  *
- * ## When to Use useSelector
+ * ## When to Use useValue
  *
  * ✅ **Good for:**
  * - Synchronous atoms (no async initial value)
@@ -66,7 +66,7 @@ import { isAtom } from "../core/isAtom";
  *
  * function Counter() {
  *   // Shorthand: pass atom directly to get its value
- *   const value = useSelector(count);
+ *   const value = useValue(count);
  *   return <div>{value}</div>;
  * }
  * ```
@@ -76,7 +76,7 @@ import { isAtom } from "../core/isAtom";
  * const count = atom(5);
  *
  * function Counter() {
- *   const doubled = useSelector(({ get }) => get(count) * 2);
+ *   const doubled = useValue(({ get }) => get(count) * 2);
  *   return <div>{doubled}</div>;
  * }
  * ```
@@ -87,7 +87,7 @@ import { isAtom } from "../core/isAtom";
  * const lastName = atom("Doe");
  *
  * function FullName() {
- *   const fullName = useSelector(({ get }) =>
+ *   const fullName = useValue(({ get }) =>
  *     `${get(firstName)} ${get(lastName)}`
  *   );
  *   return <div>{fullName}</div>;
@@ -100,7 +100,7 @@ import { isAtom } from "../core/isAtom";
  *
  * function UserName() {
  *   // Only re-render when name actually changes (shallow comparison)
- *   const name = useSelector(({ get }) => get(user)?.name, "shallow");
+ *   const name = useValue(({ get }) => get(user)?.name, "shallow");
  *   return <div>{name}</div>;
  * }
  * ```
@@ -113,7 +113,7 @@ import { isAtom } from "../core/isAtom";
  *
  * function UserInfo() {
  *   // Only subscribes to showDetails + the accessed info atom
- *   const info = useSelector(({ get }) =>
+ *   const info = useValue(({ get }) =>
  *     get(showDetails) ? get(detailedInfo) : get(basicInfo)
  *   );
  *   return <div>{info.name}</div>;
@@ -126,7 +126,7 @@ import { isAtom } from "../core/isAtom";
  *
  * function UserProfile() {
  *   // This will suspend until the atom resolves
- *   const user = useSelector(({ get }) => get(userAtom));
+ *   const user = useValue(({ get }) => get(userAtom));
  *   return <div>{user.name}</div>;
  * }
  *
@@ -148,7 +148,7 @@ import { isAtom } from "../core/isAtom";
  * const postsAtom = atom(fetchPosts());
  *
  * function Dashboard() {
- *   const data = useSelector(({ all }) => {
+ *   const data = useValue(({ all }) => {
  *     // Use all() to wait for multiple atoms
  *     const [user, posts] = all([userAtom, postsAtom]);
  *     return { user, posts };
@@ -164,7 +164,7 @@ import { isAtom } from "../core/isAtom";
  * const postsAtom = atom(fetchPosts());
  *
  * function Dashboard() {
- *   const data = useSelector(({ settled }) => {
+ *   const data = useValue(({ settled }) => {
  *     const [userResult, postsResult] = settled([userAtom, postsAtom]);
  *     return {
  *       user: userResult.status === 'resolved' ? userResult.value : null,
@@ -182,7 +182,7 @@ import { isAtom } from "../core/isAtom";
  * const apiAtom = atom(fetchFromApi());
  *
  * function Data() {
- *   const [source, data] = useSelector(({ race }) =>
+ *   const [source, data] = useValue(({ race }) =>
  *     race({ cache: cacheAtom, api: apiAtom })
  *   );
  *   return <div>Data from {source}: {data}</div>;
@@ -190,18 +190,18 @@ import { isAtom } from "../core/isAtom";
  * ```
  */
 // Overload: Pass atom directly to get its value
-export function useSelector<T>(
+export function useValue<T>(
   atom: Atom<T, any>,
   equals?: Equality<T>
 ): T;
 
 // Overload: Context-based selector function
-export function useSelector<T>(
+export function useValue<T>(
   selector: ContextSelectorFn<T>,
   equals?: Equality<T>
 ): T;
 
-export function useSelector<T>(
+export function useValue<T>(
   selectorOrAtom: ContextSelectorFn<T> | Atom<T, any>,
   equals?: Equality<T>
 ): T {

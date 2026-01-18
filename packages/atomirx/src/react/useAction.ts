@@ -1,6 +1,6 @@
 import { useReducer, useCallback, useRef, useEffect } from "react";
 import { isPromiseLike } from "../core/isPromiseLike";
-import { useSelector } from "./useSelector";
+import { useValue } from "./useValue";
 import { isAtom } from "../core/isAtom";
 
 /**
@@ -73,7 +73,7 @@ export interface UseActionOptions {
   /**
    * Dependencies array. When lazy is false, re-executes when deps change.
    * - Regular values: compared by reference (like useEffect deps)
-   * - Atoms: automatically tracked via useSelector, re-executes when atom values change
+   * - Atoms: automatically tracked via useValue, re-executes when atom values change
    * @default []
    */
   deps?: unknown[];
@@ -296,7 +296,7 @@ function reducer<T>(state: ActionState<T>, action: ReducerAction<T>): ActionStat
  *     { lazy: false, deps: [userIdAtom] }
  *   );
  *   // Automatically re-fetches when userIdAtom changes
- *   // Atoms in deps are tracked reactively via useSelector
+ *   // Atoms in deps are tracked reactively via useValue
  * }
  * ```
  *
@@ -471,7 +471,8 @@ export function useAction<TResult, TLazy extends boolean = true>(
   // Get atoms from deps for reactive tracking
   const atomDeps = (lazy ? [] : (options.deps ?? [])).filter(isAtom);
 
-  const selected = useSelector(({ get }) => {
+  // use useValue to track atom deps, no need to use returned value, just re-render when deps change
+  useValue(({ get }) => {
     return atomDeps.map((atom) => get(atom));
   });
 
@@ -556,7 +557,7 @@ export function useAction<TResult, TLazy extends boolean = true>(
       dispatch();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lazy, selected, ...deps]);
+  }, [lazy, ...deps]);
 
   // Cleanup on unmount
   useEffect(() => {

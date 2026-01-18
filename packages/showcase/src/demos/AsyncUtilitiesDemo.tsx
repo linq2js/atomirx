@@ -290,7 +290,7 @@ export function AsyncUtilitiesDemo() {
       {/* Code Example */}
       <CodeBlock
         code={`
-// Using SelectContext utilities in derived/useSelector/effect/rx
+// Using SelectContext utilities in derived/useValue/effect/rx
 
 // all() - Wait for all to resolve (like Promise.all)
 const dashboard = derived(({ all }) => {

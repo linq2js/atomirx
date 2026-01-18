@@ -1,4 +1,11 @@
-import { useState, useEffect, createContext, useContext, useCallback, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  createContext,
+  useContext,
+  useCallback,
+  useRef,
+} from "react";
 import {
   Atom,
   Zap,
@@ -20,7 +27,7 @@ import { AsyncAtomDemo } from "./demos/AsyncAtomDemo";
 import { DerivedAtomDemo } from "./demos/DerivedAtomDemo";
 import { BatchDemo } from "./demos/BatchDemo";
 import { UseActionDemo } from "./demos/UseActionDemo";
-import { UseSelectorDemo } from "./demos/UseSelectorDemo";
+import { useValueDemo } from "./demos/useValueDemo";
 import { AsyncUtilitiesDemo } from "./demos/AsyncUtilitiesDemo";
 
 type DemoId =
@@ -66,7 +73,7 @@ const navItems: NavItem[] = [
   },
   {
     id: "use-selector",
-    label: "useSelector",
+    label: "useValue",
     icon: <MousePointer className="w-4 h-4" />,
   },
   {
@@ -82,7 +89,7 @@ const demoComponents: Record<DemoId, React.ComponentType> = {
   derived: DerivedAtomDemo,
   batch: BatchDemo,
   "use-action": UseActionDemo,
-  "use-selector": UseSelectorDemo,
+  "use-selector": useValueDemo,
   "async-utils": AsyncUtilitiesDemo,
 };
 
@@ -119,15 +126,18 @@ function EventLogProvider({ children }: { children: React.ReactNode }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const idRef = useRef(0);
 
-  const log = useCallback((message: string, type: LogEntry["type"] = "info") => {
-    const entry: LogEntry = {
-      id: ++idRef.current,
-      message,
-      timestamp: new Date(),
-      type,
-    };
-    setLogs((prev) => [...prev, entry].slice(-100)); // Keep last 100
-  }, []);
+  const log = useCallback(
+    (message: string, type: LogEntry["type"] = "info") => {
+      const entry: LogEntry = {
+        id: ++idRef.current,
+        message,
+        timestamp: new Date(),
+        type,
+      };
+      setLogs((prev) => [...prev, entry].slice(-100)); // Keep last 100
+    },
+    [],
+  );
 
   const clear = useCallback(() => {
     setLogs([]);
@@ -195,7 +205,10 @@ function EventLogPanel() {
         ) : (
           <div className="p-2 space-y-1">
             {logs.map((log) => (
-              <div key={log.id} className="flex gap-2 animate-fade-in px-2 py-1 hover:bg-surface-800/30 rounded">
+              <div
+                key={log.id}
+                className="flex gap-2 animate-fade-in px-2 py-1 hover:bg-surface-800/30 rounded"
+              >
                 <span className="text-surface-600 shrink-0">
                   {log.timestamp.toLocaleTimeString()}
                 </span>
@@ -416,7 +429,9 @@ function App() {
           >
             <ScrollText className="w-4 h-4" />
             <span className="text-sm font-medium">Logs</span>
-            <ChevronDown className={`w-4 h-4 transition-transform ${logPanelOpen ? "rotate-180" : ""}`} />
+            <ChevronDown
+              className={`w-4 h-4 transition-transform ${logPanelOpen ? "rotate-180" : ""}`}
+            />
           </button>
         </div>
 

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { atom, derived } from "atomirx";
-import { useSelector } from "atomirx/react";
+import { useValue } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
@@ -14,17 +14,17 @@ const discountAtom = atom(0.1, { key: "discount" }); // 10%
 // Derived atoms
 const subtotalAtom = derived(
   [priceAtom, quantityAtom],
-  (getPrice, getQuantity) => getPrice() * getQuantity()
+  (getPrice, getQuantity) => getPrice() * getQuantity(),
 );
 
 const discountAmountAtom = derived(
   [subtotalAtom, discountAtom],
-  (getSubtotal, getDiscount) => getSubtotal() * getDiscount()
+  (getSubtotal, getDiscount) => getSubtotal() * getDiscount(),
 );
 
 const totalAtom = derived(
   [subtotalAtom, discountAmountAtom],
-  (getSubtotal, getDiscountAmount) => getSubtotal() - getDiscountAmount()
+  (getSubtotal, getDiscountAmount) => getSubtotal() - getDiscountAmount(),
 );
 
 // Conditional dependency example
@@ -32,25 +32,25 @@ const showDetailsAtom = atom(false, { key: "showDetails" });
 const basicInfoAtom = atom({ label: "Basic" }, { key: "basicInfo" });
 const detailedInfoAtom = atom(
   { label: "Detailed", extra: "More info here" },
-  { key: "detailedInfo" }
+  { key: "detailedInfo" },
 );
 
 const infoAtom = derived(
   [showDetailsAtom, basicInfoAtom, detailedInfoAtom],
   (getShowDetails, getBasicInfo, getDetailedInfo) =>
-    getShowDetails() ? getDetailedInfo() : getBasicInfo()
+    getShowDetails() ? getDetailedInfo() : getBasicInfo(),
 );
 
 export function DerivedAtomDemo() {
   // Shorthand: pass atom directly to get its value
-  const price = useSelector(priceAtom);
-  const quantity = useSelector(quantityAtom);
-  const discount = useSelector(discountAtom);
-  const subtotal = useSelector(subtotalAtom);
-  const discountAmount = useSelector(discountAmountAtom);
-  const total = useSelector(totalAtom);
-  const showDetails = useSelector(showDetailsAtom);
-  const info = useSelector(infoAtom);
+  const price = useValue(priceAtom);
+  const quantity = useValue(quantityAtom);
+  const discount = useValue(discountAtom);
+  const subtotal = useValue(subtotalAtom);
+  const discountAmount = useValue(discountAmountAtom);
+  const total = useValue(totalAtom);
+  const showDetails = useValue(showDetailsAtom);
+  const info = useValue(infoAtom);
 
   const { log } = useEventLog();
 
@@ -58,8 +58,12 @@ export function DerivedAtomDemo() {
     const unsubs = [
       priceAtom.on(() => log(`Price: $${priceAtom.value}`)),
       quantityAtom.on(() => log(`Quantity: ${quantityAtom.value}`)),
-      subtotalAtom.on(() => log(`Subtotal recalculated: $${subtotalAtom.value}`, "success")),
-      totalAtom.on(() => log(`Total recalculated: $${totalAtom.value?.toFixed(2)}`, "success")),
+      subtotalAtom.on(() =>
+        log(`Subtotal recalculated: $${subtotalAtom.value}`, "success"),
+      ),
+      totalAtom.on(() =>
+        log(`Total recalculated: $${totalAtom.value?.toFixed(2)}`, "success"),
+      ),
     ];
     return () => unsubs.forEach((u) => u());
   }, [log]);
@@ -160,12 +164,16 @@ const info = derived(
             <span className="text-surface-500">×</span>
             <div className="text-center">
               <p className="text-xs text-surface-500">Qty</p>
-              <p className="text-lg font-semibold text-primary-400">{quantity}</p>
+              <p className="text-lg font-semibold text-primary-400">
+                {quantity}
+              </p>
             </div>
             <ArrowRight className="w-4 h-4 text-surface-500" />
             <div className="text-center">
               <p className="text-xs text-surface-500">Subtotal</p>
-              <p className="text-lg font-semibold text-surface-100">${subtotal}</p>
+              <p className="text-lg font-semibold text-surface-100">
+                ${subtotal}
+              </p>
             </div>
             <span className="text-surface-500">-</span>
             <div className="text-center">
@@ -183,7 +191,10 @@ const info = derived(
             </div>
           </div>
 
-          <button onClick={randomize} className="btn-accent flex items-center gap-2">
+          <button
+            onClick={randomize}
+            className="btn-accent flex items-center gap-2"
+          >
             <Shuffle className="w-4 h-4" />
             Randomize Values
           </button>
@@ -222,12 +233,12 @@ const info = derived(
 
           <p className="text-sm text-surface-500">
             <Calculator className="w-4 h-4 inline mr-1" />
-            When unchecked, changes to <code className="text-primary-400">detailedInfoAtom</code> won't
+            When unchecked, changes to{" "}
+            <code className="text-primary-400">detailedInfoAtom</code> won't
             trigger recomputation.
           </p>
         </div>
       </DemoSection>
-
     </div>
   );
 }
