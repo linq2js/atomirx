@@ -243,10 +243,45 @@ export class AllAtomsRejectedError extends Error {
  * - **Re-throws Promises** to preserve Suspense behavior
  * - Returns `[undefined, result]` on success
  *
+ * ## IMPORTANT: SelectContext Methods Are Synchronous Only
+ *
+ * **All context methods (`get`, `all`, `race`, `any`, `settled`, `safe`) must be
+ * called synchronously during selector execution.** They cannot be used in async
+ * callbacks like `setTimeout`, `Promise.then`, or event handlers.
+ *
+ * ```ts
+ * // ❌ WRONG - Calling get() in async callback
+ * select(({ get }) => {
+ *   setTimeout(() => {
+ *     get(atom$); // Error: called outside selection context
+ *   }, 100);
+ *   return 'value';
+ * });
+ *
+ * // ❌ WRONG - Storing get() for later use
+ * let savedGet;
+ * select(({ get }) => {
+ *   savedGet = get; // Don't do this!
+ *   return get(atom$);
+ * });
+ * savedGet(atom$); // Error: called outside selection context
+ *
+ * // ✅ CORRECT - For async access, use atom.value directly
+ * effect(({ get }) => {
+ *   const config = get(config$);
+ *   setTimeout(async () => {
+ *     // Use atom.value for async access
+ *     const data = await asyncAtom$.value;
+ *     console.log(data);
+ *   }, 100);
+ * });
+ * ```
+ *
  * @template T - The type of the computed value
  * @param fn - Context-based selector function (must return sync value)
  * @returns SelectResult with value, error, promise, and dependencies
  * @throws Error if selector returns a Promise or PromiseLike
+ * @throws Error if context methods are called outside selection context
  *
  * @example
  * ```ts

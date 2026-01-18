@@ -44,6 +44,7 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
       - [The Problem with try/catch](#the-problem-with-trycatch)
       - [The Solution: safe()](#the-solution-safe)
       - [Use Cases for safe()](#use-cases-for-safe)
+    - [SelectContext Methods: Synchronous Only](#selectcontext-methods-synchronous-only)
     - [Complete Example: Todo App with Async](#complete-example-todo-app-with-async)
   - [Usage Guide](#usage-guide)
     - [Atoms: The Foundation](#atoms-the-foundation)
@@ -602,6 +603,53 @@ function UserProfile() {
   })}
 </Suspense>
 ```
+
+### SelectContext Methods: Synchronous Only
+
+All context methods (`get`, `all`, `race`, `any`, `settled`, `safe`) must be called **synchronously** during selector execution. They cannot be used in async callbacks like `setTimeout`, `Promise.then`, or event handlers.
+
+```typescript
+// ❌ WRONG - Calling get() in async callback
+derived(({ get }) => {
+  setTimeout(() => {
+    get(atom$); // Error: called outside selection context
+  }, 100);
+  return "value";
+});
+
+// ❌ WRONG - Storing get() for later use
+let savedGet;
+select(({ get }) => {
+  savedGet = get; // Don't do this!
+  return get(atom$);
+});
+savedGet(atom$); // Error: called outside selection context
+
+// ✅ CORRECT - For async access, use atom.value directly
+effect(({ get }) => {
+  const config = get(config$);
+
+  setTimeout(async () => {
+    // Use atom.value for async access (not tracked as dependency)
+    const data = myMutableAtom$.value;
+    const asyncData = await myDerivedAtom$.value;
+    console.log(data, asyncData);
+  }, 100);
+});
+```
+
+**Why this restriction?**
+
+1. **Dependency tracking**: Context methods track which atoms are accessed to know when to recompute. This tracking only works during synchronous execution.
+
+2. **Predictable behavior**: If `get()` could be called at any time, the reactive graph would be unpredictable and hard to debug.
+
+3. **Clear error messages**: Rather than silently failing to track dependencies, atomirx throws a helpful error explaining the issue.
+
+**For async access**, use `atom.value` directly:
+
+- `mutableAtom$.value` - Returns the raw value (may be a Promise)
+- `await derivedAtom$.value` - Returns a Promise that resolves to the computed value
 
 ### Complete Example: Todo App with Async
 
