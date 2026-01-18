@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback, useRef } from "react";
-import { select, ReactiveSelector } from "../core/select";
+import { select, ReactiveSelector, promisesEqual } from "../core/select";
 import { resolveEquality } from "../core/equality";
 import { getAtomState } from "../core/getAtomState";
 import { Atom, AtomState, Equality } from "../core/types";
@@ -123,7 +123,7 @@ export function useAsyncState<T>(
 
     if (result.promise !== undefined) {
       // Loading state
-      newState = { status: "loading", promise: result.promise };
+      newState = { status: "loading", promise: result.promise as Promise<T> };
     } else if (result.error !== undefined) {
       // Error state
       newState = { status: "error", error: result.error };
@@ -143,8 +143,8 @@ export function useAsyncState<T>(
         snapshotRef.current = newState;
       }
     } else if (newState.status === "loading" && prev.status === "loading") {
-      // For loading state, check promise identity
-      if (newState.promise !== prev.promise) {
+      // For loading state, compare promises (including combined promise metadata)
+      if (!promisesEqual(newState.promise, prev.promise)) {
         snapshotRef.current = newState;
       }
     } else if (newState.status === "error" && prev.status === "error") {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { atom } from "./atom";
-import { select } from "./select";
+import { select, promisesEqual } from "./select";
 
 describe("select", () => {
   describe("read()", () => {
@@ -496,7 +496,7 @@ describe("select", () => {
       expect(result3.value).toEqual([10, 20]);
     });
 
-    it("all() should return same Promise reference when atoms unchanged", async () => {
+    it("all() should return equivalent promises when atoms unchanged", async () => {
       const p1 = new Promise<number>(() => {});
       const p2 = new Promise<number>(() => {});
       const a$ = atom(p1);
@@ -506,11 +506,12 @@ describe("select", () => {
       const result1 = select(({ all }) => all(a$, b$));
       const promise1 = result1.promise;
 
-      // Second call should return same promise (cached)
+      // Second call should return equivalent promise (same source promises)
       const result2 = select(({ all }) => all(a$, b$));
       const promise2 = result2.promise;
 
-      expect(promise1).toBe(promise2);
+      // Promises are equivalent via metadata comparison
+      expect(promisesEqual(promise1, promise2)).toBe(true);
     });
 
     it("race() should throw combined Promise.race for parallel racing", async () => {
@@ -542,7 +543,7 @@ describe("select", () => {
       resolve1!(10);
     });
 
-    it("race() should return same Promise reference when atoms unchanged", async () => {
+    it("race() should return equivalent promises when atoms unchanged", async () => {
       const p1 = new Promise<number>(() => {});
       const p2 = new Promise<number>(() => {});
       const a$ = atom(p1);
@@ -554,7 +555,8 @@ describe("select", () => {
       const result2 = select(({ race }) => race(a$, b$));
       const promise2 = result2.promise;
 
-      expect(promise1).toBe(promise2);
+      // Promises are equivalent via metadata comparison
+      expect(promisesEqual(promise1, promise2)).toBe(true);
     });
 
     it("any() should race all loading promises in parallel", async () => {
@@ -624,7 +626,7 @@ describe("select", () => {
       ]);
     });
 
-    it("settled() should return same Promise reference when atoms unchanged", async () => {
+    it("settled() should return equivalent promises when atoms unchanged", async () => {
       const p1 = new Promise<number>(() => {});
       const p2 = new Promise<number>(() => {});
       const a$ = atom(p1);
@@ -636,7 +638,8 @@ describe("select", () => {
       const result2 = select(({ settled }) => settled(a$, b$));
       const promise2 = result2.promise;
 
-      expect(promise1).toBe(promise2);
+      // Promises are equivalent via metadata comparison
+      expect(promisesEqual(promise1, promise2)).toBe(true);
     });
   });
 });

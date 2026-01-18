@@ -1,55 +1,87 @@
 import { isPromiseLike } from "./isPromiseLike";
 import { getAtomState } from "./getAtomState";
-import { Atom, AtomValue, Pipeable, SettledResult } from "./types";
+import { AnyFunc, Atom, AtomValue, Pipeable, SettledResult } from "./types";
 import { withUse } from "./withUse";
 
 /**
- * Cache for combined promises (Promise.all, Promise.race results).
- * Uses WeakMap with first promise as key, then nested Map for remaining promises.
- * This ensures stable promise references across multiple selector invocations.
+ * Symbol for combined promise metadata.
+ * Used by useAsyncState to compare promises by their source promises.
  */
-const combinedPromiseCache = new WeakMap<
-  Promise<unknown>,
-  Map<string, Promise<unknown>>
->();
+export const SYMBOL_COMBINED_PROMISE = Symbol.for("atomirx.combinedPromise");
 
 /**
- * Get or create a cached combined promise.
- * @param promises - Array of promises to combine
- * @param combiner - Function to combine promises (Promise.all or Promise.race)
- * @param cacheKey - Unique key for the combination type ('all' or 'race')
+ * Metadata attached to combined promises for comparison.
  */
-function getCachedCombinedPromise(
-  promises: Promise<unknown>[],
-  combiner: (promises: Promise<unknown>[]) => Promise<unknown>,
-  cacheKey: "all" | "race"
-): Promise<unknown> {
-  if (promises.length === 0) {
-    return combiner(promises);
+export interface CombinedPromiseMeta {
+  type: "all" | "race" | "allSettled";
+  promises: Promise<unknown>[];
+}
+
+/**
+ * Promise with optional combined metadata.
+ */
+export type PromiseWithMeta<T = unknown> = Promise<T> & {
+  [SYMBOL_COMBINED_PROMISE]?: CombinedPromiseMeta;
+};
+
+/**
+ * Create a combined promise with metadata for comparison.
+ * If only one promise, returns it directly (no metadata needed).
+ */
+function createCombinedPromise(
+  type: "all" | "race" | "allSettled",
+  promises: Promise<unknown>[]
+): PromiseWithMeta {
+  if (promises.length === 1) {
+    // Single promise - no need for metadata, just return it
+    // For allSettled, we still need to wrap to prevent rejection propagation
+    if (type === "allSettled") {
+      const combined = Promise.allSettled(promises).then(
+        () => undefined
+      ) as PromiseWithMeta;
+      combined[SYMBOL_COMBINED_PROMISE] = { type, promises };
+      return combined;
+    }
+    return promises[0];
   }
 
-  const firstPromise = promises[0];
-  let innerCache = combinedPromiseCache.get(firstPromise);
-  if (!innerCache) {
-    innerCache = new Map();
-    combinedPromiseCache.set(firstPromise, innerCache);
-  }
+  const combined = (Promise[type] as AnyFunc)(promises) as PromiseWithMeta;
+  combined[SYMBOL_COMBINED_PROMISE] = { type, promises };
+  // Attach no-op catch to prevent unhandled rejection warnings
+  combined.catch(() => {});
+  return combined;
+}
 
-  // Create a unique key based on the promises and combination type
-  // We use object identity check by storing promises in order
-  const fullKey = `${cacheKey}:${promises.length}`;
+/**
+ * Compare two promises, considering combined promise metadata.
+ * Returns true if promises are considered equal.
+ */
+export function promisesEqual(
+  a: PromiseLike<unknown> | undefined,
+  b: PromiseLike<unknown> | undefined
+): boolean {
+  // Same reference
+  if (a === b) return true;
 
-  let cachedPromise = innerCache.get(fullKey);
-  if (cachedPromise) {
-    return cachedPromise;
-  }
+  // One is undefined
+  if (!a || !b) return false;
 
-  cachedPromise = combiner(promises);
-  // Attach a no-op catch handler to prevent unhandled rejection warnings
-  // The actual error handling happens in the derived atom's retry mechanism
-  cachedPromise.catch(() => {});
-  innerCache.set(fullKey, cachedPromise);
-  return cachedPromise;
+  // Check if both are Promises with metadata
+  const metaA = (a as PromiseWithMeta)[SYMBOL_COMBINED_PROMISE];
+  const metaB = (b as PromiseWithMeta)[SYMBOL_COMBINED_PROMISE];
+
+  // Neither has metadata - compare by reference (already failed above)
+  if (!metaA && !metaB) return false;
+
+  // Only one has metadata
+  if (!metaA || !metaB) return false;
+
+  // Both have metadata - compare type and source promises
+  if (metaA.type !== metaB.type) return false;
+  if (metaA.promises.length !== metaB.promises.length) return false;
+
+  // Compare each source promise by reference
+  return metaA.promises.every((p, i) => p === metaB.promises[i]);
 }
 
 // AggregateError polyfill for environments that don't support it
@@ -417,13 +449,9 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
       }
     }
 
-    // If any loading → throw cached combined Promise.all for parallel waiting
+    // If any loading → throw combined Promise.all for parallel waiting
     if (loadingPromises.length > 0) {
-      throw getCachedCombinedPromise(
-        loadingPromises,
-        (p) => Promise.all(p),
-        "all"
-      );
+      throw createCombinedPromise("all", loadingPromises);
     }
 
     return results as { [K in keyof A]: AtomValue<A[K]> };
@@ -461,11 +489,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
     // All loading → race them (first to settle wins)
     if (loadingPromises.length > 0) {
-      throw getCachedCombinedPromise(
-        loadingPromises,
-        (p) => Promise.race(p),
-        "race"
-      );
+      throw createCombinedPromise("race", loadingPromises);
     }
 
     throw new Error("race() called with no atoms");
@@ -505,11 +529,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
     // If any loading → race them all (first to resolve wins)
     if (loadingPromises.length > 0) {
-      throw getCachedCombinedPromise(
-        loadingPromises,
-        (p) => Promise.race(p),
-        "race"
-      );
+      throw createCombinedPromise("race", loadingPromises);
     }
 
     // All errored → throw AggregateError
@@ -548,13 +568,10 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
       }
     }
 
-    // If any loading → throw cached combined Promise.all for parallel waiting
+    // If any loading → throw combined Promise.allSettled for parallel waiting
+    // (allSettled never rejects, so we wait for ALL to settle regardless of success/failure)
     if (loadingPromises.length > 0) {
-      throw getCachedCombinedPromise(
-        loadingPromises,
-        (p) => Promise.all(p),
-        "all"
-      );
+      throw createCombinedPromise("allSettled", loadingPromises);
     }
 
     return results as { [K in keyof A]: SettledResult<AtomValue<A[K]>> };
