@@ -133,16 +133,22 @@ describe("effect", () => {
     });
   });
 
-  describe("error handling", () => {
-    it("should call onError callback when effect throws", async () => {
+  describe("error handling with safe()", () => {
+    it("should catch errors with safe() and return error tuple", async () => {
       const errorHandler = vi.fn();
       const count$ = atom(0);
-      const error = new Error("Effect error");
 
-      effect(({ get, onError }) => {
-        onError(errorHandler);
-        if (get(count$) > 0) {
-          throw error;
+      effect(({ get, safe }) => {
+        const [err] = safe(() => {
+          const count = get(count$);
+          if (count > 0) {
+            throw new Error("Effect error");
+          }
+          return count;
+        });
+
+        if (err) {
+          errorHandler(err);
         }
       });
 
@@ -151,30 +157,55 @@ describe("effect", () => {
 
       count$.set(5);
       await new Promise((r) => setTimeout(r, 10));
-      expect(errorHandler).toHaveBeenCalledWith(error);
+      expect(errorHandler).toHaveBeenCalledWith(expect.any(Error));
+      expect((errorHandler.mock.calls[0][0] as Error).message).toBe(
+        "Effect error"
+      );
     });
 
-    it("should call options.onError for unhandled errors", async () => {
-      const onError = vi.fn();
-      const count$ = atom(0);
-      const error = new Error("Effect error");
+    it("should return success tuple when no error", async () => {
+      const results: number[] = [];
+      const count$ = atom(5);
 
-      effect(
-        ({ get }) => {
-          if (get(count$) > 0) {
-            throw error;
-          }
-        },
-        { onError }
-      );
+      effect(({ get, safe }) => {
+        const [err, value] = safe(() => get(count$) * 2);
+        if (!err && value !== undefined) {
+          results.push(value);
+        }
+      });
 
       await new Promise((r) => setTimeout(r, 0));
-      expect(onError).not.toHaveBeenCalled();
+      expect(results).toEqual([10]);
 
-      count$.set(5);
+      count$.set(10);
       await new Promise((r) => setTimeout(r, 10));
-      // options.onError should be called for unhandled sync errors
-      expect(onError).toHaveBeenCalledWith(error);
+      expect(results).toEqual([10, 20]);
+    });
+
+    it("should preserve Suspense by re-throwing promises in safe()", async () => {
+      const effectFn = vi.fn();
+      let resolvePromise: (value: number) => void;
+      const promise = new Promise<number>((r) => {
+        resolvePromise = r;
+      });
+      const async$ = atom(promise);
+
+      effect(({ get, safe }) => {
+        // safe() should re-throw the promise, not catch it
+        const [err, value] = safe(() => get(async$));
+        if (!err) {
+          effectFn(value);
+        }
+      });
+
+      // Effect should not run yet (waiting for promise)
+      await new Promise((r) => setTimeout(r, 0));
+      expect(effectFn).not.toHaveBeenCalled();
+
+      // Resolve the promise
+      resolvePromise!(42);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(effectFn).toHaveBeenCalledWith(42);
     });
   });
 

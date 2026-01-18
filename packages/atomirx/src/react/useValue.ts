@@ -29,6 +29,39 @@ import { isAtom } from "../core/isAtom";
  * useValue(({ get }) => get(data$)); // Suspends until resolved
  * ```
  *
+ * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
+ *
+ * **Never wrap `get()` calls in try/catch blocks.** The `get()` function throws
+ * Promises when atoms are loading (Suspense pattern). A try/catch will catch
+ * these Promises and break the Suspense mechanism.
+ *
+ * ```tsx
+ * // ❌ WRONG - Catches Suspense Promise, breaks loading state
+ * const data = useValue(({ get }) => {
+ *   try {
+ *     return get(asyncAtom$);
+ *   } catch (e) {
+ *     return null; // This catches BOTH errors AND loading promises!
+ *   }
+ * });
+ *
+ * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
+ * const result = useValue(({ get, safe }) => {
+ *   const [err, data] = safe(() => {
+ *     const raw = get(asyncAtom$);    // Can throw Promise (Suspense)
+ *     return JSON.parse(raw);          // Can throw Error
+ *   });
+ *
+ *   if (err) return { error: err.message };
+ *   return { data };
+ * });
+ * ```
+ *
+ * The `safe()` utility:
+ * - **Catches errors** and returns `[error, undefined]`
+ * - **Re-throws Promises** to preserve Suspense behavior
+ * - Returns `[undefined, result]` on success
+ *
  * ## IMPORTANT: Suspense-Style API
  *
  * This hook uses a **Suspense-style API** for async atoms:

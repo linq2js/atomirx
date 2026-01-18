@@ -254,4 +254,101 @@ describe("select", () => {
       expect(result.promise).toBe(undefined);
     });
   });
+
+  describe("safe()", () => {
+    it("should return [undefined, result] on success", () => {
+      const count$ = atom(5);
+
+      const result = select(({ get, safe }) => {
+        const [err, value] = safe(() => get(count$) * 2);
+        return { err, value };
+      });
+
+      expect(result.value).toEqual({ err: undefined, value: 10 });
+    });
+
+    it("should return [error, undefined] on sync error", () => {
+      const result = select(({ safe }) => {
+        const [err, value] = safe(() => {
+          throw new Error("Test error");
+        });
+        return { err, value };
+      });
+
+      expect(result.value?.err).toBeInstanceOf(Error);
+      expect((result.value?.err as Error).message).toBe("Test error");
+      expect(result.value?.value).toBe(undefined);
+    });
+
+    it("should re-throw Promise to preserve Suspense", () => {
+      const pending$ = atom(new Promise(() => {})); // Never resolves
+
+      const result = select(({ get, safe }) => {
+        const [err, value] = safe(() => get(pending$));
+        return { err, value };
+      });
+
+      // Promise should be thrown, not caught
+      expect(result.promise).toBeDefined();
+      expect(result.value).toBe(undefined);
+    });
+
+    it("should catch JSON.parse errors", () => {
+      const raw$ = atom("invalid json");
+
+      const result = select(({ get, safe }) => {
+        const [err, data] = safe(() => {
+          const raw = get(raw$);
+          return JSON.parse(raw);
+        });
+
+        if (err) {
+          return { error: "Parse failed" };
+        }
+        return { data };
+      });
+
+      expect(result.value).toEqual({ error: "Parse failed" });
+    });
+
+    it("should allow graceful degradation", () => {
+      const user$ = atom({ name: "John" });
+
+      const result = select(({ get, safe }) => {
+        const [err1, user] = safe(() => get(user$));
+        if (err1) return { user: null, posts: [] };
+
+        const [err2] = safe(() => {
+          throw new Error("Posts failed");
+        });
+        if (err2) return { user, posts: [] }; // Graceful degradation
+
+        return { user, posts: ["post1"] };
+      });
+
+      expect(result.value).toEqual({
+        user: { name: "John" },
+        posts: [], // Gracefully degraded
+      });
+    });
+
+    it("should preserve error type information", () => {
+      class CustomError extends Error {
+        code = "CUSTOM";
+      }
+
+      const result = select(({ safe }) => {
+        const [err] = safe(() => {
+          throw new CustomError("Custom error");
+        });
+
+        if (err instanceof CustomError) {
+          return { code: err.code };
+        }
+        return { code: "UNKNOWN" };
+      });
+
+      expect(result.value).toEqual({ code: "CUSTOM" });
+    });
+  });
 });

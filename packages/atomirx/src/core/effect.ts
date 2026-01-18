@@ -1,13 +1,12 @@
 import { batch } from "./batch";
 import { derived } from "./derived";
 import { emitter } from "./emitter";
-import { isPromiseLike } from "./isPromiseLike";
 import { SelectContext } from "./select";
 import { EffectOptions } from "./types";
 
 /**
  * Context object passed to effect functions.
- * Extends `SelectContext` with cleanup and error handling utilities.
+ * Extends `SelectContext` with cleanup utilities.
  */
 export interface EffectContext extends SelectContext {
   /**
@@ -25,27 +24,11 @@ export interface EffectContext extends SelectContext {
    * ```
    */
   onCleanup: (cleanup: VoidFunction) => void;
-
-  /**
-   * Register an error handler for synchronous errors thrown in the effect.
-   * If registered, prevents errors from propagating to `options.onError`.
-   *
-   * @param handler - Function to handle errors
-   *
-   * @example
-   * ```ts
-   * effect(({ get, onError }) => {
-   *   onError((e) => console.error('Effect failed:', e));
-   *   riskyOperation();
-   * });
-   * ```
-   */
-  onError: (handler: (error: unknown) => void) => void;
 }
 
 /**
  * Callback function for effects.
- * Receives the effect context with `{ get, all, any, race, settled, onCleanup, onError }` utilities.
+ * Receives the effect context with `{ get, all, any, race, settled, safe, onCleanup }` utilities.
  */
 export type EffectFn = (context: EffectContext) => void;
 
@@ -97,78 +80,74 @@ export type EffectFn = (context: EffectContext) => void;
  * });
  * ```
  *
- * ## Error Handling
+ * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
  *
- * Use `onError` callback to handle errors within the effect, or `options.onError` for unhandled errors:
+ * **Never wrap `get()` calls in try/catch blocks.** The `get()` function throws
+ * Promises when atoms are loading (Suspense pattern). A try/catch will catch
+ * these Promises and break the Suspense mechanism.
  *
  * ```ts
- * // Callback-based error handling
- * const dispose = effect(({ get, onError }) => {
- *   onError((e) => console.error('Effect failed:', e));
- *   const data = get(dataAtom);
- *   riskyOperation(data);
+ * // ❌ WRONG - Catches Suspense Promise, breaks loading state
+ * effect(({ get }) => {
+ *   try {
+ *     const data = get(asyncAtom$);
+ *     riskyOperation(data);
+ *   } catch (e) {
+ *     console.error(e); // Catches BOTH errors AND loading promises!
+ *   }
  * });
  *
- * // Option-based error handling (for unhandled errors)
- * const dispose = effect(
- *   ({ get }) => {
- *     const data = get(dataAtom);
- *     riskyOperation(data);
- *   },
- *   { onError: (e) => console.error('Effect failed:', e) }
- * );
+ * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
+ * effect(({ get, safe }) => {
+ *   const [err, data] = safe(() => {
+ *     const raw = get(asyncAtom$);    // Can throw Promise (Suspense)
+ *     return riskyOperation(raw);      // Can throw Error
+ *   });
+ *
+ *   if (err) {
+ *     console.error('Operation failed:', err);
+ *     return;
+ *   }
+ *   // Use data safely
+ * });
  * ```
  *
- * @param fn - Effect callback receiving context with `{ get, all, any, race, settled, onCleanup, onError }`.
+ * The `safe()` utility:
+ * - **Catches errors** and returns `[error, undefined]`
+ * - **Re-throws Promises** to preserve Suspense behavior
+ * - Returns `[undefined, result]` on success
+ *
+ * @param fn - Effect callback receiving context with `{ get, all, any, race, settled, safe, onCleanup }`.
  *             Must be synchronous (not async).
- * @param options - Optional configuration (key, onError for unhandled errors)
+ * @param options - Optional configuration (key)
  * @returns Dispose function to stop the effect and run final cleanup
  * @throws Error if effect function returns a Promise
  */
-export function effect(fn: EffectFn, options?: EffectOptions): VoidFunction {
+export function effect(fn: EffectFn, _options?: EffectOptions): VoidFunction {
   let disposed = false;
   const cleanupEmitter = emitter();
-  const errorEmitter = emitter<unknown>();
 
   // Create a derived atom that runs the effect on each recomputation.
   const derivedAtom = derived((context) => {
     // Run previous cleanup before next execution
-    errorEmitter.clear();
     cleanupEmitter.emitAndClear();
 
     // Skip effect execution if disposed
     if (disposed) return;
 
-    try {
-      // Run effect in a batch - multiple atom updates will only notify once
-      batch(() =>
-        fn({
-          ...context,
-          onCleanup: cleanupEmitter.on,
-          onError: errorEmitter.on,
-        })
-      );
-    } catch (error) {
-      if (isPromiseLike(error)) {
-        // let derived atom handle the promise
-        throw error;
-      }
-      // Emit to registered handlers, or fall back to options.onError
-      if (errorEmitter.size() > 0) {
-        errorEmitter.emitAndClear(error);
-      } else if (options?.onError && error instanceof Error) {
-        options.onError(error);
-      }
-    }
+    // Run effect in a batch - multiple atom updates will only notify once
+    // Cast to EffectContext since we're adding onCleanup to the DerivedContext
+    const effectContext = {
+      ...context,
+      onCleanup: cleanupEmitter.on,
+    } as unknown as EffectContext;
+    batch(() => fn(effectContext));
   });
 
   // Access .value to trigger initial computation (derived is lazy)
-  // Handle the promise
-  derivedAtom.value.catch((error) => {
-    if (options?.onError && error instanceof Error) {
-      options.onError(error);
-    }
-    // Silently ignore if no error handler
+  // Ignore promise rejection - errors should be handled via safe()
+  derivedAtom.value.catch(() => {
+    // Silently ignore - use safe() for error handling
   });
 
   return () => {
@@ -177,7 +156,6 @@ export function effect(fn: EffectFn, options?: EffectOptions): VoidFunction {
 
     // Mark as disposed
     disposed = true;
-    errorEmitter.clear();
     // Run final cleanup
     cleanupEmitter.emitAndClear();
   };

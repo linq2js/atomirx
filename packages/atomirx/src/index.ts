@@ -46,6 +46,7 @@ export type {
   SelectContext,
   SelectResult,
   ContextSelectorFn,
+  SafeResult,
 } from "./core/select";
 
 export type { PromiseState } from "./core/promiseCache";

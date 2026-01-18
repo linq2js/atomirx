@@ -36,10 +36,14 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
   - [Getting Started](#getting-started)
     - [Basic Example: Counter](#basic-example-counter)
     - [React Example: Todo App](#react-example-todo-app)
-  - [Code Conventions](#code-conventions)
+  - [Patterns \& Best Practices](#patterns--best-practices)
     - [Naming: The `$` Suffix](#naming-the--suffix)
     - [When to Use Each Primitive](#when-to-use-each-primitive)
     - [Atom Storage: Stable Scopes Only](#atom-storage-stable-scopes-only)
+    - [Error Handling: Use `safe()` Not try/catch](#error-handling-use-safe-not-trycatch)
+      - [The Problem with try/catch](#the-problem-with-trycatch)
+      - [The Solution: safe()](#the-solution-safe)
+      - [Use Cases for safe()](#use-cases-for-safe)
     - [Complete Example: Todo App with Async](#complete-example-todo-app-with-async)
   - [Usage Guide](#usage-guide)
     - [Atoms: The Foundation](#atoms-the-foundation)
@@ -56,7 +60,6 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
     - [Effects: Side Effect Management](#effects-side-effect-management)
       - [Basic Effects](#basic-effects)
       - [Effects with Cleanup](#effects-with-cleanup)
-      - [Effects with Error Handling](#effects-with-error-handling)
       - [Effects with Multiple Dependencies](#effects-with-multiple-dependencies)
     - [Async Patterns](#async-patterns)
       - [`all()` - Wait for All (like Promise.all)](#all---wait-for-all-like-promiseall)
@@ -300,9 +303,9 @@ function Stats() {
 }
 ```
 
-## Code Conventions
+## Patterns & Best Practices
 
-Following consistent conventions makes atomirx code more readable and maintainable across your team.
+Following consistent patterns and best practices makes atomirx code more readable and maintainable across your team.
 
 ### Naming: The `$` Suffix
 
@@ -452,6 +455,152 @@ effect(({ get }) => {
     userSettings$.set(fetchUserSettings(user.id));
   }
 });
+```
+
+### Error Handling: Use `safe()` Not try/catch
+
+When working with reactive selectors in `derived()`, `effect()`, `useValue()`, and `rx()`, you need to be careful about how you handle errors. The standard JavaScript `try/catch` pattern can break atomirx's Suspense mechanism.
+
+#### The Problem with try/catch
+
+The `get()` function in selectors uses a **Suspense-like pattern**: when an atom is loading (contains a pending Promise), `get()` throws that Promise. This is how atomirx signals to React's Suspense that it should show a fallback.
+
+**If you wrap `get()` in a try/catch, you'll catch the Promise** along with any actual errors:
+
+```typescript
+// ❌ WRONG - This breaks Suspense!
+const data$ = derived(({ get }) => {
+  try {
+    const user = get(asyncUser$); // Throws Promise when loading!
+    return processUser(user);
+  } catch (e) {
+    // This catches BOTH:
+    // 1. The Promise (when loading) - breaks Suspense!
+    // 2. Actual errors from processUser()
+    return null;
+  }
+});
+```
+
+This causes several problems:
+
+1. **Loading state is lost** - Instead of suspending, your derived atom immediately returns `null`
+2. **No Suspense fallback** - React never sees the loading state
+3. **Silent failures** - You can't distinguish between "loading" and "error"
+
+#### The Solution: safe()
+
+atomirx provides the `safe()` utility in all selector contexts. It catches actual errors but **re-throws Promises** to preserve Suspense:
+
+```typescript
+// ✅ CORRECT - Use safe() for error handling
+const data$ = derived(({ get, safe }) => {
+  const [err, user] = safe(() => {
+    const raw = get(asyncUser$); // Can throw Promise (Suspense) ✓
+    return processUser(raw); // Can throw Error ✓
+  });
+
+  if (err) {
+    // Only actual errors reach here, not loading state
+    console.error("Processing failed:", err);
+    return { error: err.message };
+  }
+
+  return { user };
+});
+```
+
+**How `safe()` works:**
+
+| Scenario          | `try/catch`        | `safe()`                        |
+| ----------------- | ------------------ | ------------------------------- |
+| Loading (Promise) | ❌ Catches Promise | ✅ Re-throws → Suspense         |
+| Error             | ✅ Catches error   | ✅ Returns `[error, undefined]` |
+| Success           | ✅ Returns value   | ✅ Returns `[undefined, value]` |
+
+#### Use Cases for safe()
+
+**1. Parsing/Validation that might fail:**
+
+```typescript
+const parsedConfig$ = derived(({ get, safe }) => {
+  const [err, config] = safe(() => {
+    const raw = get(rawConfig$);
+    return JSON.parse(raw); // Can throw SyntaxError
+  });
+
+  if (err) {
+    return { valid: false, error: "Invalid JSON" };
+  }
+  return { valid: true, config };
+});
+```
+
+**2. Graceful degradation with multiple sources:**
+
+```typescript
+const dashboard$ = derived(({ get, safe }) => {
+  // Primary data - required
+  const user = get(user$);
+
+  // Optional data - graceful degradation
+  const [err1, analytics] = safe(() => get(analytics$));
+  const [err2, notifications] = safe(() => get(notifications$));
+
+  return {
+    user,
+    analytics: err1 ? null : analytics,
+    notifications: err2 ? [] : notifications,
+    errors: [err1, err2].filter(Boolean),
+  };
+});
+```
+
+**3. Error handling in effects:**
+
+```typescript
+effect(({ get, safe }) => {
+  const [err, data] = safe(() => {
+    const raw = get(asyncData$);
+    return transformData(raw);
+  });
+
+  if (err) {
+    console.error("Effect failed:", err);
+    return; // Skip the rest of the effect
+  }
+
+  saveToLocalStorage(data);
+});
+```
+
+**4. Error handling in React components:**
+
+```tsx
+function UserProfile() {
+  const result = useValue(({ get, safe }) => {
+    const [err, user] = safe(() => get(user$));
+    return { err, user };
+  });
+
+  if (result.err) {
+    return <ErrorMessage error={result.err} />;
+  }
+
+  return <Profile user={result.user} />;
+}
+```
+
+**5. With rx() for inline error handling:**
+
+```tsx
+<Suspense fallback={<Loading />}>
+  {rx(({ get, safe }) => {
+    const [err, posts] = safe(() => get(posts$));
+    if (err) return <ErrorBanner message="Failed to load posts" />;
+    return posts.map((post) => <PostCard key={post.id} post={post} />);
+  })}
+</Suspense>
 ```
 
 ### Complete Example: Todo App with Async
@@ -625,6 +774,8 @@ type AtomState<T> =
 
 Derived atoms automatically compute values based on other atoms. They track dependencies at runtime and only recompute when those specific dependencies change.
 
+> **Note:** For error handling in derived selectors, use `safe()` instead of try/catch. See [Error Handling: Use `safe()` Not try/catch](#error-handling-use-safe-not-trycatch).
+
 #### Basic Derived State
 
 ```typescript
@@ -739,6 +890,8 @@ const dashboard2$ = derived(({ all }) => {
 
 Effects run side effects whenever their dependencies change. They use the same reactive context as `derived()`.
 
+> **Note:** For error handling in effects, use `safe()` instead of try/catch. See [Error Handling: Use `safe()` Not try/catch](#error-handling-use-safe-not-trycatch).
+
 #### Basic Effects
 
 ```typescript
@@ -774,27 +927,6 @@ const dispose = effect(({ get, onCleanup }) => {
 
 interval$.set(500); // Clears old interval, starts new one
 dispose(); // Clears interval completely
-```
-
-#### Effects with Error Handling
-
-Use `onError()` to handle errors within the effect:
-
-```typescript
-const dispose = effect(({ get, onError }) => {
-  onError((e) => console.error("Effect failed:", e));
-
-  const data = get(dataAtom$);
-  riskyOperation(data);
-});
-
-// Or use options.onError for unhandled errors
-const dispose2 = effect(
-  ({ get }) => {
-    riskyOperation(get(dataAtom$));
-  },
-  { onError: (e) => console.error("Unhandled:", e) }
-);
 ```
 
 #### Effects with Multiple Dependencies
@@ -1169,7 +1301,9 @@ atomirx provides first-class React integration through the `atomirx/react` packa
 
 ### useValue Hook
 
-Subscribe to atom values with automatic re-rendering:
+Subscribe to atom values with automatic re-rendering.
+
+> **Note:** For error handling in selectors, use `safe()` instead of try/catch. See [Error Handling: Use `safe()` Not try/catch](#error-handling-use-safe-not-trycatch).
 
 ```tsx
 import { useValue } from "atomirx/react";
@@ -1208,7 +1342,9 @@ const userName = useValue(
 
 ### Reactive Components with rx
 
-The `rx()` function creates inline reactive components for fine-grained updates:
+The `rx()` function creates inline reactive components for fine-grained updates.
+
+> **Note:** For error handling in selectors, use `safe()` instead of try/catch. See [Error Handling: Use `safe()` Not try/catch](#error-handling-use-safe-not-trycatch).
 
 ```tsx
 import { rx } from "atomirx/react";
@@ -1638,8 +1774,8 @@ const todoList = createListAtom<Todo>();
 
 ### Community
 
-- [GitHub Issues](https://github.com/atomirx/atomirx/issues) - Bug reports and feature requests
-- [Discussions](https://github.com/atomirx/atomirx/discussions) - Questions and community support
+- [GitHub Issues](https://github.com/linq2js/atomirx/issues) - Bug reports and feature requests
+- [Discussions](https://github.com/linq2js/atomirx/discussions) - Questions and community support
 
 ## License
 

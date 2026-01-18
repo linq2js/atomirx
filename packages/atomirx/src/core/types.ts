@@ -244,8 +244,6 @@ export interface DerivedOptions<T> {
 export interface EffectOptions {
   /** Optional key for debugging */
   key?: string;
-  /** Error handler for uncaught errors in the effect */
-  onError?: (error: Error) => void;
 }
 
 /**

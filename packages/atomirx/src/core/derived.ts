@@ -48,6 +48,39 @@ export interface DerivedContext extends SelectContext {}
  * derived(({ get }) => get(data$)); // Suspends until resolved
  * ```
  *
+ * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
+ *
+ * **Never wrap `get()` calls in try/catch blocks.** The `get()` function throws
+ * Promises when atoms are loading (Suspense pattern). A try/catch will catch
+ * these Promises and break the Suspense mechanism.
+ *
+ * ```ts
+ * // ❌ WRONG - Catches Suspense Promise, breaks loading state
+ * derived(({ get }) => {
+ *   try {
+ *     return get(asyncAtom$);
+ *   } catch (e) {
+ *     return 'fallback'; // This catches BOTH errors AND loading promises!
+ *   }
+ * });
+ *
+ * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
+ * derived(({ get, safe }) => {
+ *   const [err, data] = safe(() => {
+ *     const raw = get(asyncAtom$);    // Can throw Promise (Suspense)
+ *     return JSON.parse(raw);          // Can throw Error
+ *   });
+ *
+ *   if (err) return { error: err.message };
+ *   return { data };
+ * });
+ * ```
+ *
+ * The `safe()` utility:
+ * - **Catches errors** and returns `[error, undefined]`
+ * - **Re-throws Promises** to preserve Suspense behavior
+ * - Returns `[undefined, result]` on success
+ *
  * ## Key Features
  *
  * 1. **Always async**: `.value` returns `Promise<T>`

@@ -1,6 +1,7 @@
 import { isPromiseLike } from "./isPromiseLike";
 import { getAtomState, trackPromise } from "./promiseCache";
-import { Atom, AtomValue, SettledResult } from "./types";
+import { Atom, AtomValue, Pipeable, SettledResult } from "./types";
+import { withUse } from "./withUse";
 
 // AggregateError polyfill for environments that don't support it
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,10 +35,18 @@ export interface SelectResult<T> {
 }
 
 /**
+ * Result type for safe() - error-first tuple.
+ * Either [undefined, T] for success or [unknown, undefined] for error.
+ */
+export type SafeResult<T> =
+  | [error: undefined, result: T]
+  | [error: unknown, result: undefined];
+
+/**
  * Context object passed to selector functions.
  * Provides utilities for reading atoms and handling async operations.
  */
-export interface SelectContext {
+export interface SelectContext extends Pipeable {
   /**
    * Read the current value of an atom.
    * Tracks the atom as a dependency.
@@ -117,6 +126,36 @@ export interface SelectContext {
   settled<A extends Atom<unknown>[]>(
     ...atoms: A
   ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> };
+
+  /**
+   * Safely execute a function, catching errors but preserving Suspense.
+   *
+   * - If function succeeds → returns [undefined, result]
+   * - If function throws Error → returns [error, undefined]
+   * - If function throws Promise → re-throws (preserves Suspense)
+   *
+   * Use this when you need error handling inside selectors without
+   * accidentally catching Suspense promises.
+   *
+   * @param fn - Function to execute safely
+   * @returns Error-first tuple: [error, result]
+   *
+   * @example
+   * ```ts
+   * const data$ = derived(({ get, safe }) => {
+   *   const [err, data] = safe(() => {
+   *     const raw = get(raw$);
+   *     return JSON.parse(raw); // Can throw SyntaxError
+   *   });
+   *
+   *   if (err) {
+   *     return { error: err.message };
+   *   }
+   *   return { data };
+   * });
+   * ```
+   */
+  safe<T>(fn: () => T): SafeResult<T>;
 }
 
 /**
@@ -145,7 +184,7 @@ export class AllAtomsRejectedError extends Error {
  * Selects/computes a value from atom(s) with dependency tracking.
  *
  * This is the core computation logic used by `derived()`. It:
- * 1. Creates a context with `get`, `all`, `any`, `race`, `settled` utilities
+ * 1. Creates a context with `get`, `all`, `any`, `race`, `settled`, `safe` utilities
  * 2. Tracks which atoms are accessed during computation
  * 3. Returns a result with value/error/promise and dependencies
  *
@@ -168,6 +207,39 @@ export class AllAtomsRejectedError extends Error {
  * const data$ = atom(fetch('/api/data').then(r => r.json()));
  * select(({ get }) => get(data$)); // Suspends until resolved
  * ```
+ *
+ * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
+ *
+ * **Never wrap `get()` calls in try/catch blocks.** The `get()` function throws
+ * Promises when atoms are loading (Suspense pattern). A try/catch will catch
+ * these Promises and break the Suspense mechanism.
+ *
+ * ```ts
+ * // ❌ WRONG - Catches Suspense Promise, breaks loading state
+ * select(({ get }) => {
+ *   try {
+ *     return get(asyncAtom$);
+ *   } catch (e) {
+ *     return 'fallback'; // This catches BOTH errors AND loading promises!
+ *   }
+ * });
+ *
+ * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
+ * select(({ get, safe }) => {
+ *   const [err, data] = safe(() => {
+ *     const raw = get(asyncAtom$);    // Can throw Promise (Suspense)
+ *     return JSON.parse(raw);          // Can throw Error
+ *   });
+ *
+ *   if (err) return { error: err.message };
+ *   return { data };
+ * });
+ * ```
+ *
+ * The `safe()` utility:
+ * - **Catches errors** and returns `[error, undefined]`
+ * - **Re-throws Promises** to preserve Suspense behavior
+ * - Returns `[undefined, result]` on success
  *
  * @template T - The type of the computed value
  * @param fn - Context-based selector function (must return sync value)
@@ -362,8 +434,32 @@ export function select<T>(fn: ContextSelectorFn<T>): SelectResult<T> {
     return results as { [K in keyof A]: SettledResult<AtomValue<A[K]>> };
   };
 
+  /**
+   * safe() - Execute function with error handling, preserving Suspense
+   */
+  const safe = <T>(fn: () => T): SafeResult<T> => {
+    try {
+      const result = fn();
+      return [undefined, result];
+    } catch (e) {
+      // Re-throw Promises to preserve Suspense behavior
+      if (isPromiseLike(e)) {
+        throw e;
+      }
+      // Return errors as tuple instead of throwing
+      return [e, undefined];
+    }
+  };
+
   // Create the context
-  const context: SelectContext = { get, all, any, race, settled };
+  const context: SelectContext = withUse({
+    get,
+    all,
+    any,
+    race,
+    settled,
+    safe,
+  });
 
   // Execute the selector function
   try {

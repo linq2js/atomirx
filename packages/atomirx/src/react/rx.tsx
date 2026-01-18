@@ -31,6 +31,35 @@ import { ContextSelectorFn } from "../core/select";
  * rx(({ get }) => get(data$).name); // Suspends until resolved
  * ```
  *
+ * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
+ *
+ * **Never wrap `get()` calls in try/catch blocks.** The `get()` function throws
+ * Promises when atoms are loading (Suspense pattern). A try/catch will catch
+ * these Promises and break the Suspense mechanism.
+ *
+ * ```tsx
+ * // ❌ WRONG - Catches Suspense Promise, breaks loading state
+ * rx(({ get }) => {
+ *   try {
+ *     return <span>{get(user$).name}</span>;
+ *   } catch (e) {
+ *     return <span>Error</span>; // Catches BOTH errors AND loading promises!
+ *   }
+ * });
+ *
+ * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
+ * rx(({ get, safe }) => {
+ *   const [err, user] = safe(() => get(user$));
+ *   if (err) return <span>Error: {err.message}</span>;
+ *   return <span>{user.name}</span>;
+ * });
+ * ```
+ *
+ * The `safe()` utility:
+ * - **Catches errors** and returns `[error, undefined]`
+ * - **Re-throws Promises** to preserve Suspense behavior
+ * - Returns `[undefined, result]` on success
+ *
  * ## Why Use `rx`?
  *
  * Without `rx`, you need a separate component to subscribe to an atom:
