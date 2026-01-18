@@ -1,5 +1,6 @@
 import { useSyncExternalStore, useCallback, useRef } from "react";
-import { select, ReactiveSelector, promisesEqual } from "../core/select";
+import { select, ReactiveSelector } from "../core/select";
+import { promisesEqual } from "../core/promiseCache";
 import { resolveEquality } from "../core/equality";
 import { getAtomState } from "../core/getAtomState";
 import { Atom, AtomState, Equality } from "../core/types";

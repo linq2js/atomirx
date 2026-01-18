@@ -47,10 +47,8 @@ export type {
   SelectResult,
   ReactiveSelector as ContextSelectorFn,
   SafeResult,
-  CombinedPromiseMeta,
-  PromiseWithMeta,
 } from "./core/select";
 
-export { promisesEqual, SYMBOL_COMBINED_PROMISE } from "./core/select";
+export type { PromiseState, CombinedPromiseMeta } from "./core/promiseCache";
 
-export type { PromiseState } from "./core/promiseCache";
+export { promisesEqual } from "./core/promiseCache";

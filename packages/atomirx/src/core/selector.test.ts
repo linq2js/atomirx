@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { atom } from "./atom";
-import { select, promisesEqual } from "./select";
+import { select } from "./select";
+import { promisesEqual } from "./promiseCache";
 
 describe("select", () => {
   describe("read()", () => {
