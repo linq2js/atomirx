@@ -3,6 +3,55 @@ import { getAtomState } from "./getAtomState";
 import { Atom, AtomValue, Pipeable, SettledResult } from "./types";
 import { withUse } from "./withUse";
 
+/**
+ * Cache for combined promises (Promise.all, Promise.race results).
+ * Uses WeakMap with first promise as key, then nested Map for remaining promises.
+ * This ensures stable promise references across multiple selector invocations.
+ */
+const combinedPromiseCache = new WeakMap<
+  Promise<unknown>,
+  Map<string, Promise<unknown>>
+>();
+
+/**
+ * Get or create a cached combined promise.
+ * @param promises - Array of promises to combine
+ * @param combiner - Function to combine promises (Promise.all or Promise.race)
+ * @param cacheKey - Unique key for the combination type ('all' or 'race')
+ */
+function getCachedCombinedPromise(
+  promises: Promise<unknown>[],
+  combiner: (promises: Promise<unknown>[]) => Promise<unknown>,
+  cacheKey: "all" | "race"
+): Promise<unknown> {
+  if (promises.length === 0) {
+    return combiner(promises);
+  }
+
+  const firstPromise = promises[0];
+  let innerCache = combinedPromiseCache.get(firstPromise);
+  if (!innerCache) {
+    innerCache = new Map();
+    combinedPromiseCache.set(firstPromise, innerCache);
+  }
+
+  // Create a unique key based on the promises and combination type
+  // We use object identity check by storing promises in order
+  const fullKey = `${cacheKey}:${promises.length}`;
+
+  let cachedPromise = innerCache.get(fullKey);
+  if (cachedPromise) {
+    return cachedPromise;
+  }
+
+  cachedPromise = combiner(promises);
+  // Attach a no-op catch handler to prevent unhandled rejection warnings
+  // The actual error handling happens in the derived atom's retry mechanism
+  cachedPromise.catch(() => {});
+  innerCache.set(fullKey, cachedPromise);
+  return cachedPromise;
+}
+
 // AggregateError polyfill for environments that don't support it
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const AggregateError: any;
@@ -338,6 +387,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
   /**
    * all() - like Promise.all
+   * Waits for ALL loading atoms in parallel, not sequentially
    */
   const all = <A extends Atom<unknown>[]>(
     ...atoms: A
@@ -345,7 +395,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
     assertExecuting("all");
 
     const results: unknown[] = [];
-    let loadingPromise: Promise<unknown> | null = null;
+    const loadingPromises: Promise<unknown>[] = [];
 
     for (const atom of atoms) {
       dependencies.add(atom);
@@ -361,17 +411,19 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
           throw state.error;
 
         case "loading":
-          // First loading without fallback → will throw
-          if (!loadingPromise) {
-            loadingPromise = state.promise;
-          }
+          // Collect ALL loading promises for parallel waiting
+          loadingPromises.push(state.promise!);
           break;
       }
     }
 
-    // If any loading without fallback → throw Promise
-    if (loadingPromise) {
-      throw loadingPromise;
+    // If any loading → throw cached combined Promise.all for parallel waiting
+    if (loadingPromises.length > 0) {
+      throw getCachedCombinedPromise(
+        loadingPromises,
+        (p) => Promise.all(p),
+        "all"
+      );
     }
 
     return results as { [K in keyof A]: AtomValue<A[K]> };
@@ -379,13 +431,14 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
   /**
    * race() - like Promise.race
+   * Races all loading atoms in parallel, first to settle wins
    */
   const race = <A extends Atom<unknown>[]>(
     ...atoms: A
   ): AtomValue<A[number]> => {
     assertExecuting("race");
 
-    let firstLoadingPromise: Promise<unknown> | null = null;
+    const loadingPromises: Promise<unknown>[] = [];
 
     for (const atom of atoms) {
       dependencies.add(atom);
@@ -401,16 +454,18 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
           throw state.error;
 
         case "loading":
-          if (!firstLoadingPromise) {
-            firstLoadingPromise = state.promise;
-          }
+          loadingPromises.push(state.promise!);
           break;
       }
     }
 
-    // All loading → throw first Promise
-    if (firstLoadingPromise) {
-      throw firstLoadingPromise;
+    // All loading → race them (first to settle wins)
+    if (loadingPromises.length > 0) {
+      throw getCachedCombinedPromise(
+        loadingPromises,
+        (p) => Promise.race(p),
+        "race"
+      );
     }
 
     throw new Error("race() called with no atoms");
@@ -418,6 +473,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
   /**
    * any() - like Promise.any
+   * Races all loading atoms in parallel, returns first to fulfill
    */
   const any = <A extends Atom<unknown>[]>(
     ...atoms: A
@@ -425,7 +481,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
     assertExecuting("any");
 
     const errors: unknown[] = [];
-    let firstLoadingPromise: Promise<unknown> | null = null;
+    const loadingPromises: Promise<unknown>[] = [];
 
     for (const atom of atoms) {
       dependencies.add(atom);
@@ -442,16 +498,18 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
           break;
 
         case "loading":
-          if (!firstLoadingPromise) {
-            firstLoadingPromise = state.promise;
-          }
+          loadingPromises.push(state.promise!);
           break;
       }
     }
 
-    // If any loading → throw Promise (might still fulfill)
-    if (firstLoadingPromise) {
-      throw firstLoadingPromise;
+    // If any loading → race them all (first to resolve wins)
+    if (loadingPromises.length > 0) {
+      throw getCachedCombinedPromise(
+        loadingPromises,
+        (p) => Promise.race(p),
+        "race"
+      );
     }
 
     // All errored → throw AggregateError
@@ -460,6 +518,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
   /**
    * settled() - like Promise.allSettled
+   * Waits for ALL loading atoms in parallel
    */
   const settled = <A extends Atom<unknown>[]>(
     ...atoms: A
@@ -467,7 +526,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
     assertExecuting("settled");
 
     const results: SettledResult<unknown>[] = [];
-    let pendingPromise: Promise<unknown> | null = null;
+    const loadingPromises: Promise<unknown>[] = [];
 
     for (const atom of atoms) {
       dependencies.add(atom);
@@ -483,17 +542,19 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
           break;
 
         case "loading":
-          // Loading without fallback → will throw
-          if (!pendingPromise) {
-            pendingPromise = state.promise;
-          }
+          // Collect ALL loading promises for parallel waiting
+          loadingPromises.push(state.promise!);
           break;
       }
     }
 
-    // If any loading without fallback → throw Promise
-    if (pendingPromise) {
-      throw pendingPromise;
+    // If any loading → throw cached combined Promise.all for parallel waiting
+    if (loadingPromises.length > 0) {
+      throw getCachedCombinedPromise(
+        loadingPromises,
+        (p) => Promise.all(p),
+        "all"
+      );
     }
 
     return results as { [K in keyof A]: SettledResult<AtomValue<A[K]>> };

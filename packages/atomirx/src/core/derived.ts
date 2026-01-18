@@ -252,7 +252,9 @@ export function derived<T>(
               isLoading = false;
               lastError = error;
               reject(error);
-              if (!silent) notify();
+              // Always notify when promise rejects - subscribers need to know
+              // state changed from loading to error
+              notify();
             }
           );
         } else if (result.error !== undefined) {
@@ -264,13 +266,16 @@ export function derived<T>(
         } else {
           // Success - update lastResolved and resolve
           const newValue = result.value as T;
+          const wasFirstResolve = !lastResolved;
           isLoading = false;
           lastError = undefined;
 
           // Only update and notify if value changed
           if (!lastResolved || !eq(newValue, lastResolved.value)) {
             lastResolved = { value: newValue };
-            if (!silent) notify();
+            // Always notify on first resolve (loading → ready transition)
+            // even if silent, because subscribers need to know state changed
+            if (wasFirstResolve || !silent) notify();
           }
 
           resolve(newValue);

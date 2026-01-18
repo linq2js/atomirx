@@ -63,8 +63,13 @@ describe("select", () => {
     it("should throw error if any atom has rejected promise", async () => {
       const error = new Error("Test error");
       const a$ = atom(1);
-      const rejectedPromise = Promise.reject(error);
+      // Create rejected promise with immediate catch to prevent unhandled rejection warning
+      let rejectFn: (e: Error) => void;
+      const rejectedPromise = new Promise<number>((_, reject) => {
+        rejectFn = reject;
+      });
       rejectedPromise.catch(() => {}); // Prevent unhandled rejection
+      rejectFn!(error);
       const b$ = atom(rejectedPromise);
 
       // First call to select tracks the promise but returns pending
@@ -148,10 +153,19 @@ describe("select", () => {
     it("should throw AggregateError if all rejected", async () => {
       const error1 = new Error("Error 1");
       const error2 = new Error("Error 2");
-      const p1 = Promise.reject(error1);
-      const p2 = Promise.reject(error2);
+      // Create rejected promises with immediate catch to prevent unhandled rejection warning
+      let reject1: (e: Error) => void;
+      let reject2: (e: Error) => void;
+      const p1 = new Promise<number>((_, reject) => {
+        reject1 = reject;
+      });
+      const p2 = new Promise<number>((_, reject) => {
+        reject2 = reject;
+      });
       p1.catch(() => {});
       p2.catch(() => {});
+      reject1!(error1);
+      reject2!(error2);
 
       const a$ = atom(p1);
       const b$ = atom(p2);
@@ -172,8 +186,13 @@ describe("select", () => {
     it("should return array of settled results", async () => {
       const a$ = atom(1);
       const error = new Error("Test error");
-      const rejectedPromise = Promise.reject(error);
+      // Create rejected promise with immediate catch to prevent unhandled rejection warning
+      let rejectFn: (e: Error) => void;
+      const rejectedPromise = new Promise<number>((_, reject) => {
+        rejectFn = reject;
+      });
       rejectedPromise.catch(() => {});
+      rejectFn!(error);
       const b$ = atom(rejectedPromise);
 
       // Track first, wait for microtasks
@@ -205,7 +224,9 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      const result = select(({ read }) => (read(condition$) ? read(a$) : read(b$)));
+      const result = select(({ read }) =>
+        read(condition$) ? read(a$) : read(b$)
+      );
 
       expect(result.dependencies.size).toBe(2);
       expect(result.dependencies.has(condition$)).toBe(true);
@@ -437,6 +458,185 @@ describe("select", () => {
       expect(() => capturedSafe(() => 42)).toThrow(
         "safe() was called outside of the selection context"
       );
+    });
+  });
+
+  describe("parallel waiting behavior", () => {
+    it("all() should throw combined Promise.all for parallel waiting", async () => {
+      let resolve1: (value: number) => void;
+      let resolve2: (value: number) => void;
+      const p1 = new Promise<number>((r) => {
+        resolve1 = r;
+      });
+      const p2 = new Promise<number>((r) => {
+        resolve2 = r;
+      });
+      const a$ = atom(p1);
+      const b$ = atom(p2);
+
+      // First call should throw a combined promise
+      const result1 = select(({ all }) => all(a$, b$));
+      expect(result1.promise).toBeDefined();
+
+      // Resolve promises in reverse order
+      resolve2!(20);
+      await Promise.resolve();
+
+      // Still loading (a$ not resolved yet)
+      const result2 = select(({ all }) => all(a$, b$));
+      expect(result2.promise).toBeDefined();
+
+      // Resolve first promise
+      resolve1!(10);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Now should be ready with both values
+      const result3 = select(({ all }) => all(a$, b$));
+      expect(result3.value).toEqual([10, 20]);
+    });
+
+    it("all() should return same Promise reference when atoms unchanged", async () => {
+      const p1 = new Promise<number>(() => {});
+      const p2 = new Promise<number>(() => {});
+      const a$ = atom(p1);
+      const b$ = atom(p2);
+
+      // Get promise from first call
+      const result1 = select(({ all }) => all(a$, b$));
+      const promise1 = result1.promise;
+
+      // Second call should return same promise (cached)
+      const result2 = select(({ all }) => all(a$, b$));
+      const promise2 = result2.promise;
+
+      expect(promise1).toBe(promise2);
+    });
+
+    it("race() should throw combined Promise.race for parallel racing", async () => {
+      let resolve1: (value: number) => void;
+      let resolve2: (value: number) => void;
+      const p1 = new Promise<number>((r) => {
+        resolve1 = r;
+      });
+      const p2 = new Promise<number>((r) => {
+        resolve2 = r;
+      });
+      const a$ = atom(p1);
+      const b$ = atom(p2);
+
+      // First call should throw a combined promise
+      const result1 = select(({ race }) => race(a$, b$));
+      expect(result1.promise).toBeDefined();
+
+      // Resolve second promise first (it should win the race)
+      resolve2!(20);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Race should return second value (first to resolve)
+      const result2 = select(({ race }) => race(a$, b$));
+      expect(result2.value).toBe(20);
+
+      // Clean up: resolve first promise
+      resolve1!(10);
+    });
+
+    it("race() should return same Promise reference when atoms unchanged", async () => {
+      const p1 = new Promise<number>(() => {});
+      const p2 = new Promise<number>(() => {});
+      const a$ = atom(p1);
+      const b$ = atom(p2);
+
+      const result1 = select(({ race }) => race(a$, b$));
+      const promise1 = result1.promise;
+
+      const result2 = select(({ race }) => race(a$, b$));
+      const promise2 = result2.promise;
+
+      expect(promise1).toBe(promise2);
+    });
+
+    it("any() should race all loading promises in parallel", async () => {
+      let resolve1: (value: number) => void;
+      let resolve2: (value: number) => void;
+      const p1 = new Promise<number>((r) => {
+        resolve1 = r;
+      });
+      const p2 = new Promise<number>((r) => {
+        resolve2 = r;
+      });
+      const a$ = atom(p1);
+      const b$ = atom(p2);
+
+      // First call should throw combined race promise
+      const result1 = select(({ any }) => any(a$, b$));
+      expect(result1.promise).toBeDefined();
+
+      // Resolve second promise first
+      resolve2!(20);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // any() should return second value (first to resolve)
+      const result2 = select(({ any }) => any(a$, b$));
+      expect(result2.value).toBe(20);
+
+      // Clean up
+      resolve1!(10);
+    });
+
+    it("settled() should wait for all in parallel", async () => {
+      let resolve1: (value: number) => void;
+      let reject2: (error: Error) => void;
+      const p1 = new Promise<number>((r) => {
+        resolve1 = r;
+      });
+      const p2 = new Promise<number>((_, reject) => {
+        reject2 = reject;
+      });
+      p2.catch(() => {}); // Prevent unhandled rejection
+      const a$ = atom(p1);
+      const b$ = atom(p2);
+
+      // First call should throw combined promise
+      const result1 = select(({ settled }) => settled(a$, b$));
+      expect(result1.promise).toBeDefined();
+
+      // Settle promises in any order
+      reject2!(new Error("fail"));
+      await Promise.resolve();
+
+      // Still loading (a$ not settled yet)
+      const result2 = select(({ settled }) => settled(a$, b$));
+      expect(result2.promise).toBeDefined();
+
+      // Settle first
+      resolve1!(10);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Now should have settled results
+      const result3 = select(({ settled }) => settled(a$, b$));
+      expect(result3.value).toEqual([
+        { status: "ready", value: 10 },
+        { status: "error", error: expect.any(Error) },
+      ]);
+    });
+
+    it("settled() should return same Promise reference when atoms unchanged", async () => {
+      const p1 = new Promise<number>(() => {});
+      const p2 = new Promise<number>(() => {});
+      const a$ = atom(p1);
+      const b$ = atom(p2);
+
+      const result1 = select(({ settled }) => settled(a$, b$));
+      const promise1 = result1.promise;
+
+      const result2 = select(({ settled }) => settled(a$, b$));
+      const promise2 = result2.promise;
+
+      expect(promise1).toBe(promise2);
     });
   });
 });

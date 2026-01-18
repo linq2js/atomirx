@@ -1,4 +1,5 @@
 export { useValue } from "./useValue";
+export { useAsyncState } from "./useAsyncState";
 export { useStable } from "./useStable";
 export type { UseStableResult } from "./useStable";
 export { useAction } from "./useAction";

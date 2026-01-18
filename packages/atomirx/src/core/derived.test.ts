@@ -378,4 +378,263 @@ describe("derived", () => {
       // (depends on whether source triggers derived recomputation)
     });
   });
+
+  describe("bug fixes", () => {
+    describe("notify on loading state (Bug #1)", () => {
+      it("should notify downstream derived atoms when entering loading state", async () => {
+        // Bug: When a derived atom's dependency starts loading,
+        // it didn't notify subscribers, causing downstream atoms
+        // and useValue to not suspend properly
+        let resolveFirst: (value: number) => void;
+        const firstPromise = new Promise<number>((r) => {
+          resolveFirst = r;
+        });
+        const base$ = atom(firstPromise);
+
+        // Create a chain: base$ -> derived1$ -> derived2$
+        const derived1$ = derived(({ read }) => read(base$) * 2);
+        const derived2$ = derived(({ read }) => read(derived1$) + 1);
+
+        const listener = vi.fn();
+        derived2$.on(listener);
+
+        // Initially loading
+        expect(derived2$.state().status).toBe("loading");
+
+        // Resolve and trigger recompute
+        resolveFirst!(5);
+        await derived2$.get();
+
+        expect(derived2$.state().status).toBe("ready");
+        // Listener should have been called when state changed
+        expect(listener).toHaveBeenCalled();
+      });
+
+      it("should propagate loading state through derived chain", async () => {
+        let resolvePromise: (value: number) => void;
+        const asyncAtom$ = atom(
+          new Promise<number>((r) => {
+            resolvePromise = r;
+          })
+        );
+
+        const level1$ = derived(({ read }) => read(asyncAtom$) * 2);
+        const level2$ = derived(({ read }) => read(level1$) + 10);
+        const level3$ = derived(({ read }) => read(level2$) * 3);
+
+        // All should be loading
+        expect(level1$.state().status).toBe("loading");
+        expect(level2$.state().status).toBe("loading");
+        expect(level3$.state().status).toBe("loading");
+
+        // Resolve
+        resolvePromise!(5);
+        await level3$.get();
+
+        // All should be ready with correct values
+        expect(level1$.state().status).toBe("ready");
+        expect(level2$.state().status).toBe("ready");
+        expect(level3$.state().status).toBe("ready");
+        expect(await level3$.get()).toBe((5 * 2 + 10) * 3); // 60
+      });
+    });
+
+    describe("no orphaned promises (Bug #2)", () => {
+      it("should not create orphaned promises when already loading", async () => {
+        // Bug: When compute() was called while already loading,
+        // it created a new Promise, orphaning the one React was waiting on
+        let resolvePromise: (value: number) => void;
+        const asyncAtom$ = atom(
+          new Promise<number>((r) => {
+            resolvePromise = r;
+          })
+        );
+
+        const derived$ = derived(({ read }) => read(asyncAtom$) * 2);
+
+        // Get the promise that would be thrown for Suspense
+        const state1 = derived$.state();
+        expect(state1.status).toBe("loading");
+        const promise1 = state1.status === "loading" ? state1.promise : null;
+
+        // Trigger another computation while still loading
+        derived$.refresh();
+
+        // Should return the SAME promise (not orphan the first one)
+        const state2 = derived$.state();
+        expect(state2.status).toBe("loading");
+        const promise2 = state2.status === "loading" ? state2.promise : null;
+
+        expect(promise1).toBe(promise2);
+
+        // Resolve and verify completion
+        resolvePromise!(21);
+        const result = await derived$.get();
+        expect(result).toBe(42);
+      });
+
+      it("should complete properly when dependency changes during loading", async () => {
+        let resolveFirst: (value: number) => void;
+        const firstPromise = new Promise<number>((r) => {
+          resolveFirst = r;
+        });
+
+        const base$ = atom(firstPromise);
+        const derived$ = derived(({ read }) => read(base$) * 2);
+
+        // Start loading
+        expect(derived$.state().status).toBe("loading");
+
+        // Simulate setting a new promise (like refetch)
+        let resolveSecond: (value: number) => void;
+        const secondPromise = new Promise<number>((r) => {
+          resolveSecond = r;
+        });
+        base$.set(secondPromise);
+
+        // The derived atom's existing computation is waiting on firstPromise
+        // When firstPromise resolves, it will retry and pick up secondPromise
+        // So we need to resolve BOTH promises
+
+        // Resolve first to trigger retry
+        resolveFirst!(5);
+
+        // Wait a tick for retry to happen
+        await new Promise((r) => setTimeout(r, 0));
+
+        // Now resolve the second promise
+        resolveSecond!(10);
+
+        // Should eventually resolve with the second value
+        const result = await derived$.get();
+        expect(result).toBe(20);
+      });
+    });
+
+    describe("notify on first resolve even when silent (Bug #3)", () => {
+      it("should notify subscribers when transitioning from loading to ready", async () => {
+        // Bug: When derived atoms were initialized with silent=true,
+        // they never called notify() even after promise resolved
+        let resolvePromise: (value: number) => void;
+        const asyncAtom$ = atom(
+          new Promise<number>((r) => {
+            resolvePromise = r;
+          })
+        );
+
+        const derived$ = derived(({ read }) => read(asyncAtom$) * 2);
+        const listener = vi.fn();
+
+        // Subscribe before resolution
+        derived$.on(listener);
+        expect(derived$.state().status).toBe("loading");
+
+        // Resolve the promise
+        resolvePromise!(5);
+        await derived$.get();
+
+        // Listener MUST be called when transitioning loading → ready
+        expect(listener).toHaveBeenCalled();
+        expect(derived$.state().status).toBe("ready");
+      });
+
+      it("should notify subscribers when transitioning from loading to error", async () => {
+        let rejectPromise: (error: Error) => void;
+        const asyncAtom$ = atom(
+          new Promise<number>((_, reject) => {
+            rejectPromise = reject;
+          })
+        );
+
+        const derived$ = derived(({ read }) => read(asyncAtom$) * 2);
+        const listener = vi.fn();
+
+        // Subscribe before rejection
+        derived$.on(listener);
+        expect(derived$.state().status).toBe("loading");
+
+        // Reject the promise
+        rejectPromise!(new Error("Test error"));
+
+        // Wait for rejection to be processed
+        try {
+          await derived$.get();
+        } catch {
+          // Expected
+        }
+
+        // Listener MUST be called when transitioning loading → error
+        expect(listener).toHaveBeenCalled();
+        expect(derived$.state().status).toBe("error");
+      });
+
+      it("should update state() correctly after async resolution", async () => {
+        // This tests the demo scenario where atoms show "Loading" forever
+        let resolvePromise: (value: number) => void;
+        const asyncAtom$ = atom(
+          new Promise<number>((r) => {
+            resolvePromise = r;
+          })
+        );
+
+        // Wrapper derived (like in the Async Utils demo)
+        const wrapper$ = derived(({ read }) => read(asyncAtom$));
+
+        // Initially loading
+        const initialState = wrapper$.state();
+        expect(initialState.status).toBe("loading");
+
+        // Resolve
+        resolvePromise!(42);
+        await wrapper$.get();
+
+        // State MUST reflect the resolved value
+        const finalState = wrapper$.state();
+        expect(finalState.status).toBe("ready");
+        if (finalState.status === "ready") {
+          expect(finalState.value).toBe(42);
+        }
+      });
+
+      it("should work with multiple wrapper derived atoms", async () => {
+        // Simulates the Async Utils demo with multiple atoms
+        const createAsyncAtom = (delayMs: number, value: number) => {
+          return atom(
+            new Promise<number>((resolve) => {
+              setTimeout(() => resolve(value), delayMs);
+            })
+          );
+        };
+
+        const atom1$ = createAsyncAtom(10, 1);
+        const atom2$ = createAsyncAtom(20, 2);
+        const atom3$ = createAsyncAtom(30, 3);
+
+        const wrapper1$ = derived(({ read }) => read(atom1$));
+        const wrapper2$ = derived(({ read }) => read(atom2$));
+        const wrapper3$ = derived(({ read }) => read(atom3$));
+
+        const listener1 = vi.fn();
+        const listener2 = vi.fn();
+        const listener3 = vi.fn();
+
+        wrapper1$.on(listener1);
+        wrapper2$.on(listener2);
+        wrapper3$.on(listener3);
+
+        // Wait for all to resolve
+        await Promise.all([wrapper1$.get(), wrapper2$.get(), wrapper3$.get()]);
+
+        // All listeners should have been called
+        expect(listener1).toHaveBeenCalled();
+        expect(listener2).toHaveBeenCalled();
+        expect(listener3).toHaveBeenCalled();
+
+        // All states should be ready
+        expect(wrapper1$.state().status).toBe("ready");
+        expect(wrapper2$.state().status).toBe("ready");
+        expect(wrapper3$.state().status).toBe("ready");
+      });
+    });
+  });
 });
