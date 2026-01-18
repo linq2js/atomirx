@@ -1,5 +1,21 @@
 {
   "name": "atomirx",
+  "description": "Opinionated, Batteries-Included Reactive State Management",
+  "keywords": [
+    "reactive",
+    "state",
+    "management",
+    "atom",
+    "derived",
+    "effect"
+  ],
+  "author": "Gignuyen",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/linq2js/atomirx"
+  },
+  "homepage": "https://github.com/linq2js/atomirx",
   "version": "0.0.1",
   "type": "module",
   "main": "./dist/atomirx.umd.cjs",

@@ -1,6 +1,6 @@
 # Atomirx
 
-**The Official, Opinionated, Batteries-Included Reactive State Management for TypeScript**
+**Opinionated, Batteries-Included Reactive State Management**
 
 [![npm version](https://img.shields.io/npm/v/atomirx.svg?style=flat-square)](https://www.npmjs.com/package/atomirx)
 [![npm downloads](https://img.shields.io/npm/dm/atomirx.svg?style=flat-square)](https://www.npmjs.com/package/atomirx)

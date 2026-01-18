@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, screen } from "@testing-library/react";
 import { rx } from "./rx";
 import { atom } from "../core/atom";
-import { derived } from "../core/derived";
 import { scheduleNotifyHook } from "../core/scheduleNotifyHook";
 import { wrappers } from "./strictModeTest";
 import { SelectContext } from "../core/select";
@@ -25,9 +24,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
     it("should render derived value with context selector", () => {
       const count = atom(5);
 
-      render(
-        <div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>
-      );
+      render(<div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>);
 
       expect(screen.getByTestId("result").textContent).toBe("10");
     });
@@ -104,9 +101,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
     it("should update when source atom changes (context selector)", () => {
       const count = atom(5);
 
-      render(
-        <div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>
-      );
+      render(<div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>);
 
       expect(screen.getByTestId("result").textContent).toBe("10");
 
@@ -377,9 +372,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const sourceAtom = atom(5);
 
       render(
-        <div data-testid="result">
-          {rx(({ get }) => get(sourceAtom) * 2)}
-        </div>
+        <div data-testid="result">{rx(({ get }) => get(sourceAtom) * 2)}</div>
       );
 
       expect(screen.getByTestId("result").textContent).toBe("10");
