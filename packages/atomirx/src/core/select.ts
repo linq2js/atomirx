@@ -261,11 +261,31 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
   // Track accessed dependencies during computation
   const dependencies = new Set<Atom<unknown>>();
 
+  // Flag to detect calls outside selection context (e.g., in async callbacks)
+  let isExecuting = true;
+
+  /**
+   * Throws an error if called outside the synchronous selection context.
+   * This catches common mistakes like using get() in async callbacks.
+   */
+  const assertExecuting = (methodName: string) => {
+    if (!isExecuting) {
+      throw new Error(
+        `${methodName}() was called outside of the selection context. ` +
+          "This usually happens when calling context methods in async callbacks (setTimeout, Promise.then, etc.). " +
+          "All atom reads must happen synchronously during selector execution. " +
+          "For async access, use atom.value directly (e.g., myMutableAtom$.value or await myDerivedAtom$.value)."
+      );
+    }
+  };
+
   /**
    * Read atom value using getAtomState().
    * Implements the v2 get() behavior from spec.
    */
   const get = <V>(atom: Atom<V>): Awaited<V> => {
+    assertExecuting("get");
+
     // Track this atom as accessed dependency
     dependencies.add(atom as Atom<unknown>);
 
@@ -287,6 +307,8 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
   const all = <A extends Atom<unknown>[]>(
     ...atoms: A
   ): { [K in keyof A]: AtomValue<A[K]> } => {
+    assertExecuting("all");
+
     const results: unknown[] = [];
     let loadingPromise: Promise<unknown> | null = null;
 
@@ -326,6 +348,8 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
   const race = <A extends Atom<unknown>[]>(
     ...atoms: A
   ): AtomValue<A[number]> => {
+    assertExecuting("race");
+
     let firstLoadingPromise: Promise<unknown> | null = null;
 
     for (const atom of atoms) {
@@ -363,6 +387,8 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
   const any = <A extends Atom<unknown>[]>(
     ...atoms: A
   ): AtomValue<A[number]> => {
+    assertExecuting("any");
+
     const errors: unknown[] = [];
     let firstLoadingPromise: Promise<unknown> | null = null;
 
@@ -403,6 +429,8 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
   const settled = <A extends Atom<unknown>[]>(
     ...atoms: A
   ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> } => {
+    assertExecuting("settled");
+
     const results: SettledResult<unknown>[] = [];
     let pendingPromise: Promise<unknown> | null = null;
 
@@ -440,6 +468,8 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
    * safe() - Execute function with error handling, preserving Suspense
    */
   const safe = <T>(fn: () => T): SafeResult<T> => {
+    assertExecuting("safe");
+
     try {
       const result = fn();
       return [undefined, result];
@@ -497,5 +527,8 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
         dependencies,
       };
     }
+  } finally {
+    // Mark execution as complete to catch async misuse
+    isExecuting = false;
   }
 }

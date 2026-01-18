@@ -351,4 +351,92 @@ describe("select", () => {
       expect(result.value).toEqual({ code: "CUSTOM" });
     });
   });
+
+  describe("async context detection", () => {
+    it("should throw error when get() is called outside selection context", async () => {
+      const count$ = atom(5);
+      let capturedGet: ((atom: typeof count$) => number) | null = null;
+
+      select(({ get }) => {
+        capturedGet = get;
+        return get(count$);
+      });
+
+      // Calling get() after select() has finished should throw
+      expect(() => capturedGet!(count$)).toThrow(
+        "get() was called outside of the selection context"
+      );
+    });
+
+    it("should throw error when all() is called outside selection context", async () => {
+      const a$ = atom(1);
+      let capturedAll: ((...atoms: (typeof a$)[]) => number[]) | null = null;
+
+      select(({ all }) => {
+        capturedAll = all;
+        return all(a$);
+      });
+
+      expect(() => capturedAll!(a$)).toThrow(
+        "all() was called outside of the selection context"
+      );
+    });
+
+    it("should throw error when race() is called outside selection context", async () => {
+      const a$ = atom(1);
+      let capturedRace: ((...atoms: (typeof a$)[]) => number) | null = null;
+
+      select(({ race }) => {
+        capturedRace = race;
+        return race(a$);
+      });
+
+      expect(() => capturedRace!(a$)).toThrow(
+        "race() was called outside of the selection context"
+      );
+    });
+
+    it("should throw error when any() is called outside selection context", async () => {
+      const a$ = atom(1);
+      let capturedAny: ((...atoms: (typeof a$)[]) => number) | null = null;
+
+      select(({ any }) => {
+        capturedAny = any;
+        return any(a$);
+      });
+
+      expect(() => capturedAny!(a$)).toThrow(
+        "any() was called outside of the selection context"
+      );
+    });
+
+    it("should throw error when settled() is called outside selection context", async () => {
+      const a$ = atom(1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let capturedSettled: any = null;
+
+      select(({ settled }) => {
+        capturedSettled = settled;
+        return settled(a$);
+      });
+
+      expect(() => capturedSettled(a$)).toThrow(
+        "settled() was called outside of the selection context"
+      );
+    });
+
+    it("should throw error when safe() is called outside selection context", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let capturedSafe: any = null;
+
+      select(({ safe }) => {
+        capturedSafe = safe;
+        return safe(() => 42);
+      });
+
+      expect(() => capturedSafe(() => 42)).toThrow(
+        "safe() was called outside of the selection context"
+      );
+    });
+  });
 });
