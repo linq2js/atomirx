@@ -78,6 +78,7 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
   - [React Integration](#react-integration)
     - [useValue Hook](#usevalue-hook)
       - [Custom Equality](#custom-equality)
+    - [useAsyncState Hook](#useasyncstate-hook)
     - [Reactive Components with rx](#reactive-components-with-rx)
     - [Async Actions with useAction](#async-actions-with-useaction)
       - [Eager Execution](#eager-execution)
@@ -97,6 +98,7 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
     - [SelectContext API](#selectcontext-api)
     - [React API](#react-api)
       - [`useValue`](#usevalue)
+      - [`useAsyncState`](#useasyncstate)
       - [`rx`](#rx)
       - [`useAction`](#useaction)
       - [`useStable`](#usestable)
@@ -176,7 +178,8 @@ atomirx includes these APIs:
 
 ### React Bindings (`atomirx/react`)
 
-- **`useValue()`**: Subscribe to atoms with automatic re-rendering
+- **`useValue()`**: Subscribe to atoms with automatic re-rendering (Suspense-based)
+- **`useAsyncState()`**: Subscribe to atoms returning `AsyncState` for imperative loading/error handling
 - **`rx()`**: Inline reactive components for fine-grained updates
 - **`useAction()`**: Handle async operations with loading/error states
 - **`useStable()`**: Stabilize object/array/callback references
@@ -1376,6 +1379,70 @@ const userName = useValue(
 );
 ```
 
+### useAsyncState Hook
+
+When you want to handle loading and error states **imperatively** instead of using Suspense and ErrorBoundary, use `useAsyncState`. It returns an `AsyncState<T>` discriminated union instead of throwing.
+
+```tsx
+import { useAsyncState } from "atomirx/react";
+import { atom } from "atomirx";
+
+const userData$ = atom(fetchUser());
+
+function UserProfile() {
+  // Returns AsyncState<User> - never suspends or throws
+  const state = useAsyncState(userData$);
+
+  // Handle states imperatively
+  if (state.status === "loading") {
+    return <Spinner />;
+  }
+
+  if (state.status === "error") {
+    return <ErrorMessage error={state.error} />;
+  }
+
+  // state.status === "ready"
+  return <div>{state.value.name}</div>;
+}
+```
+
+**AsyncState type:**
+
+```typescript
+type AsyncState<T> =
+  | { status: "ready"; value: T }
+  | { status: "error"; error: unknown }
+  | { status: "loading"; promise: Promise<T> };
+```
+
+**With selector:**
+
+```tsx
+function Dashboard() {
+  const state = useAsyncState(({ all }) => {
+    const [user, posts] = all(user$, posts$);
+    return { user, posts };
+  });
+
+  switch (state.status) {
+    case "loading":
+      return <LoadingDashboard />;
+    case "error":
+      return <ErrorDashboard error={state.error} />;
+    case "ready":
+      return <Dashboard user={state.value.user} posts={state.value.posts} />;
+  }
+}
+```
+
+**When to use `useAsyncState` vs `useValue`:**
+
+| Hook            | Behavior             | Use When                                         |
+| --------------- | -------------------- | ------------------------------------------------ |
+| `useValue`      | Suspends, throws     | Using Suspense/ErrorBoundary                     |
+| `useAsyncState` | Returns `AsyncState` | Handling loading/error inline without boundaries |
+
 ### Reactive Components with rx
 
 The `rx()` function creates inline reactive components for fine-grained updates.
@@ -1678,6 +1745,26 @@ function useValue<T>(
   selector: (context: SelectContext) => T,
   equals?: (prev: T, next: T) => boolean
 ): T;
+```
+
+#### `useAsyncState`
+
+Returns `AsyncState<T>` for imperative loading/error handling instead of suspending.
+
+```typescript
+type AsyncState<T> =
+  | { status: "ready"; value: T }
+  | { status: "error"; error: unknown }
+  | { status: "loading"; promise: Promise<T> };
+
+// Shorthand
+function useAsyncState<T>(atom: Atom<T>): AsyncState<Awaited<T>>;
+
+// Context selector
+function useAsyncState<T>(
+  selector: (context: SelectContext) => T,
+  equals?: (prev: T, next: T) => boolean
+): AsyncState<T>;
 ```
 
 #### `rx`

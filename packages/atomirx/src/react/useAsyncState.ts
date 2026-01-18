@@ -6,10 +6,16 @@ import { Atom, AtomState, Equality } from "../core/types";
 import { isAtom } from "../core/isAtom";
 
 /**
- * React hook that returns the current state of a reactive selector as an AtomState.
+ * Async state returned by useAsyncState hook.
+ * Type alias for AtomState with more semantic naming for React context.
+ */
+export type AsyncState<T> = AtomState<T>;
+
+/**
+ * React hook that returns the current state of a reactive selector as an AsyncState.
  *
  * Unlike `useValue`, this hook does NOT suspend or throw errors. Instead, it returns
- * a discriminated union (`AtomState<T>`) that you can handle imperatively:
+ * a discriminated union (`AsyncState<T>`) that you can handle imperatively:
  *
  * - `{ status: "ready", value: T }` - Value is available
  * - `{ status: "loading", promise: Promise<T> }` - Value is loading
@@ -23,7 +29,7 @@ import { isAtom } from "../core/isAtom";
  * @template T - The type of the selected value
  * @param selectorOrAtom - Atom or context-based selector function
  * @param equals - Equality function or shorthand. Defaults to "shallow"
- * @returns AtomState<T> discriminated union
+ * @returns AsyncState<T> discriminated union
  *
  * @example Basic usage with loading state
  * ```tsx
@@ -70,18 +76,18 @@ import { isAtom } from "../core/isAtom";
 export function useAsyncState<T>(
   atom: Atom<T>,
   equals?: Equality<Awaited<T>>
-): AtomState<Awaited<T>>;
+): AsyncState<Awaited<T>>;
 
 // Overload: Context-based selector function
 export function useAsyncState<T>(
   selector: ReactiveSelector<T>,
   equals?: Equality<T>
-): AtomState<T>;
+): AsyncState<T>;
 
 export function useAsyncState<T>(
   selectorOrAtom: ReactiveSelector<T> | Atom<T>,
   equals?: Equality<T>
-): AtomState<T> {
+): AsyncState<T> {
   // Convert atom shorthand to context selector
   const selector: ReactiveSelector<T> = isAtom(selectorOrAtom)
     ? ({ read }) => read(selectorOrAtom as Atom<T>) as T
@@ -103,23 +109,23 @@ export function useAsyncState<T>(
   const dependenciesRef = useRef<Set<Atom<unknown>>>(new Set());
 
   // Cache the last snapshot for referential stability
-  const snapshotRef = useRef<AtomState<T>>({
+  const snapshotRef = useRef<AsyncState<T>>({
     status: "loading",
     promise: Promise.resolve() as Promise<T>,
   });
 
   /**
    * Get the current snapshot by running the selector.
-   * Returns AtomState without throwing.
+   * Returns AsyncState without throwing.
    */
-  const getSnapshot = useCallback((): AtomState<T> => {
+  const getSnapshot = useCallback((): AsyncState<T> => {
     const result = select(selectorRef.current);
 
     // Update dependencies
     dependenciesRef.current = result.dependencies;
 
     // Determine new state
-    let newState: AtomState<T>;
+    let newState: AsyncState<T>;
 
     if (result.promise !== undefined) {
       // Loading state
