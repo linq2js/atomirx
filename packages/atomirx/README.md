@@ -1,4 +1,4 @@
-# atomirx
+# Atomirx
 
 **The Official, Opinionated, Batteries-Included Reactive State Management for TypeScript**
 
@@ -20,7 +20,7 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
 
 ## Table of Contents
 
-- [atomirx](#atomirx)
+- [Atomirx](#atomirx)
   - [Purpose](#purpose)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
