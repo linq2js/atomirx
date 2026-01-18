@@ -1,5 +1,5 @@
 import { isPromiseLike } from "./isPromiseLike";
-import { getAtomState, trackPromise } from "./promiseCache";
+import { getAtomState } from "./getAtomState";
 import { Atom, AtomValue, Pipeable, SettledResult } from "./types";
 import { withUse } from "./withUse";
 
@@ -332,7 +332,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
       dependencies.add(atom);
 
       // For race(), we need raw state without fallback handling
-      const state = getAtomStateRaw(atom);
+      const state = getAtomState(atom);
 
       switch (state.status) {
         case "ready":
@@ -370,7 +370,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
       dependencies.add(atom);
 
       // For any(), we need raw state without fallback handling
-      const state = getAtomStateRaw(atom);
+      const state = getAtomState(atom);
 
       switch (state.status) {
         case "ready":
@@ -497,56 +497,5 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
         dependencies,
       };
     }
-  }
-}
-
-// ============================================================================
-// Internal helpers
-// ============================================================================
-
-// Note: trackPromise is already imported at the top
-
-/**
- * Gets raw atom state WITHOUT fallback handling.
- * Used by race() and any() which need the actual loading state.
- */
-function getAtomStateRaw<T>(
-  atom: Atom<T>
-):
-  | { status: "ready"; value: Awaited<T> }
-  | { status: "error"; error: unknown }
-  | { status: "loading"; promise: Promise<Awaited<T>> } {
-  const value = atom.value;
-
-  // 1. Sync value - ready
-  if (!isPromiseLike(value)) {
-    return {
-      status: "ready",
-      value: value as Awaited<T>,
-    };
-  }
-
-  // 2. Promise value - check state via promiseCache
-  const state = trackPromise(value);
-
-  switch (state.status) {
-    case "fulfilled":
-      return {
-        status: "ready",
-        value: state.value as Awaited<T>,
-      };
-
-    case "rejected":
-      return {
-        status: "error",
-        error: state.error,
-      };
-
-    case "pending":
-      // Raw - don't use fallback
-      return {
-        status: "loading",
-        promise: state.promise as Promise<Awaited<T>>,
-      };
   }
 }

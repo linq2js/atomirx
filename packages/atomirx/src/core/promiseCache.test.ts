@@ -7,9 +7,9 @@ import {
   isFulfilled,
   isRejected,
   unwrap,
-  getAtomState,
   isDerived,
 } from "./promiseCache";
+import { getAtomState } from "./getAtomState";
 import { atom } from "./atom";
 import { derived } from "./derived";
 

@@ -9,8 +9,8 @@ export { isAtom, isDerived } from "./core/isAtom";
 export { select, AllAtomsRejectedError } from "./core/select";
 
 // Promise utilities
+export { getAtomState } from "./core/getAtomState";
 export {
-  getAtomState,
   isPending,
   isFulfilled,
   isRejected,
