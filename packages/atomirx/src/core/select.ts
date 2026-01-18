@@ -161,7 +161,9 @@ export interface SelectContext extends Pipeable {
 /**
  * Selector function type for context-based API.
  */
-export type ContextSelectorFn<T> = (context: SelectContext) => T;
+export type ReactiveSelector<T, C extends SelectContext = SelectContext> = (
+  context: C
+) => T;
 
 /**
  * Custom error for when all atoms in `any()` are rejected.
@@ -255,7 +257,7 @@ export class AllAtomsRejectedError extends Error {
  * });
  * ```
  */
-export function select<T>(fn: ContextSelectorFn<T>): SelectResult<T> {
+export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
   // Track accessed dependencies during computation
   const dependencies = new Set<Atom<unknown>>();
 

@@ -2,7 +2,7 @@ import { onCreateHook } from "./onCreateHook";
 import { emitter } from "./emitter";
 import { resolveEquality } from "./equality";
 import { scheduleNotifyHook } from "./scheduleNotifyHook";
-import { select, SelectContext } from "./select";
+import { ReactiveSelector, select, SelectContext } from "./select";
 import {
   Atom,
   AtomState,
@@ -145,19 +145,19 @@ export interface DerivedContext extends SelectContext {}
 
 // Overload: Without fallback - staleValue is T | undefined
 export function derived<T>(
-  fn: (ctx: DerivedContext) => T,
+  fn: ReactiveSelector<T, DerivedContext>,
   options?: DerivedOptions<T>
 ): DerivedAtom<T, false>;
 
 // Overload: With fallback - staleValue is guaranteed T
 export function derived<T>(
-  fn: (ctx: DerivedContext) => T,
+  fn: ReactiveSelector<T, DerivedContext>,
   options: DerivedOptions<T> & { fallback: T }
 ): DerivedAtom<T, true>;
 
 // Implementation
 export function derived<T>(
-  fn: (ctx: DerivedContext) => T,
+  fn: ReactiveSelector<T, DerivedContext>,
   options: DerivedOptions<T> & { fallback?: T } = {}
 ): DerivedAtom<T, boolean> {
   const changeEmitter = emitter();

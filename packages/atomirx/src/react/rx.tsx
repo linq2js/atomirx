@@ -3,7 +3,7 @@ import { Atom, Equality } from "../core/types";
 import { useValue } from "./useValue";
 import { shallowEqual } from "../core/equality";
 import { isAtom } from "../core/isAtom";
-import { ContextSelectorFn } from "../core/select";
+import { ReactiveSelector } from "../core/select";
 
 /**
  * Reactive inline component that renders atom values directly in JSX.
@@ -284,16 +284,16 @@ import { ContextSelectorFn } from "../core/select";
 export function rx<T>(atom: Atom<T>, equals?: Equality<Awaited<T>>): Awaited<T>;
 
 // Overload: Context-based selector function
-export function rx<T>(selector: ContextSelectorFn<T>, equals?: Equality<T>): T;
+export function rx<T>(selector: ReactiveSelector<T>, equals?: Equality<T>): T;
 
 export function rx<T>(
-  selectorOrAtom: ContextSelectorFn<T> | Atom<T>,
+  selectorOrAtom: ReactiveSelector<T> | Atom<T>,
   equals?: Equality<unknown>
 ): T {
   return (
     <Rx
       selectorOrAtom={
-        selectorOrAtom as ContextSelectorFn<unknown> | Atom<unknown>
+        selectorOrAtom as ReactiveSelector<unknown> | Atom<unknown>
       }
       equals={equals}
     />
@@ -312,13 +312,13 @@ export function rx<T>(
  */
 const Rx = memo(
   function Rx(props: {
-    selectorOrAtom: ContextSelectorFn<unknown> | Atom<unknown>;
+    selectorOrAtom: ReactiveSelector<unknown> | Atom<unknown>;
     equals?: Equality<unknown>;
   }) {
     // Convert atom shorthand to context selector
-    const selector: ContextSelectorFn<unknown> = isAtom(props.selectorOrAtom)
+    const selector: ReactiveSelector<unknown> = isAtom(props.selectorOrAtom)
       ? ({ get }) => get(props.selectorOrAtom as Atom<unknown>)
-      : (props.selectorOrAtom as ContextSelectorFn<unknown>);
+      : (props.selectorOrAtom as ReactiveSelector<unknown>);
 
     const selected = useValue(selector, props.equals);
     return <>{selected ?? null}</>;

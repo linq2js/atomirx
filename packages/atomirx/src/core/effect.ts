@@ -1,7 +1,7 @@
 import { batch } from "./batch";
 import { derived } from "./derived";
 import { emitter } from "./emitter";
-import { SelectContext } from "./select";
+import { ReactiveSelector, SelectContext } from "./select";
 import { EffectOptions } from "./types";
 
 /**
@@ -25,12 +25,6 @@ export interface EffectContext extends SelectContext {
    */
   onCleanup: (cleanup: VoidFunction) => void;
 }
-
-/**
- * Callback function for effects.
- * Receives the effect context with `{ get, all, any, race, settled, safe, onCleanup }` utilities.
- */
-export type EffectFn = (context: EffectContext) => void;
 
 /**
  * Creates a side-effect that runs when accessed atom(s) change.
@@ -123,7 +117,10 @@ export type EffectFn = (context: EffectContext) => void;
  * @returns Dispose function to stop the effect and run final cleanup
  * @throws Error if effect function returns a Promise
  */
-export function effect(fn: EffectFn, _options?: EffectOptions): VoidFunction {
+export function effect(
+  fn: ReactiveSelector<void, EffectContext>,
+  _options?: EffectOptions
+): VoidFunction {
   let disposed = false;
   const cleanupEmitter = emitter();
 

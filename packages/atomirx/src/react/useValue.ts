@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback, useRef } from "react";
-import { select, ContextSelectorFn } from "../core/select";
+import { select, ReactiveSelector } from "../core/select";
 import { resolveEquality } from "../core/equality";
 import { Atom, Equality } from "../core/types";
 import { isAtom } from "../core/isAtom";
@@ -175,18 +175,18 @@ export function useValue<T>(
 
 // Overload: Context-based selector function
 export function useValue<T>(
-  selector: ContextSelectorFn<T>,
+  selector: ReactiveSelector<T>,
   equals?: Equality<T>
 ): T;
 
 export function useValue<T>(
-  selectorOrAtom: ContextSelectorFn<T> | Atom<T>,
+  selectorOrAtom: ReactiveSelector<T> | Atom<T>,
   equals?: Equality<T>
 ): T {
   // Convert atom shorthand to context selector
-  const selector: ContextSelectorFn<T> = isAtom(selectorOrAtom)
+  const selector: ReactiveSelector<T> = isAtom(selectorOrAtom)
     ? ({ get }) => get(selectorOrAtom as Atom<T>) as T
-    : (selectorOrAtom as ContextSelectorFn<T>);
+    : (selectorOrAtom as ReactiveSelector<T>);
 
   // Default to shallow equality
   const eq = resolveEquality((equals as Equality<unknown>) ?? "shallow");

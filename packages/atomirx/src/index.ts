@@ -3,7 +3,7 @@ export { atom } from "./core/atom";
 export { batch } from "./core/batch";
 export { define } from "./core/define";
 export { derived } from "./core/derived";
-export { effect } from "./core/effect";
+export { effect, type EffectContext } from "./core/effect";
 export { emitter } from "./core/emitter";
 export { isAtom, isDerived } from "./core/isAtom";
 export { select, AllAtomsRejectedError } from "./core/select";
@@ -45,7 +45,7 @@ export type { AtomCreateInfo, ModuleCreateInfo } from "./core/onCreateHook";
 export type {
   SelectContext,
   SelectResult,
-  ContextSelectorFn,
+  ReactiveSelector as ContextSelectorFn,
   SafeResult,
 } from "./core/select";
 
