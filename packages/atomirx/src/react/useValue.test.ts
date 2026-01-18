@@ -38,7 +38,7 @@ describe("useValue", () => {
     it("should support selector function", () => {
       const count$ = atom(5);
       const { result } = renderHook(() =>
-        useValue(({ get }) => get(count$) * 2)
+        useValue(({ read }) => read(count$) * 2)
       );
 
       expect(result.current).toBe(10);
@@ -48,7 +48,7 @@ describe("useValue", () => {
       const a$ = atom(2);
       const b$ = atom(3);
       const { result } = renderHook(() =>
-        useValue(({ get }) => get(a$) + get(b$))
+        useValue(({ read }) => read(a$) + read(b$))
       );
 
       expect(result.current).toBe(5);
@@ -58,7 +58,7 @@ describe("useValue", () => {
       const a$ = atom(2);
       const b$ = atom(3);
       const { result } = renderHook(() =>
-        useValue(({ get }) => get(a$) * get(b$))
+        useValue(({ read }) => read(a$) * read(b$))
       );
 
       expect(result.current).toBe(6);
@@ -80,8 +80,8 @@ describe("useValue", () => {
       const details$ = atom("Detailed");
 
       const { result } = renderHook(() =>
-        useValue(({ get }) =>
-          get(showDetails$) ? get(details$) : get(summary$)
+        useValue(({ read }) =>
+          read(showDetails$) ? read(details$) : read(summary$)
         )
       );
 

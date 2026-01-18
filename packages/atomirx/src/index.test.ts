@@ -17,7 +17,7 @@ describe("atomirx exports", () => {
   it("should export atom", () => {
     expect(typeof atom).toBe("function");
     const count = atom(0);
-    expect(count.value).toBe(0);
+    expect(count.get()).toBe(0);
   });
 
   it("should export batch", () => {
@@ -31,8 +31,8 @@ describe("atomirx exports", () => {
   it("should export derived", async () => {
     expect(typeof derived).toBe("function");
     const count = atom(5);
-    const doubled = derived(({ get }) => get(count) * 2);
-    expect(await doubled.value).toBe(10);
+    const doubled = derived(({ read }) => read(count) * 2);
+    expect(await doubled.get()).toBe(10);
   });
 
   it("should export effect", () => {
@@ -53,7 +53,7 @@ describe("atomirx exports", () => {
   it("should export isDerived", () => {
     expect(typeof isDerived).toBe("function");
     const count = atom(0);
-    const doubled = derived(({ get }) => get(count) * 2);
+    const doubled = derived(({ read }) => read(count) * 2);
     expect(isDerived(count)).toBe(false);
     expect(isDerived(doubled)).toBe(true);
   });

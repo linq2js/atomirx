@@ -2,7 +2,13 @@ import { onCreateHook } from "./onCreateHook";
 import { emitter } from "./emitter";
 import { resolveEquality } from "./equality";
 import { scheduleNotifyHook } from "./scheduleNotifyHook";
-import { AtomOptions, MutableAtom, SYMBOL_ATOM, Equality } from "./types";
+import {
+  AtomOptions,
+  MutableAtom,
+  SYMBOL_ATOM,
+  Equality,
+  Pipeable,
+} from "./types";
 import { withUse } from "./withUse";
 import { isPromiseLike } from "./isPromiseLike";
 import { trackPromise } from "./promiseCache";
@@ -11,7 +17,7 @@ import { trackPromise } from "./promiseCache";
  * Creates a mutable atom - a reactive state container that holds a single value.
  *
  * MutableAtom is a raw storage container. It stores values as-is, including Promises.
- * If you store a Promise, `.value` returns the Promise object itself.
+ * If you store a Promise, `.get()` returns the Promise object itself.
  *
  * Features:
  * - Raw storage: stores any value including Promises
@@ -25,14 +31,14 @@ import { trackPromise } from "./promiseCache";
  * @param options - Configuration options
  * @param options.meta - Optional metadata for debugging/devtools
  * @param options.equals - Equality strategy for change detection (default: strict)
- * @returns A mutable atom with value, set/reset methods
+ * @returns A mutable atom with get, set/reset methods
  *
  * @example Synchronous value
  * ```ts
  * const count = atom(0);
  * count.set(1);
  * count.set(prev => prev + 1);
- * console.log(count.value); // 2
+ * console.log(count.get()); // 2
  * ```
  *
  * @example Lazy initialization
@@ -51,7 +57,7 @@ import { trackPromise } from "./promiseCache";
  * @example Async value (stores Promise as-is)
  * ```ts
  * const posts = atom(fetchPosts());
- * posts.value; // Promise<Post[]>
+ * posts.get(); // Promise<Post[]>
  *
  * // Refetch - set a new Promise
  * posts.set(fetchPosts());
@@ -161,21 +167,20 @@ export function atom<T>(
     meta: options.meta,
 
     /**
-     * Current value (raw, including Promises).
+     * Get the current value (raw, including Promises).
      */
-    get value(): T {
+    get(): any {
       return value;
     },
-
+    use: undefined as any,
     set,
     reset,
     dirty,
-
     /**
      * Subscribe to value changes.
      */
     on: changeEmitter.on,
-  }) as MutableAtom<T>;
+  }) as Pipeable & MutableAtom<T>;
 
   // Notify devtools/plugins of atom creation
   onCreateHook.current?.({

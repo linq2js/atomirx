@@ -30,7 +30,7 @@ export function BatchDemo() {
     const unsub = counter$.on(() => {
       notificationCountRef.current++;
       setNotificationCount(notificationCountRef.current);
-      log(`Counter notified: ${counter$.value}`, "success");
+      log(`Counter notified: ${counter$.get()}`, "success");
     });
     return unsub;
   }, [log]);
@@ -41,8 +41,8 @@ export function BatchDemo() {
       sharedListenerCountRef.current++;
       setSharedListenerCount(sharedListenerCountRef.current);
       log(
-        `Shared listener called (A=${a$.value}, B=${b$.value}, C=${c$.value})`,
-        "info",
+        `Shared listener called (A=${a$.get()}, B=${b$.get()}, C=${c$.get()})`,
+        "info"
       );
     };
 

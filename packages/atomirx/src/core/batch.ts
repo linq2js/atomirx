@@ -59,7 +59,7 @@ let batchDepth = 0;
  * ```ts
  * const counter = atom(0);
  *
- * counter.on(() => console.log("Counter:", counter.value));
+ * counter.on(() => console.log("Counter:", counter.get()));
  *
  * batch(() => {
  *   counter.set(1);
@@ -75,7 +75,7 @@ let batchDepth = 0;
  * const b = atom(0);
  *
  * // Same listener subscribed to both atoms
- * const listener = () => console.log("Changed!", a.value, b.value);
+ * const listener = () => console.log("Changed!", a.get(), b.get());
  * a.on(listener);
  * b.on(listener);
  *
@@ -103,7 +103,7 @@ let batchDepth = 0;
  * ```ts
  * const result = batch(() => {
  *   counter.set(10);
- *   return counter.value * 2;
+ *   return counter.get() * 2;
  * });
  * console.log(result); // 20
  * ```

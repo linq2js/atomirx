@@ -802,7 +802,7 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
   describe("atom deps", () => {
     it("should execute when atom in deps changes", () => {
       const userId = atom(1);
-      const fn = vi.fn(() => `user-${userId.value}`);
+      const fn = vi.fn(() => `user-${userId.get()}`);
 
       const { result } = renderHook(() =>
         useAction(fn, { lazy: false, deps: [userId] })
@@ -825,7 +825,7 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
     it("should NOT re-execute when atom value is shallowly equal", () => {
       // Use atom with shallow equals so it doesn't notify on shallow equal values
       const config = atom({ page: 1 }, { equals: "shallow" });
-      const fn = vi.fn(() => `page-${config.value?.page}`);
+      const fn = vi.fn(() => `page-${config.get()?.page}`);
 
       renderHook(() => useAction(fn, { lazy: false, deps: [config] }));
 
@@ -847,7 +847,7 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
       // Even if atom notifies, if the selected values are shallow equal,
       // the effect should not re-run
       const userId = atom(1);
-      const fn = vi.fn(() => `user-${userId.value}`);
+      const fn = vi.fn(() => `user-${userId.get()}`);
 
       renderHook(() => useAction(fn, { lazy: false, deps: [userId] }));
 
@@ -866,7 +866,7 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
 
     it("should re-execute when atom value changes (not shallow equal)", () => {
       const config = atom({ page: 1 });
-      const fn = vi.fn(() => `page-${config.value?.page}`);
+      const fn = vi.fn(() => `page-${config.get()?.page}`);
 
       const { result } = renderHook(() =>
         useAction(fn, { lazy: false, deps: [config] })
@@ -915,7 +915,7 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
 
     it("should NOT track atoms when lazy is true (default)", () => {
       const userId = atom(1);
-      const fn = vi.fn(() => `user-${userId.value}`);
+      const fn = vi.fn(() => `user-${userId.get()}`);
 
       renderHook(() => useAction(fn, { lazy: true, deps: [userId] }));
 
@@ -936,7 +936,7 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
       const fn = vi.fn(({ signal }: { signal: AbortSignal }) => {
         signals.push(signal);
         return new Promise<string>((resolve) => {
-          setTimeout(() => resolve(`user-${userId.value}`), 1000);
+          setTimeout(() => resolve(`user-${userId.get()}`), 1000);
         });
       });
 
@@ -958,7 +958,7 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
     it("should work with multiple atoms in deps", () => {
       const userId = atom(1);
       const orgId = atom(100);
-      const fn = vi.fn(() => `user-${userId.value}-org-${orgId.value}`);
+      const fn = vi.fn(() => `user-${userId.get()}-org-${orgId.get()}`);
 
       const { result } = renderHook(() =>
         useAction(fn, { lazy: false, deps: [userId, orgId] })

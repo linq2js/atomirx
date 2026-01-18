@@ -305,7 +305,7 @@ function reducer<T>(
  *
  * function UserProfile() {
  *   const fetchUser = useAction(
- *     async ({ signal }) => fetchUserApi(userIdAtom.value, { signal }),
+ *     async ({ signal }) => fetchUserApi(userIdAtom.get(), { signal }),
  *     { lazy: false, deps: [userIdAtom] }
  *   );
  *   // Automatically re-fetches when userIdAtom changes
@@ -488,8 +488,8 @@ export function useAction<TResult, TLazy extends boolean = true>(
   const atomDeps = (lazy ? [] : (deps ?? [])).filter(isAtom);
 
   // Use useValue to track atom deps and get their values for effect deps comparison
-  const atomValues = useValue(({ get }) => {
-    return atomDeps.map((atom) => get(atom));
+  const atomValues = useValue(({ read }) => {
+    return atomDeps.map((atom) => read(atom));
   });
 
   const dispatch = useCallback((): AbortablePromise<Awaited<TResult>> => {

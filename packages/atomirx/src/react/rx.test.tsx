@@ -24,7 +24,9 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
     it("should render derived value with context selector", () => {
       const count = atom(5);
 
-      render(<div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>);
+      render(
+        <div data-testid="result">{rx(({ read }) => read(count) * 2)}</div>
+      );
 
       expect(screen.getByTestId("result").textContent).toBe("10");
     });
@@ -61,7 +63,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
 
       render(
         <div data-testid="result">
-          {rx(({ get }) => `${get(firstName)} ${get(lastName)}`)}
+          {rx(({ read }) => `${read(firstName)} ${read(lastName)}`)}
         </div>
       );
 
@@ -75,7 +77,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
 
       render(
         <div data-testid="result">
-          {rx(({ get }) => get(a) + get(b) + get(c))}
+          {rx(({ read }) => read(a) + read(b) + read(c))}
         </div>
       );
 
@@ -101,7 +103,9 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
     it("should update when source atom changes (context selector)", () => {
       const count = atom(5);
 
-      render(<div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>);
+      render(
+        <div data-testid="result">{rx(({ read }) => read(count) * 2)}</div>
+      );
 
       expect(screen.getByTestId("result").textContent).toBe("10");
 
@@ -117,7 +121,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const b = atom(2);
 
       render(
-        <div data-testid="result">{rx(({ get }) => get(a) + get(b))}</div>
+        <div data-testid="result">{rx(({ read }) => read(a) + read(b))}</div>
       );
 
       expect(screen.getByTestId("result").textContent).toBe("3");
@@ -142,8 +146,8 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const a = atom(1);
       const b = atom(2);
 
-      const selectorFn = vi.fn(({ get }: SelectContext) =>
-        get(flag) ? get(a) : get(b)
+      const selectorFn = vi.fn(({ read }: SelectContext) =>
+        read(flag) ? read(a) : read(b)
       );
 
       render(<div data-testid="result">{rx(selectorFn)}</div>);
@@ -168,7 +172,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
 
       render(
         <div data-testid="result">
-          {rx(({ get }) => (get(flag) ? get(a) : get(b)))}
+          {rx(({ read }) => (read(flag) ? read(a) : read(b)))}
         </div>
       );
 
@@ -199,7 +203,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
         renderCount.current++;
         return (
           <div data-testid="result">
-            {rx(({ get }) => JSON.stringify(get(user)))}
+            {rx(({ read }) => JSON.stringify(read(user)))}
           </div>
         );
       };
@@ -223,9 +227,9 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const user = atom({ name: "John", age: 30 });
       const selectorCallCount = { current: 0 };
 
-      const selector = ({ get }: SelectContext) => {
+      const selector = ({ read }: SelectContext) => {
         selectorCallCount.current++;
-        return JSON.stringify(get(user));
+        return JSON.stringify(read(user));
       };
 
       render(<div data-testid="result">{rx(selector, "strict")}</div>);
@@ -254,7 +258,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
         return (
           <div data-testid="result">
             {rx(
-              ({ get }) => JSON.stringify(get(user)),
+              ({ read }) => JSON.stringify(read(user)),
               (a, b) => a === b // Compare stringified values
             )}
           </div>
@@ -285,7 +289,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const Parent = () => {
         parentRenderCount.current++;
         return (
-          <div data-testid="result">{rx(({ get }) => get(count) * 2)}</div>
+          <div data-testid="result">{rx(({ read }) => read(count) * 2)}</div>
         );
       };
 
@@ -317,7 +321,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const flag = atom(false);
 
       render(
-        <div data-testid="result">{rx(({ get }) => String(get(flag)))}</div>
+        <div data-testid="result">{rx(({ read }) => String(read(flag)))}</div>
       );
 
       expect(screen.getByTestId("result").textContent).toBe("false");
@@ -352,9 +356,9 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
 
       render(
         <div data-testid="result">
-          {rx(({ get }) => {
+          {rx(({ read }) => {
             try {
-              return get(asyncAtom) * 2;
+              return read(asyncAtom) * 2;
             } catch {
               return "loading";
             }
@@ -372,7 +376,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       const sourceAtom = atom(5);
 
       render(
-        <div data-testid="result">{rx(({ get }) => get(sourceAtom) * 2)}</div>
+        <div data-testid="result">{rx(({ read }) => read(sourceAtom) * 2)}</div>
       );
 
       expect(screen.getByTestId("result").textContent).toBe("10");

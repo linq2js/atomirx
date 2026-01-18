@@ -8,8 +8,8 @@ describe("effect", () => {
       const effectFn = vi.fn();
       const count$ = atom(0);
 
-      effect(({ get }) => {
-        effectFn(get(count$));
+      effect(({ read }) => {
+        effectFn(read(count$));
       });
 
       // Wait for async execution
@@ -21,8 +21,8 @@ describe("effect", () => {
       const effectFn = vi.fn();
       const count$ = atom(0);
 
-      effect(({ get }) => {
-        effectFn(get(count$));
+      effect(({ read }) => {
+        effectFn(read(count$));
       });
 
       await new Promise((r) => setTimeout(r, 0));
@@ -39,8 +39,8 @@ describe("effect", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      effect(({ get }) => {
-        effectFn(get(a$) + get(b$));
+      effect(({ read }) => {
+        effectFn(read(a$) + read(b$));
       });
 
       await new Promise((r) => setTimeout(r, 0));
@@ -62,8 +62,8 @@ describe("effect", () => {
       const effectFn = vi.fn();
       const count$ = atom(0);
 
-      effect(({ get, onCleanup }) => {
-        effectFn(get(count$));
+      effect(({ read, onCleanup }) => {
+        effectFn(read(count$));
         onCleanup(cleanupFn);
       });
 
@@ -81,8 +81,8 @@ describe("effect", () => {
       const cleanupFn = vi.fn();
       const count$ = atom(0);
 
-      const dispose = effect(({ get, onCleanup }) => {
-        get(count$);
+      const dispose = effect(({ read, onCleanup }) => {
+        read(count$);
         onCleanup(cleanupFn);
       });
 
@@ -99,8 +99,8 @@ describe("effect", () => {
       const effectFn = vi.fn();
       const count$ = atom(0);
 
-      const dispose = effect(({ get }) => {
-        effectFn(get(count$));
+      const dispose = effect(({ read }) => {
+        effectFn(read(count$));
       });
 
       await new Promise((r) => setTimeout(r, 0));
@@ -118,8 +118,8 @@ describe("effect", () => {
       const cleanupFn = vi.fn();
       const count$ = atom(0);
 
-      const dispose = effect(({ get, onCleanup }) => {
-        get(count$);
+      const dispose = effect(({ read, onCleanup }) => {
+        read(count$);
         onCleanup(cleanupFn);
       });
 
@@ -138,9 +138,9 @@ describe("effect", () => {
       const errorHandler = vi.fn();
       const count$ = atom(0);
 
-      effect(({ get, safe }) => {
+      effect(({ read, safe }) => {
         const [err] = safe(() => {
-          const count = get(count$);
+          const count = read(count$);
           if (count > 0) {
             throw new Error("Effect error");
           }
@@ -167,8 +167,8 @@ describe("effect", () => {
       const results: number[] = [];
       const count$ = atom(5);
 
-      effect(({ get, safe }) => {
-        const [err, value] = safe(() => get(count$) * 2);
+      effect(({ read, safe }) => {
+        const [err, value] = safe(() => read(count$) * 2);
         if (!err && value !== undefined) {
           results.push(value);
         }
@@ -190,9 +190,9 @@ describe("effect", () => {
       });
       const async$ = atom(promise);
 
-      effect(({ get, safe }) => {
+      effect(({ read, safe }) => {
         // safe() should re-throw the promise, not catch it
-        const [err, value] = safe(() => get(async$));
+        const [err, value] = safe(() => read(async$));
         if (!err) {
           effectFn(value);
         }

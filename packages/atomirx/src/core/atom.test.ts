@@ -6,7 +6,7 @@ describe("atom", () => {
   describe("basic functionality", () => {
     it("should create an atom with initial value", () => {
       const count$ = atom(0);
-      expect(count$.value).toBe(0);
+      expect(count$.get()).toBe(0);
     });
 
     it("should have SYMBOL_ATOM marker", () => {
@@ -17,51 +17,51 @@ describe("atom", () => {
     it("should set value directly", () => {
       const count$ = atom(0);
       count$.set(5);
-      expect(count$.value).toBe(5);
+      expect(count$.get()).toBe(5);
     });
 
     it("should set value with reducer", () => {
       const count$ = atom(0);
       count$.set((prev) => prev + 1);
-      expect(count$.value).toBe(1);
+      expect(count$.get()).toBe(1);
       count$.set((prev) => prev * 2);
-      expect(count$.value).toBe(2);
+      expect(count$.get()).toBe(2);
     });
 
     it("should reset to initial value", () => {
       const count$ = atom(10);
       count$.set(42);
-      expect(count$.value).toBe(42);
+      expect(count$.get()).toBe(42);
       count$.reset();
-      expect(count$.value).toBe(10);
+      expect(count$.get()).toBe(10);
     });
 
     it("should store objects", () => {
       const user$ = atom({ name: "John", age: 30 });
-      expect(user$.value).toEqual({ name: "John", age: 30 });
+      expect(user$.get()).toEqual({ name: "John", age: 30 });
       user$.set({ name: "Jane", age: 25 });
-      expect(user$.value).toEqual({ name: "Jane", age: 25 });
+      expect(user$.get()).toEqual({ name: "Jane", age: 25 });
     });
 
     it("should store null and undefined", () => {
       const nullable$ = atom<string | null>(null);
-      expect(nullable$.value).toBe(null);
+      expect(nullable$.get()).toBe(null);
       nullable$.set("hello");
-      expect(nullable$.value).toBe("hello");
+      expect(nullable$.get()).toBe("hello");
       nullable$.set(null);
-      expect(nullable$.value).toBe(null);
+      expect(nullable$.get()).toBe(null);
 
       const undef$ = atom<string | undefined>(undefined);
-      expect(undef$.value).toBe(undefined);
+      expect(undef$.get()).toBe(undefined);
       undef$.set("world");
-      expect(undef$.value).toBe("world");
+      expect(undef$.get()).toBe("world");
     });
 
     it("should store arrays", () => {
       const items$ = atom<number[]>([1, 2, 3]);
-      expect(items$.value).toEqual([1, 2, 3]);
+      expect(items$.get()).toEqual([1, 2, 3]);
       items$.set((prev) => [...prev, 4]);
-      expect(items$.value).toEqual([1, 2, 3, 4]);
+      expect(items$.get()).toEqual([1, 2, 3, 4]);
     });
   });
 
@@ -223,25 +223,25 @@ describe("atom", () => {
     it("should store Promise as-is", () => {
       const promise = Promise.resolve(42);
       const data$ = atom(promise);
-      expect(data$.value).toBe(promise);
+      expect(data$.get()).toBe(promise);
     });
 
     it("should store a new Promise on set", () => {
       const promise1 = Promise.resolve(1);
       const promise2 = Promise.resolve(2);
       const data$ = atom(promise1);
-      expect(data$.value).toBe(promise1);
+      expect(data$.get()).toBe(promise1);
       data$.set(promise2);
-      expect(data$.value).toBe(promise2);
+      expect(data$.get()).toBe(promise2);
     });
 
     it("should reset to original Promise object", () => {
       const originalPromise = Promise.resolve(42);
       const data$ = atom(originalPromise);
       data$.set(Promise.resolve(100));
-      expect(data$.value).not.toBe(originalPromise);
+      expect(data$.get()).not.toBe(originalPromise);
       data$.reset();
-      expect(data$.value).toBe(originalPromise);
+      expect(data$.get()).toBe(originalPromise);
     });
   });
 
@@ -255,7 +255,7 @@ describe("atom", () => {
         });
       }).toThrow(error);
       // Value should remain unchanged
-      expect(count$.value).toBe(0);
+      expect(count$.get()).toBe(0);
     });
   });
 
@@ -264,7 +264,7 @@ describe("atom", () => {
       const initializer = vi.fn(() => 42);
       const count$ = atom(initializer);
       expect(initializer).toHaveBeenCalledTimes(1);
-      expect(count$.value).toBe(42);
+      expect(count$.get()).toBe(42);
     });
 
     it("should only call initializer once", () => {
@@ -272,8 +272,8 @@ describe("atom", () => {
       const obj$ = atom(initializer);
       expect(initializer).toHaveBeenCalledTimes(1);
       // Access value multiple times
-      obj$.value;
-      obj$.value;
+      obj$.get();
+      obj$.get();
       expect(initializer).toHaveBeenCalledTimes(1);
     });
 
@@ -284,33 +284,33 @@ describe("atom", () => {
         return callCount; // Returns different value each call
       };
       const count$ = atom(initializer);
-      expect(count$.value).toBe(1); // First call returns 1
+      expect(count$.get()).toBe(1); // First call returns 1
       expect(callCount).toBe(1);
 
       count$.set(100);
-      expect(count$.value).toBe(100);
+      expect(count$.get()).toBe(100);
 
       count$.reset();
-      expect(count$.value).toBe(2); // Re-runs initializer, gets fresh value
+      expect(count$.get()).toBe(2); // Re-runs initializer, gets fresh value
       expect(callCount).toBe(2); // Initializer called again
     });
 
     it("should work with lazy initializer returning object", () => {
       const obj$ = atom(() => ({ count: 0, items: [] as number[] }));
-      expect(obj$.value).toEqual({ count: 0, items: [] });
+      expect(obj$.get()).toEqual({ count: 0, items: [] });
       obj$.set((prev) => ({ ...prev, count: 1 }));
-      expect(obj$.value).toEqual({ count: 1, items: [] });
+      expect(obj$.get()).toEqual({ count: 1, items: [] });
     });
 
     it("should work with lazy initializer returning Promise", () => {
       const promise = Promise.resolve(42);
       const data$ = atom(() => promise);
-      expect(data$.value).toBe(promise);
+      expect(data$.get()).toBe(promise);
     });
 
     it("should still work with direct value (non-function)", () => {
       const count$ = atom(10);
-      expect(count$.value).toBe(10);
+      expect(count$.get()).toBe(10);
     });
   });
 
@@ -332,38 +332,34 @@ describe("atom", () => {
       // Instead, access source properties through the reference
       const base$ = atom(0);
       const count$ = base$.use((source) => ({
-        get value() {
-          return source.value;
-        },
+        get: source.get,
         set: source.set,
         reset: source.reset,
         on: source.on,
         increment: () => source.set((v) => v + 1),
       }));
 
-      expect(count$.value).toBe(0);
+      expect(count$.get()).toBe(0);
       count$.increment();
-      expect(count$.value).toBe(1);
+      expect(count$.get()).toBe(1);
     });
 
     it("should support .use() with source reference pattern", () => {
       // Simpler pattern: just reference the original atom
       const base$ = atom(0);
       const enhanced$ = base$.use(() => ({
-        get value() {
-          return base$.value;
-        },
+        get: () => base$.get(),
         increment: () => base$.set((v) => v + 1),
         decrement: () => base$.set((v) => v - 1),
       }));
 
-      expect(enhanced$.value).toBe(0);
+      expect(enhanced$.get()).toBe(0);
       enhanced$.increment();
-      expect(enhanced$.value).toBe(1);
+      expect(enhanced$.get()).toBe(1);
       enhanced$.increment();
-      expect(enhanced$.value).toBe(2);
+      expect(enhanced$.get()).toBe(2);
       enhanced$.decrement();
-      expect(enhanced$.value).toBe(1);
+      expect(enhanced$.get()).toBe(1);
     });
   });
 });

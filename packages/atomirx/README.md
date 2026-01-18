@@ -24,8 +24,6 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
   - [Purpose](#purpose)
   - [Table of Contents](#table-of-contents)
   - [Installation](#installation)
-    - [Using Create React App](#using-create-react-app)
-    - [Adding to an Existing Project](#adding-to-an-existing-project)
   - [Why atomirx?](#why-atomirx)
     - [The Problem](#the-problem)
     - [The Solution](#the-solution)
@@ -113,16 +111,6 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
 
 ## Installation
 
-### Using Create React App
-
-The fastest way to get started is using our official template:
-
-```bash
-npx create-react-app my-app --template atomirx
-```
-
-### Adding to an Existing Project
-
 atomirx is available as a package on NPM for use with a module bundler or in a Node application:
 
 ```bash
@@ -204,16 +192,16 @@ import { atom, derived, effect } from "atomirx";
 const count$ = atom(0);
 
 // Step 2: Create derived state (computed values)
-const doubled$ = derived(({ get }) => get(count$) * 2);
-const message$ = derived(({ get }) => {
-  const count = get(count$);
+const doubled$ = derived(({ read }) => read(count$) * 2);
+const message$ = derived(({ read }) => {
+  const count = read(count$);
   return count === 0 ? "Click to start!" : `Count: ${count}`;
 });
 
 // Step 3: React to changes with effects
-effect(({ get }) => {
-  console.log("Current count:", get(count$));
-  console.log("Doubled value:", get(doubled$));
+effect(({ read }) => {
+  console.log("Current count:", read(count$));
+  console.log("Doubled value:", read(doubled$));
 });
 
 // Step 4: Update state
@@ -238,9 +226,9 @@ const todos$ = atom<Todo[]>([]);
 const filter$ = atom<"all" | "active" | "completed">("all");
 
 // Derive computed state
-const filteredTodos$ = derived(({ get }) => {
-  const todos = get(todos$);
-  const filter = get(filter$);
+const filteredTodos$ = derived(({ read }) => {
+  const todos = read(todos$);
+  const filter = read(filter$);
 
   switch (filter) {
     case "active":
@@ -252,8 +240,8 @@ const filteredTodos$ = derived(({ get }) => {
   }
 });
 
-const stats$ = derived(({ get }) => {
-  const todos = get(todos$);
+const stats$ = derived(({ read }) => {
+  const todos = read(todos$);
   return {
     total: todos.length,
     completed: todos.filter((t) => t.completed).length,
@@ -291,8 +279,8 @@ function Stats() {
   // Fine-grained updates: only re-renders when stats change
   return (
     <footer>
-      {rx(({ get }) => {
-        const { total, completed, remaining } = get(stats$);
+      {rx(({ read }) => {
+        const { total, completed, remaining } = read(stats$);
         return (
           <span>
             {remaining} of {total} remaining
@@ -320,7 +308,7 @@ All atoms (both `atom()` and `derived()`) should use the `$` suffix. This conven
 // ✅ Good - clear that these are atoms
 const count$ = atom(0);
 const user$ = atom<User | null>(null);
-const filteredItems$ = derived(({ get }) => /* ... */);
+const filteredItems$ = derived(({ read }) => /* ... */);
 
 // ❌ Avoid - unclear what's reactive
 const count = atom(0);
@@ -371,9 +359,9 @@ const TodoModule = define(() => {
   const todos$ = atom(() => fetchTodos(), { meta: { key: "todos" } });
   const filter$ = atom<"all" | "active" | "completed">("all");
 
-  const filteredTodos$ = derived(({ get }) => {
-    const filter = get(filter$);
-    const todos = get(todos$);
+  const filteredTodos$ = derived(({ read }) => {
+    const filter = read(filter$);
+    const todos = read(todos$);
     return filter === "all" ? todos : todos.filter(/* ... */);
   });
 
@@ -418,9 +406,9 @@ const userData$ = atom(fetchUser(userId)); // Fetch immediately
 
 ```typescript
 // derived() automatically unwraps Promises from atoms
-const filteredTodoList$ = derived(({ get }) => {
-  const filter = get(filter$);
-  const todoList = get(todoList$); // Promise is unwrapped automatically!
+const filteredTodoList$ = derived(({ read }) => {
+  const filter = read(filter$);
+  const todoList = read(todoList$); // Promise is unwrapped automatically!
 
   switch (filter) {
     case "active":
@@ -437,8 +425,8 @@ const filteredTodoList$ = derived(({ get }) => {
 
 ```typescript
 // Sync local state to server when it changes
-effect(({ get, onCleanup }) => {
-  const settings = get(settings$);
+effect(({ read, onCleanup }) => {
+  const settings = read(settings$);
 
   const controller = new AbortController();
   saveSettingsToServer(settings, { signal: controller.signal });
@@ -447,8 +435,8 @@ effect(({ get, onCleanup }) => {
 });
 
 // Update multiple atoms based on another atom's change
-effect(({ get }) => {
-  const user = get(currentUser$);
+effect(({ read }) => {
+  const user = read(currentUser$);
 
   if (user) {
     // Trigger fetches for user-specific data
@@ -464,15 +452,15 @@ When working with reactive selectors in `derived()`, `effect()`, `useValue()`, a
 
 #### The Problem with try/catch
 
-The `get()` function in selectors uses a **Suspense-like pattern**: when an atom is loading (contains a pending Promise), `get()` throws that Promise. This is how atomirx signals to React's Suspense that it should show a fallback.
+The `read()` function in selectors uses a **Suspense-like pattern**: when an atom is loading (contains a pending Promise), `read()` throws that Promise. This is how atomirx signals to React's Suspense that it should show a fallback.
 
-**If you wrap `get()` in a try/catch, you'll catch the Promise** along with any actual errors:
+**If you wrap `read()` in a try/catch, you'll catch the Promise** along with any actual errors:
 
 ```typescript
 // ❌ WRONG - This breaks Suspense!
-const data$ = derived(({ get }) => {
+const data$ = derived(({ read }) => {
   try {
-    const user = get(asyncUser$); // Throws Promise when loading!
+    const user = read(asyncUser$); // Throws Promise when loading!
     return processUser(user);
   } catch (e) {
     // This catches BOTH:
@@ -495,9 +483,9 @@ atomirx provides the `safe()` utility in all selector contexts. It catches actua
 
 ```typescript
 // ✅ CORRECT - Use safe() for error handling
-const data$ = derived(({ get, safe }) => {
+const data$ = derived(({ read, safe }) => {
   const [err, user] = safe(() => {
-    const raw = get(asyncUser$); // Can throw Promise (Suspense) ✓
+    const raw = read(asyncUser$); // Can throw Promise (Suspense) ✓
     return processUser(raw); // Can throw Error ✓
   });
 
@@ -524,9 +512,9 @@ const data$ = derived(({ get, safe }) => {
 **1. Parsing/Validation that might fail:**
 
 ```typescript
-const parsedConfig$ = derived(({ get, safe }) => {
+const parsedConfig$ = derived(({ read, safe }) => {
   const [err, config] = safe(() => {
-    const raw = get(rawConfig$);
+    const raw = read(rawConfig$);
     return JSON.parse(raw); // Can throw SyntaxError
   });
 
@@ -540,13 +528,13 @@ const parsedConfig$ = derived(({ get, safe }) => {
 **2. Graceful degradation with multiple sources:**
 
 ```typescript
-const dashboard$ = derived(({ get, safe }) => {
+const dashboard$ = derived(({ read, safe }) => {
   // Primary data - required
-  const user = get(user$);
+  const user = read(user$);
 
   // Optional data - graceful degradation
-  const [err1, analytics] = safe(() => get(analytics$));
-  const [err2, notifications] = safe(() => get(notifications$));
+  const [err1, analytics] = safe(() => read(analytics$));
+  const [err2, notifications] = safe(() => read(notifications$));
 
   return {
     user,
@@ -560,9 +548,9 @@ const dashboard$ = derived(({ get, safe }) => {
 **3. Error handling in effects:**
 
 ```typescript
-effect(({ get, safe }) => {
+effect(({ read, safe }) => {
   const [err, data] = safe(() => {
-    const raw = get(asyncData$);
+    const raw = read(asyncData$);
     return transformData(raw);
   });
 
@@ -579,8 +567,8 @@ effect(({ get, safe }) => {
 
 ```tsx
 function UserProfile() {
-  const result = useValue(({ get, safe }) => {
-    const [err, user] = safe(() => get(user$));
+  const result = useValue(({ read, safe }) => {
+    const [err, user] = safe(() => read(user$));
     return { err, user };
   });
 
@@ -596,8 +584,8 @@ function UserProfile() {
 
 ```tsx
 <Suspense fallback={<Loading />}>
-  {rx(({ get, safe }) => {
-    const [err, posts] = safe(() => get(posts$));
+  {rx(({ read, safe }) => {
+    const [err, posts] = safe(() => read(posts$));
     if (err) return <ErrorBanner message="Failed to load posts" />;
     return posts.map((post) => <PostCard key={post.id} post={post} />);
   })}
@@ -606,33 +594,33 @@ function UserProfile() {
 
 ### SelectContext Methods: Synchronous Only
 
-All context methods (`get`, `all`, `race`, `any`, `settled`, `safe`) must be called **synchronously** during selector execution. They cannot be used in async callbacks like `setTimeout`, `Promise.then`, or event handlers.
+All context methods (`read`, `all`, `race`, `any`, `settled`, `safe`) must be called **synchronously** during selector execution. They cannot be used in async callbacks like `setTimeout`, `Promise.then`, or event handlers.
 
 ```typescript
-// ❌ WRONG - Calling get() in async callback
-derived(({ get }) => {
+// ❌ WRONG - Calling read() in async callback
+derived(({ read }) => {
   setTimeout(() => {
-    get(atom$); // Error: called outside selection context
+    read(atom$); // Error: called outside selection context
   }, 100);
   return "value";
 });
 
-// ❌ WRONG - Storing get() for later use
-let savedGet;
-select(({ get }) => {
-  savedGet = get; // Don't do this!
-  return get(atom$);
+// ❌ WRONG - Storing read() for later use
+let savedRead;
+select(({ read }) => {
+  savedRead = read; // Don't do this!
+  return read(atom$);
 });
-savedGet(atom$); // Error: called outside selection context
+savedRead(atom$); // Error: called outside selection context
 
-// ✅ CORRECT - For async access, use atom.value directly
-effect(({ get }) => {
-  const config = get(config$);
+// ✅ CORRECT - For async access, use atom.get() directly
+effect(({ read }) => {
+  const config = read(config$);
 
   setTimeout(async () => {
-    // Use atom.value for async access (not tracked as dependency)
-    const data = myMutableAtom$.value;
-    const asyncData = await myDerivedAtom$.value;
+    // Use atom.get() for async access (not tracked as dependency)
+    const data = myMutableAtom$.get();
+    const asyncData = await myDerivedAtom$.get();
     console.log(data, asyncData);
   }, 100);
 });
@@ -642,14 +630,14 @@ effect(({ get }) => {
 
 1. **Dependency tracking**: Context methods track which atoms are accessed to know when to recompute. This tracking only works during synchronous execution.
 
-2. **Predictable behavior**: If `get()` could be called at any time, the reactive graph would be unpredictable and hard to debug.
+2. **Predictable behavior**: If `read()` could be called at any time, the reactive graph would be unpredictable and hard to debug.
 
 3. **Clear error messages**: Rather than silently failing to track dependencies, atomirx throws a helpful error explaining the issue.
 
-**For async access**, use `atom.value` directly:
+**For async access**, use `atom.get()` directly:
 
-- `mutableAtom$.value` - Returns the raw value (may be a Promise)
-- `await derivedAtom$.value` - Returns a Promise that resolves to the computed value
+- `mutableAtom$.get()` - Returns the raw value (may be a Promise)
+- `await derivedAtom$.get()` - Returns a Promise that resolves to the computed value
 
 ### Complete Example: Todo App with Async
 
@@ -663,9 +651,9 @@ const filter$ = atom<"all" | "active" | "completed">("all");
 const todoList$ = atom(() => fetchAllTodos()); // Lazy init, re-runs on reset()
 
 // Derived handles reactive transformations (auto-unwraps Promises)
-const filteredTodoList$ = derived(({ get }) => {
-  const filter = get(filter$);
-  const todoList = get(todoList$); // This is the resolved value, not a Promise!
+const filteredTodoList$ = derived(({ read }) => {
+  const filter = read(filter$);
+  const todoList = read(todoList$); // This is the resolved value, not a Promise!
 
   switch (filter) {
     case "active": return todoList.filter(t => !t.completed);
@@ -691,8 +679,8 @@ function TodoList() {
 function App() {
   return (
     <Suspense fallback={<div>Loading todos...</div>}>
-      {rx(({ get }) =>
-        get(filteredTodoList$).map(todo => <Todo key={todo.id} todo={todo} />)
+      {rx(({ read }) =>
+        read(filteredTodoList$).map(todo => <Todo key={todo.id} todo={todo} />)
       )}
     </Suspense>
   );
@@ -740,7 +728,7 @@ const posts$ = atom(fetchPosts(), { fallback: [] });
 import { getAtomState, isPending } from "atomirx";
 
 // Direct access (outside reactive context)
-console.log(count$.value); // Current value (T or Promise<T>)
+console.log(count$.get()); // Current value (T or Promise<T>)
 
 // Check atom state
 const state = getAtomState(userData$);
@@ -753,7 +741,7 @@ if (state.status === "loading") {
 }
 
 // Quick loading check
-console.log(isPending(userData$.value)); // true while Promise is pending
+console.log(isPending(userData$.get())); // true while Promise is pending
 ```
 
 #### Updating Atoms
@@ -782,7 +770,7 @@ const unsubscribe = count$.on((newValue) => {
 
 // Await async atoms
 await userData$;
-console.log("User loaded:", userData$.value);
+console.log("User loaded:", userData$.get());
 
 // Unsubscribe when done
 unsubscribe();
@@ -794,7 +782,7 @@ unsubscribe();
 
 | Property/Method | Type         | Description                                        |
 | --------------- | ------------ | -------------------------------------------------- |
-| `value`         | `T`          | Current value (may be a Promise for async atoms)   |
+| `get()`         | `T`          | Current value (may be a Promise for async atoms)   |
 | `set(value)`    | `void`       | Update with value, Promise, or updater function    |
 | `reset()`       | `void`       | Reset to initial value                             |
 | `on(listener)`  | `() => void` | Subscribe to changes, returns unsubscribe function |
@@ -803,7 +791,7 @@ unsubscribe();
 
 | Property/Method | Type             | Description                                    |
 | --------------- | ---------------- | ---------------------------------------------- |
-| `value`         | `Promise<T>`     | Always returns a Promise                       |
+| `get()`         | `Promise<T>`     | Always returns a Promise                       |
 | `staleValue`    | `T \| undefined` | Fallback or last resolved value during loading |
 | `state()`       | `AtomState<T>`   | Current state (ready/error/loading)            |
 | `refresh()`     | `void`           | Re-run the computation                         |
@@ -833,12 +821,12 @@ const firstName$ = atom("John");
 const lastName$ = atom("Doe");
 
 // Derived state with automatic dependency tracking
-const fullName$ = derived(({ get }) => {
-  return `${get(firstName$)} ${get(lastName$)}`;
+const fullName$ = derived(({ read }) => {
+  return `${read(firstName$)} ${read(lastName$)}`;
 });
 
-// Derived atoms always return Promise<T> for .value
-await fullName$.value; // "John Doe"
+// Derived atoms always return Promise<T> for .get()
+await fullName$.get(); // "John Doe"
 
 // Or use staleValue for synchronous access (after first resolution)
 fullName$.staleValue; // "John Doe" (or undefined before first resolution)
@@ -847,7 +835,7 @@ fullName$.staleValue; // "John Doe" (or undefined before first resolution)
 fullName$.state(); // { status: "ready", value: "John Doe" }
 
 firstName$.set("Jane");
-await fullName$.value; // "Jane Doe"
+await fullName$.get(); // "Jane Doe"
 ```
 
 #### Conditional Dependencies
@@ -859,13 +847,13 @@ const showDetails$ = atom(false);
 const summary$ = atom("Brief overview");
 const details$ = atom("Detailed information...");
 
-const content$ = derived(({ get }) => {
+const content$ = derived(({ read }) => {
   // Only tracks showDetails$ initially
-  if (get(showDetails$)) {
+  if (read(showDetails$)) {
     // details$ becomes a dependency only when showDetails$ is true
-    return get(details$);
+    return read(details$);
   }
-  return get(summary$);
+  return read(summary$);
 });
 
 // When showDetails$ is false:
@@ -875,9 +863,9 @@ const content$ = derived(({ get }) => {
 
 #### Suspense-Style Getters
 
-The `get()` function follows React Suspense semantics for async atoms:
+The `read()` function follows React Suspense semantics for async atoms:
 
-| Atom State | `get()` Behavior                                |
+| Atom State | `read()` Behavior                               |
 | ---------- | ----------------------------------------------- |
 | Loading    | Throws the Promise (caught by derived/Suspense) |
 | Error      | Throws the error                                |
@@ -886,9 +874,9 @@ The `get()` function follows React Suspense semantics for async atoms:
 ```typescript
 const user$ = atom(fetchUser());
 
-const userName$ = derived(({ get }) => {
+const userName$ = derived(({ read }) => {
   // Automatically handles loading/error states
-  const user = get(user$);
+  const user = read(user$);
   return user.name;
 });
 
@@ -903,7 +891,7 @@ if (state.status === "loading") {
 }
 
 // Or use staleValue with a fallback
-const userName = derived(({ get }) => get(user$).name, { fallback: "Guest" });
+const userName = derived(({ read }) => read(user$).name, { fallback: "Guest" });
 userName.staleValue; // "Guest" during loading, then actual name
 ```
 
@@ -913,9 +901,9 @@ userName.staleValue; // "Guest" during loading, then actual name
 const user$ = atom(fetchUser());
 const posts$ = atom(fetchPosts());
 
-const dashboard$ = derived(({ get }) => {
-  const user = get(user$); // Suspends if loading
-  const posts = get(posts$); // Suspends if loading
+const dashboard$ = derived(({ read }) => {
+  const user = read(user$); // Suspends if loading
+  const posts = read(posts$); // Suspends if loading
 
   return {
     userName: user.name,
@@ -948,8 +936,8 @@ import { atom, effect } from "atomirx";
 const count$ = atom(0);
 
 // Effect runs immediately and on every change
-const dispose = effect(({ get }) => {
-  console.log("Count is now:", get(count$));
+const dispose = effect(({ read }) => {
+  console.log("Count is now:", read(count$));
 });
 
 count$.set(5); // Logs: "Count is now: 5"
@@ -965,8 +953,8 @@ Use `onCleanup()` to register cleanup functions that run before the next executi
 ```typescript
 const interval$ = atom(1000);
 
-const dispose = effect(({ get, onCleanup }) => {
-  const ms = get(interval$);
+const dispose = effect(({ read, onCleanup }) => {
+  const ms = read(interval$);
   const id = setInterval(() => console.log("tick"), ms);
 
   // Cleanup runs before next execution or on dispose
@@ -983,9 +971,9 @@ dispose(); // Clears interval completely
 const user$ = atom<User | null>(null);
 const settings$ = atom({ notifications: true });
 
-effect(({ get }) => {
-  const user = get(user$);
-  const settings = get(settings$);
+effect(({ read }) => {
+  const user = read(user$);
+  const settings = read(settings$);
 
   if (user && settings.notifications) {
     analytics.identify(user.id);
@@ -1219,7 +1207,7 @@ onCreateHook.override((prev) => (info) => {
 
     // Save to localStorage on every change
     info.atom.on(() => {
-      localStorage.setItem(storageKey, JSON.stringify(info.atom.value));
+      localStorage.setItem(storageKey, JSON.stringify(info.atom.get()));
     });
   }
 });
@@ -1268,7 +1256,7 @@ onCreateHook.override((prev) => (info) => {
       // Resolve the next value (handle both direct value and reducer)
       const nextValue =
         typeof valueOrReducer === "function"
-          ? (valueOrReducer as (prev: unknown) => unknown)(info.atom.value)
+          ? (valueOrReducer as (prev: unknown) => unknown)(info.atom.get())
           : valueOrReducer;
 
       // Validate before applying
@@ -1365,12 +1353,12 @@ function Counter() {
   const count = useValue(count$);
 
   // Context selector: compute derived value
-  const doubled = useValue(({ get }) => get(count$) * 2);
+  const doubled = useValue(({ read }) => read(count$) * 2);
 
   // Multiple atoms
-  const display = useValue(({ get }) => {
-    const count = get(count$);
-    const user = get(user$);
+  const display = useValue(({ read }) => {
+    const count = read(count$);
+    const user = read(user$);
     return user ? `${user.name}: ${count}` : `Anonymous: ${count}`;
   });
 
@@ -1383,7 +1371,7 @@ function Counter() {
 ```tsx
 // Only re-render when specific fields change
 const userName = useValue(
-  ({ get }) => get(user$)?.name,
+  ({ read }) => read(user$)?.name,
   (prev, next) => prev === next
 );
 ```
@@ -1404,11 +1392,11 @@ function Dashboard() {
       <span>Count: {rx(count$)}</span>
 
       {/* Derived value */}
-      <span>Doubled: {rx(({ get }) => get(count$) * 2)}</span>
+      <span>Doubled: {rx(({ read }) => read(count$) * 2)}</span>
 
       {/* Complex rendering */}
-      {rx(({ get }) => {
-        const user = get(user$);
+      {rx(({ read }) => {
+        const user = read(user$);
         return user ? <UserCard user={user} /> : <LoginPrompt />;
       })}
 
@@ -1469,7 +1457,7 @@ const fetchUser = useAction(
 
 // Re-execute when atom changes
 const fetchPosts = useAction(
-  async ({ signal }) => fetchPostsApi(filter$.value, { signal }),
+  async ({ signal }) => fetchPostsApi(filter$.get(), { signal }),
   { lazy: false, deps: [filter$] }
 );
 ```
@@ -1663,7 +1651,7 @@ Available in `derived()`, `effect()`, `useValue()`, and `rx()`:
 
 | Method    | Signature                          | Description                                  |
 | --------- | ---------------------------------- | -------------------------------------------- |
-| `get`     | `<T>(atom: Atom<T>) => Awaited<T>` | Read atom value with dependency tracking     |
+| `read`    | `<T>(atom: Atom<T>) => Awaited<T>` | Read atom value with dependency tracking     |
 | `all`     | `(...atoms) => [values...]`        | Wait for all atoms (Promise.all semantics)   |
 | `any`     | `(...atoms) => value`              | First ready value (Promise.any semantics)    |
 | `race`    | `(...atoms) => value`              | First settled value (Promise.race semantics) |
@@ -1671,7 +1659,7 @@ Available in `derived()`, `effect()`, `useValue()`, and `rx()`:
 
 **Behavior:**
 
-- `get()`: Returns value if ready, throws error if error, throws Promise if loading
+- `read()`: Returns value if ready, throws error if error, throws Promise if loading
 - `all()`: Suspends until all atoms are ready, throws on first error
 - `any()`: Returns first ready value, throws AggregateError if all error
 - `race()`: Returns first settled (ready or error)
@@ -1743,7 +1731,7 @@ import { atom, derived } from "atomirx";
 // Types are automatically inferred
 const count$ = atom(0); // MutableAtom<number>
 const name$ = atom("John"); // MutableAtom<string>
-const doubled$ = derived(({ get }) => get(count$) * 2); // Atom<number>
+const doubled$ = derived(({ read }) => read(count$) * 2); // Atom<number>
 
 // Explicit typing when needed
 interface User {
@@ -1756,8 +1744,8 @@ const user$ = atom<User | null>(null); // MutableAtom<User | null>
 const userData$ = atom<User>(fetchUser()); // MutableAtom<User>
 
 // Type-safe selectors
-const userName$ = derived(({ get }) => {
-  const user = get(user$);
+const userName$ = derived(({ read }) => {
+  const user = read(user$);
   return user?.name ?? "Anonymous"; // Atom<string>
 });
 

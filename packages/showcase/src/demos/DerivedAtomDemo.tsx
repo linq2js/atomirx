@@ -12,25 +12,25 @@ const quantity$ = atom(2, { meta: { key: "quantity" } });
 const discount$ = atom(0.1, { meta: { key: "discount" } }); // 10%
 
 // Derived atoms (use context-based API)
-const subtotal$ = derived(({ get }) => get(price$) * get(quantity$));
+const subtotal$ = derived(({ read }) => read(price$) * read(quantity$));
 
 const discountAmount$ = derived(
-  ({ get }) => get(subtotal$) * get(discount$)
+  ({ read }) => read(subtotal$) * read(discount$)
 );
 
-const total$ = derived(({ get }) => get(subtotal$) - get(discountAmount$));
+const total$ = derived(({ read }) => read(subtotal$) - read(discountAmount$));
 
 // Conditional dependency example
 const showDetails$ = atom(false, { meta: { key: "showDetails" } });
 const basicInfo$ = atom({ label: "Basic" }, { meta: { key: "basicInfo" } });
 const detailedInfo$ = atom(
   { label: "Detailed", extra: "More info here" },
-  { meta: { key: "detailedInfo" } },
+  { meta: { key: "detailedInfo" } }
 );
 
 // Conditional dependencies - only subscribes to accessed atoms
-const info$ = derived(({ get }) =>
-  get(showDetails$) ? get(detailedInfo$) : get(basicInfo$)
+const info$ = derived(({ read }) =>
+  read(showDetails$) ? read(detailedInfo$) : read(basicInfo$)
 );
 
 export function DerivedAtomDemo() {
@@ -48,13 +48,13 @@ export function DerivedAtomDemo() {
 
   useEffect(() => {
     const unsubs = [
-      price$.on(() => log(`Price: $${price$.value}`)),
-      quantity$.on(() => log(`Quantity: ${quantity$.value}`)),
+      price$.on(() => log(`Price: $${price$.get()}`)),
+      quantity$.on(() => log(`Quantity: ${quantity$.get()}`)),
       subtotal$.on(() =>
-        log(`Subtotal recalculated: $${subtotal$.staleValue}`, "success"),
+        log(`Subtotal recalculated: $${subtotal$.staleValue}`, "success")
       ),
       total$.on(() =>
-        log(`Total recalculated: $${total$.staleValue?.toFixed(2)}`, "success"),
+        log(`Total recalculated: $${total$.staleValue?.toFixed(2)}`, "success")
       ),
     ];
     return () => unsubs.forEach((u) => u());
@@ -87,19 +87,19 @@ const price$ = atom(100);
 const quantity$ = atom(2);
 
 // Context-based derived - automatic dependency tracking
-const doubled$ = derived(({ get }) => get(price$) * 2);
+const doubled$ = derived(({ read }) => read(price$) * 2);
 
 // Multiple sources
-const total$ = derived(({ get }) => get(price$) * get(quantity$));
+const total$ = derived(({ read }) => read(price$) * read(quantity$));
 
 // Conditional dependencies - only subscribes to accessed atoms
-const info$ = derived(({ get }) =>
-  get(showDetails$) ? get(detailedInfo$) : get(basicInfo$)
+const info$ = derived(({ read }) =>
+  read(showDetails$) ? read(detailedInfo$) : read(basicInfo$)
 );
 
-// Async dependencies - get() auto-unwraps Promises
+// Async dependencies - read() auto-unwraps Promises
 const userData$ = atom(fetchUser());
-const userName$ = derived(({ get }) => get(userData$).name);
+const userName$ = derived(({ read }) => read(userData$).name);
         `}
       />
 

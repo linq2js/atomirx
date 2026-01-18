@@ -187,7 +187,7 @@ describe("promiseCache", () => {
 
     it("should return true for derived atom", () => {
       const a$ = atom(0);
-      const d$ = derived(({ get }) => get(a$) * 2);
+      const d$ = derived(({ read }) => read(a$) * 2);
       expect(isDerived(d$)).toBe(true);
     });
 
@@ -227,7 +227,9 @@ describe("promiseCache", () => {
 
     it("should return loading state for derived with fallback during loading", async () => {
       const asyncValue$ = atom(new Promise<number>(() => {}));
-      const derived$ = derived(({ get }) => get(asyncValue$), { fallback: 0 });
+      const derived$ = derived(({ read }) => read(asyncValue$), {
+        fallback: 0,
+      });
 
       // Derived atoms return their state directly via state()
       // State is loading, but staleValue provides the fallback

@@ -59,7 +59,7 @@ export interface SelectContext extends Pipeable {
    * @param atom - The atom to read
    * @returns The atom's current value (Awaited<T>)
    */
-  get<T>(atom: Atom<T>): Awaited<T>;
+  read<T>(atom: Atom<T>): Awaited<T>;
 
   /**
    * Wait for all atoms to resolve (like Promise.all).
@@ -186,7 +186,7 @@ export class AllAtomsRejectedError extends Error {
  * Selects/computes a value from atom(s) with dependency tracking.
  *
  * This is the core computation logic used by `derived()`. It:
- * 1. Creates a context with `get`, `all`, `any`, `race`, `settled`, `safe` utilities
+ * 1. Creates a context with `read`, `all`, `any`, `race`, `settled`, `safe` utilities
  * 2. Tracks which atoms are accessed during computation
  * 3. Returns a result with value/error/promise and dependencies
  *
@@ -199,37 +199,37 @@ export class AllAtomsRejectedError extends Error {
  * If your selector returns a Promise, it will throw an error. This is because:
  * - `select()` is designed for synchronous derivation from atoms
  * - Async atoms should be created using `atom(Promise)` directly
- * - Use `get()` to read async atoms - it handles Suspense-style loading
+ * - Use `read()` to read async atoms - it handles Suspense-style loading
  *
  * ```ts
  * // ❌ WRONG - Don't return a Promise from selector
  * select(({ get }) => fetch('/api/data'));
  *
- * // ✅ CORRECT - Create async atom and read with get()
+ * // ✅ CORRECT - Create async atom and read with read()
  * const data$ = atom(fetch('/api/data').then(r => r.json()));
- * select(({ get }) => get(data$)); // Suspends until resolved
+ * select(({ read }) => read(data$)); // Suspends until resolved
  * ```
  *
  * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
  *
- * **Never wrap `get()` calls in try/catch blocks.** The `get()` function throws
+ * **Never wrap `read()` calls in try/catch blocks.** The `read()` function throws
  * Promises when atoms are loading (Suspense pattern). A try/catch will catch
  * these Promises and break the Suspense mechanism.
  *
  * ```ts
  * // ❌ WRONG - Catches Suspense Promise, breaks loading state
- * select(({ get }) => {
+ * select(({ read }) => {
  *   try {
- *     return get(asyncAtom$);
+ *     return read(asyncAtom$);
  *   } catch (e) {
  *     return 'fallback'; // This catches BOTH errors AND loading promises!
  *   }
  * });
  *
  * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
- * select(({ get, safe }) => {
+ * select(({ read, safe }) => {
  *   const [err, data] = safe(() => {
- *     const raw = get(asyncAtom$);    // Can throw Promise (Suspense)
+ *     const raw = read(asyncAtom$);    // Can throw Promise (Suspense)
  *     return JSON.parse(raw);          // Can throw Error
  *   });
  *
@@ -245,33 +245,33 @@ export class AllAtomsRejectedError extends Error {
  *
  * ## IMPORTANT: SelectContext Methods Are Synchronous Only
  *
- * **All context methods (`get`, `all`, `race`, `any`, `settled`, `safe`) must be
+ * **All context methods (`read`, `all`, `race`, `any`, `settled`, `safe`) must be
  * called synchronously during selector execution.** They cannot be used in async
  * callbacks like `setTimeout`, `Promise.then`, or event handlers.
  *
  * ```ts
- * // ❌ WRONG - Calling get() in async callback
- * select(({ get }) => {
+ * // ❌ WRONG - Calling read() in async callback
+ * select(({ read }) => {
  *   setTimeout(() => {
- *     get(atom$); // Error: called outside selection context
+ *     read(atom$); // Error: called outside selection context
  *   }, 100);
  *   return 'value';
  * });
  *
- * // ❌ WRONG - Storing get() for later use
- * let savedGet;
- * select(({ get }) => {
- *   savedGet = get; // Don't do this!
- *   return get(atom$);
+ * // ❌ WRONG - Storing read() for later use
+ * let savedRead;
+ * select(({ read }) => {
+ *   savedRead = read; // Don't do this!
+ *   return read(atom$);
  * });
- * savedGet(atom$); // Error: called outside selection context
+ * savedRead(atom$); // Error: called outside selection context
  *
- * // ✅ CORRECT - For async access, use atom.value directly
- * effect(({ get }) => {
- *   const config = get(config$);
+ * // ✅ CORRECT - For async access, use atom.get() directly
+ * effect(({ read }) => {
+ *   const config = read(config$);
  *   setTimeout(async () => {
- *     // Use atom.value for async access
- *     const data = await asyncAtom$.value;
+ *     // Use atom.get() for async access
+ *     const data = await asyncAtom$.get();
  *     console.log(data);
  *   }, 100);
  * });
@@ -285,8 +285,8 @@ export class AllAtomsRejectedError extends Error {
  *
  * @example
  * ```ts
- * select(({ get, all }) => {
- *   const user = get(user$);
+ * select(({ read, all }) => {
+ *   const user = read(user$);
  *   const [posts, comments] = all(posts$, comments$);
  *   return { user, posts, comments };
  * });
@@ -309,17 +309,17 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
         `${methodName}() was called outside of the selection context. ` +
           "This usually happens when calling context methods in async callbacks (setTimeout, Promise.then, etc.). " +
           "All atom reads must happen synchronously during selector execution. " +
-          "For async access, use atom.value directly (e.g., myMutableAtom$.value or await myDerivedAtom$.value)."
+          "For async access, use atom.get() directly (e.g., myMutableAtom$.get() or await myDerivedAtom$.get())."
       );
     }
   };
 
   /**
    * Read atom value using getAtomState().
-   * Implements the v2 get() behavior from spec.
+   * Implements Suspense-like behavior.
    */
-  const get = <V>(atom: Atom<V>): Awaited<V> => {
-    assertExecuting("get");
+  const read = <V>(atom: Atom<V>): Awaited<V> => {
+    assertExecuting("read");
 
     // Track this atom as accessed dependency
     dependencies.add(atom as Atom<unknown>);
@@ -520,7 +520,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
   // Create the context
   const context: SelectContext = withUse({
-    get,
+    read,
     all,
     any,
     race,

@@ -38,7 +38,7 @@ function RenderCounter({ name }: { name: string }) {
 
 // Component that selects only name - memoized to prevent parent re-renders
 const UserNameDisplay = memo(function UserNameDisplay() {
-  const name = useValue(({ get }) => get(user$).name);
+  const name = useValue(({ read }) => read(user$).name);
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -55,7 +55,7 @@ const UserNameDisplay = memo(function UserNameDisplay() {
 
 // Component that selects only email - memoized to prevent parent re-renders
 const UserEmailDisplay = memo(function UserEmailDisplay() {
-  const email = useValue(({ get }) => get(user$).email);
+  const email = useValue(({ read }) => read(user$).email);
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -72,7 +72,7 @@ const UserEmailDisplay = memo(function UserEmailDisplay() {
 
 // Component that selects entire user - memoized to prevent parent re-renders
 const FullUserDisplay = memo(function FullUserDisplay() {
-  const user = useValue(({ get }) => get(user$));
+  const user = useValue(({ read }) => read(user$));
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -90,9 +90,9 @@ const FullUserDisplay = memo(function FullUserDisplay() {
 
 // Multi-source selector component - memoized to prevent parent re-renders
 const CombinedDisplay = memo(function CombinedDisplay() {
-  const combined = useValue(({ get }) => ({
-    userName: get(user$).name,
-    theme: get(settings$).theme,
+  const combined = useValue(({ read }) => ({
+    userName: read(user$).name,
+    theme: read(settings$).theme,
   }));
 
   return (
@@ -167,16 +167,16 @@ import { useValue } from "atomirx/react";
 const user = useValue(user$);
 
 // Select with transformation (only re-render when name changes)
-const name = useValue(({ get }) => get(user$).name);
+const name = useValue(({ read }) => read(user$).name);
 
 // Multiple atoms
-const combined = useValue(({ get }) => ({
-  userName: get(user$).name,
-  theme: get(settings$).theme,
+const combined = useValue(({ read }) => ({
+  userName: read(user$).name,
+  theme: read(settings$).theme,
 }));
 
 // With equals option
-const data = useValue(({ get }) => get(data$).value, "shallow");
+const data = useValue(({ read }) => read(data$).value, "shallow");
         `}
       />
 

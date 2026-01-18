@@ -16,7 +16,7 @@ describe("batch", () => {
       });
 
       // All updates batched - listener called once at the end
-      expect(count.value).toBe(3);
+      expect(count.get()).toBe(3);
       expect(listener).toHaveBeenCalledTimes(1);
     });
 
@@ -54,7 +54,7 @@ describe("batch", () => {
         count.set(4);
       });
 
-      expect(count.value).toBe(4);
+      expect(count.get()).toBe(4);
       // All updates batched together
       expect(listener).toHaveBeenCalledTimes(1);
     });
@@ -87,8 +87,8 @@ describe("batch", () => {
         b.set(2);
       });
 
-      expect(a.value).toBe(2);
-      expect(b.value).toBe(2);
+      expect(a.get()).toBe(2);
+      expect(b.get()).toBe(2);
       expect(listenerA).toHaveBeenCalledTimes(1);
       expect(listenerB).toHaveBeenCalledTimes(1);
     });
@@ -125,7 +125,7 @@ describe("batch", () => {
         });
       }).not.toThrow();
 
-      expect(count.value).toBe(3);
+      expect(count.get()).toBe(3);
     });
   });
 
@@ -138,8 +138,8 @@ describe("batch", () => {
 
       // When a changes, update b
       a.on(() => {
-        if (a.value !== undefined && a.value > 0) {
-          b.set(a.value * 2);
+        if (a.get() !== undefined && a.get() > 0) {
+          b.set(a.get() * 2);
         }
       });
 
@@ -150,8 +150,8 @@ describe("batch", () => {
         a.set(5);
       });
 
-      expect(a.value).toBe(5);
-      expect(b.value).toBe(10);
+      expect(a.get()).toBe(5);
+      expect(b.get()).toBe(10);
     });
   });
 
@@ -226,7 +226,7 @@ describe("batch", () => {
 
       // Listener called once at the end with final value
       expect(listener).toHaveBeenCalledTimes(1);
-      expect(count.value).toBe(3);
+      expect(count.get()).toBe(3);
     });
 
     it("should handle mixed scenario with shared and unique listeners", () => {

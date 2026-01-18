@@ -15,7 +15,7 @@ import {
 
 /**
  * Context object passed to derived atom selector functions.
- * Provides utilities for reading atoms: `{ get, all, any, race, settled }`.
+ * Provides utilities for reading atoms: `{ read, all, any, race, settled }`.
  *
  * Currently identical to `SelectContext`, but defined separately to allow
  * future derived-specific extensions without breaking changes.
@@ -26,7 +26,7 @@ export interface DerivedContext extends SelectContext {}
  * Creates a derived (computed) atom from source atom(s).
  *
  * Derived atoms are **read-only** and automatically recompute when their
- * source atoms change. The `.value` property always returns a `Promise<T>`,
+ * source atoms change. The `.get()` method always returns a `Promise<T>`,
  * even for synchronous computations.
  *
  * ## IMPORTANT: Selector Must Return Synchronous Value
@@ -35,39 +35,39 @@ export interface DerivedContext extends SelectContext {}
  *
  * ```ts
  * // ❌ WRONG - Don't use async function
- * derived(async ({ get }) => {
+ * derived(async ({ read }) => {
  *   const data = await fetch('/api');
  *   return data;
  * });
  *
  * // ❌ WRONG - Don't return a Promise
- * derived(({ get }) => fetch('/api').then(r => r.json()));
+ * derived(({ read }) => fetch('/api').then(r => r.json()));
  *
- * // ✅ CORRECT - Create async atom and read with get()
+ * // ✅ CORRECT - Create async atom and read with read()
  * const data$ = atom(fetch('/api').then(r => r.json()));
- * derived(({ get }) => get(data$)); // Suspends until resolved
+ * derived(({ read }) => read(data$)); // Suspends until resolved
  * ```
  *
  * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
  *
- * **Never wrap `get()` calls in try/catch blocks.** The `get()` function throws
+ * **Never wrap `read()` calls in try/catch blocks.** The `read()` function throws
  * Promises when atoms are loading (Suspense pattern). A try/catch will catch
  * these Promises and break the Suspense mechanism.
  *
  * ```ts
  * // ❌ WRONG - Catches Suspense Promise, breaks loading state
- * derived(({ get }) => {
+ * derived(({ read }) => {
  *   try {
- *     return get(asyncAtom$);
+ *     return read(asyncAtom$);
  *   } catch (e) {
  *     return 'fallback'; // This catches BOTH errors AND loading promises!
  *   }
  * });
  *
  * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
- * derived(({ get, safe }) => {
+ * derived(({ read, safe }) => {
  *   const [err, data] = safe(() => {
- *     const raw = get(asyncAtom$);    // Can throw Promise (Suspense)
+ *     const raw = read(asyncAtom$);    // Can throw Promise (Suspense)
  *     return JSON.parse(raw);          // Can throw Error
  *   });
  *
@@ -83,20 +83,20 @@ export interface DerivedContext extends SelectContext {}
  *
  * ## Key Features
  *
- * 1. **Always async**: `.value` returns `Promise<T>`
+ * 1. **Always async**: `.get()` returns `Promise<T>`
  * 2. **Lazy computation**: Value is computed on first access
  * 3. **Automatic updates**: Recomputes when any source atom changes
  * 4. **Equality checking**: Only notifies if derived value changed
  * 5. **Fallback support**: Optional fallback for loading/error states
- * 6. **Suspense-like async**: `get()` throws promise if loading
+ * 6. **Suspense-like async**: `read()` throws promise if loading
  * 7. **Conditional dependencies**: Only subscribes to atoms accessed
  *
- * ## Suspense-Style get()
+ * ## Suspense-Style read()
  *
- * The `get()` function behaves like React Suspense:
- * - If source atom is **loading**: `get()` throws the promise
- * - If source atom has **error**: `get()` throws the error
- * - If source atom has **value**: `get()` returns the value
+ * The `read()` function behaves like React Suspense:
+ * - If source atom is **loading**: `read()` throws the promise
+ * - If source atom has **error**: `read()` throws the error
+ * - If source atom has **value**: `read()` returns the value
  *
  * @template T - Derived value type
  * @template F - Whether fallback is provided
@@ -108,9 +108,9 @@ export interface DerivedContext extends SelectContext {}
  * @example Basic derived (no fallback)
  * ```ts
  * const count$ = atom(5);
- * const doubled$ = derived(({ get }) => get(count$) * 2);
+ * const doubled$ = derived(({ read }) => read(count$) * 2);
  *
- * await doubled$.value; // 10
+ * await doubled$.get(); // 10
  * doubled$.staleValue;  // undefined (until first resolve) -> 10
  * doubled$.state();     // { status: "ready", value: 10 }
  * ```
@@ -118,7 +118,7 @@ export interface DerivedContext extends SelectContext {}
  * @example With fallback
  * ```ts
  * const posts$ = atom(fetchPosts());
- * const count$ = derived(({ get }) => get(posts$).length, { fallback: 0 });
+ * const count$ = derived(({ read }) => read(posts$).length, { fallback: 0 });
  *
  * count$.staleValue; // 0 (during loading) -> 42 (after resolve)
  * count$.state();    // { status: "loading", promise } during loading
@@ -138,7 +138,7 @@ export interface DerivedContext extends SelectContext {}
  *
  * @example Refresh
  * ```ts
- * const data$ = derived(({ get }) => get(source$));
+ * const data$ = derived(({ read }) => read(source$));
  * data$.refresh(); // Re-run computation
  * ```
  */
@@ -291,10 +291,10 @@ export function derived<T>(
     meta: options.meta,
 
     /**
-     * The computed value as a Promise.
+     * Get the computed value as a Promise.
      * Always returns Promise<T>, even for sync computations.
      */
-    get value(): Promise<T> {
+    get(): Promise<T> {
       init();
       return currentPromise!;
     },

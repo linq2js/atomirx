@@ -17,7 +17,7 @@ export interface EffectContext extends SelectContext {
    *
    * @example
    * ```ts
-   * effect(({ get, onCleanup }) => {
+   * effect(({ read, onCleanup }) => {
    *   const id = setInterval(() => console.log('tick'), 1000);
    *   onCleanup(() => clearInterval(id));
    * });
@@ -32,7 +32,7 @@ export interface EffectContext extends SelectContext {
  * Effects are similar to derived atoms but for side-effects rather than computed values.
  * They inherit derived's behavior:
  * - **Suspense-like async**: Waits for async atoms to resolve before running
- * - **Conditional dependencies**: Only tracks atoms actually accessed via `get()`
+ * - **Conditional dependencies**: Only tracks atoms actually accessed via `read()`
  * - **Automatic cleanup**: Previous cleanup runs before next execution
  * - **Batched updates**: Atom updates within the effect are batched
  *
@@ -42,23 +42,23 @@ export interface EffectContext extends SelectContext {
  *
  * ```ts
  * // ❌ WRONG - Don't use async function
- * effect(async ({ get }) => {
+ * effect(async ({ read }) => {
  *   const data = await fetch('/api');
  *   console.log(data);
  * });
  *
- * // ✅ CORRECT - Create async atom and read with get()
+ * // ✅ CORRECT - Create async atom and read with read()
  * const data$ = atom(fetch('/api').then(r => r.json()));
- * effect(({ get }) => {
- *   console.log(get(data$)); // Suspends until resolved
+ * effect(({ read }) => {
+ *   console.log(read(data$)); // Suspends until resolved
  * });
  * ```
  *
  * ## Basic Usage
  *
  * ```ts
- * const dispose = effect(({ get }) => {
- *   localStorage.setItem('count', String(get(countAtom)));
+ * const dispose = effect(({ read }) => {
+ *   localStorage.setItem('count', String(read(countAtom)));
  * });
  * ```
  *
@@ -67,8 +67,8 @@ export interface EffectContext extends SelectContext {
  * Use `onCleanup` to register cleanup functions that run before the next execution or on dispose:
  *
  * ```ts
- * const dispose = effect(({ get, onCleanup }) => {
- *   const interval = get(intervalAtom);
+ * const dispose = effect(({ read, onCleanup }) => {
+ *   const interval = read(intervalAtom);
  *   const id = setInterval(() => console.log('tick'), interval);
  *   onCleanup(() => clearInterval(id));
  * });
@@ -76,15 +76,15 @@ export interface EffectContext extends SelectContext {
  *
  * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
  *
- * **Never wrap `get()` calls in try/catch blocks.** The `get()` function throws
+ * **Never wrap `read()` calls in try/catch blocks.** The `read()` function throws
  * Promises when atoms are loading (Suspense pattern). A try/catch will catch
  * these Promises and break the Suspense mechanism.
  *
  * ```ts
  * // ❌ WRONG - Catches Suspense Promise, breaks loading state
- * effect(({ get }) => {
+ * effect(({ read }) => {
  *   try {
- *     const data = get(asyncAtom$);
+ *     const data = read(asyncAtom$);
  *     riskyOperation(data);
  *   } catch (e) {
  *     console.error(e); // Catches BOTH errors AND loading promises!
@@ -92,9 +92,9 @@ export interface EffectContext extends SelectContext {
  * });
  *
  * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
- * effect(({ get, safe }) => {
+ * effect(({ read, safe }) => {
  *   const [err, data] = safe(() => {
- *     const raw = get(asyncAtom$);    // Can throw Promise (Suspense)
+ *     const raw = read(asyncAtom$);    // Can throw Promise (Suspense)
  *     return riskyOperation(raw);      // Can throw Error
  *   });
  *
@@ -111,7 +111,7 @@ export interface EffectContext extends SelectContext {
  * - **Re-throws Promises** to preserve Suspense behavior
  * - Returns `[undefined, result]` on success
  *
- * @param fn - Effect callback receiving context with `{ get, all, any, race, settled, safe, onCleanup }`.
+ * @param fn - Effect callback receiving context with `{ read, all, any, race, settled, safe, onCleanup }`.
  *             Must be synchronous (not async).
  * @param options - Optional configuration (key)
  * @returns Dispose function to stop the effect and run final cleanup
@@ -141,9 +141,9 @@ export function effect(
     batch(() => fn(effectContext));
   });
 
-  // Access .value to trigger initial computation (derived is lazy)
+  // Access .get() to trigger initial computation (derived is lazy)
   // Ignore promise rejection - errors should be handled via safe()
-  derivedAtom.value.catch(() => {
+  derivedAtom.get().catch(() => {
     // Silently ignore - use safe() for error handling
   });
 

@@ -3,10 +3,10 @@ import { atom } from "./atom";
 import { select } from "./select";
 
 describe("select", () => {
-  describe("get()", () => {
+  describe("read()", () => {
     it("should read value from sync atom", () => {
       const count$ = atom(5);
-      const result = select(({ get }) => get(count$));
+      const result = select(({ read }) => read(count$));
 
       expect(result.value).toBe(5);
       expect(result.error).toBe(undefined);
@@ -17,7 +17,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      const result = select(({ get }) => get(a$) + get(b$));
+      const result = select(({ read }) => read(a$) + read(b$));
 
       expect(result.dependencies.size).toBe(2);
       expect(result.dependencies.has(a$)).toBe(true);
@@ -28,8 +28,8 @@ describe("select", () => {
       const count$ = atom(5);
       const error = new Error("Test error");
 
-      const result = select(({ get }) => {
-        get(count$);
+      const result = select(({ read }) => {
+        read(count$);
         throw error;
       });
 
@@ -205,7 +205,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      const result = select(({ get }) => (get(condition$) ? get(a$) : get(b$)));
+      const result = select(({ read }) => (read(condition$) ? read(a$) : read(b$)));
 
       expect(result.dependencies.size).toBe(2);
       expect(result.dependencies.has(condition$)).toBe(true);
@@ -259,8 +259,8 @@ describe("select", () => {
     it("should return [undefined, result] on success", () => {
       const count$ = atom(5);
 
-      const result = select(({ get, safe }) => {
-        const [err, value] = safe(() => get(count$) * 2);
+      const result = select(({ read, safe }) => {
+        const [err, value] = safe(() => read(count$) * 2);
         return { err, value };
       });
 
@@ -283,8 +283,8 @@ describe("select", () => {
     it("should re-throw Promise to preserve Suspense", () => {
       const pending$ = atom(new Promise(() => {})); // Never resolves
 
-      const result = select(({ get, safe }) => {
-        const [err, value] = safe(() => get(pending$));
+      const result = select(({ read, safe }) => {
+        const [err, value] = safe(() => read(pending$));
         return { err, value };
       });
 
@@ -296,9 +296,9 @@ describe("select", () => {
     it("should catch JSON.parse errors", () => {
       const raw$ = atom("invalid json");
 
-      const result = select(({ get, safe }) => {
+      const result = select(({ read, safe }) => {
         const [err, data] = safe(() => {
-          const raw = get(raw$);
+          const raw = read(raw$);
           return JSON.parse(raw);
         });
 
@@ -314,8 +314,8 @@ describe("select", () => {
     it("should allow graceful degradation", () => {
       const user$ = atom({ name: "John" });
 
-      const result = select(({ get, safe }) => {
-        const [err1, user] = safe(() => get(user$));
+      const result = select(({ read, safe }) => {
+        const [err1, user] = safe(() => read(user$));
         if (err1) return { user: null, posts: [] };
 
         const [err2] = safe(() => {
@@ -353,18 +353,18 @@ describe("select", () => {
   });
 
   describe("async context detection", () => {
-    it("should throw error when get() is called outside selection context", async () => {
+    it("should throw error when read() is called outside selection context", async () => {
       const count$ = atom(5);
-      let capturedGet: ((atom: typeof count$) => number) | null = null;
+      let capturedRead: ((atom: typeof count$) => number) | null = null;
 
-      select(({ get }) => {
-        capturedGet = get;
-        return get(count$);
+      select(({ read }) => {
+        capturedRead = read;
+        return read(count$);
       });
 
-      // Calling get() after select() has finished should throw
-      expect(() => capturedGet!(count$)).toThrow(
-        "get() was called outside of the selection context"
+      // Calling read() after select() has finished should throw
+      expect(() => capturedRead!(count$)).toThrow(
+        "read() was called outside of the selection context"
       );
     });
 

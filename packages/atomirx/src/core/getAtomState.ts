@@ -30,7 +30,7 @@ import { Atom, AtomState } from "./types";
  * ```
  */
 export function getAtomState<T>(atom: Atom<T>): AtomState<Awaited<T>> {
-  const value = atom.value;
+  const value = atom.get();
 
   // 1. Sync value - ready
   if (!isPromiseLike(value)) {

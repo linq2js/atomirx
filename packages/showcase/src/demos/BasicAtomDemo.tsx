@@ -25,10 +25,10 @@ export function BasicAtomDemo() {
   // Subscribe to changes for logging
   useEffect(() => {
     const unsubCount = count$.on(() => {
-      log(`Count changed to: ${count$.value}`, "success");
+      log(`Count changed to: ${count$.get()}`, "success");
     });
     const unsubName = name$.on(() => {
-      log(`Name changed to: "${name$.value}"`, "success");
+      log(`Name changed to: "${name$.get()}"`, "success");
     });
     return () => {
       unsubCount();
@@ -173,8 +173,12 @@ timestamp$.reset();         // Gets new timestamp
       >
         <div className="space-y-4">
           <div className="p-4 bg-surface-800/50 rounded-lg">
-            <p className="text-sm text-surface-400 mb-1">Timestamp (lazy init):</p>
-            <p className="text-xl font-semibold text-surface-100">{timestamp}</p>
+            <p className="text-sm text-surface-400 mb-1">
+              Timestamp (lazy init):
+            </p>
+            <p className="text-xl font-semibold text-surface-100">
+              {timestamp}
+            </p>
           </div>
 
           <button
@@ -192,7 +196,8 @@ timestamp$.reset();         // Gets new timestamp
         <div className="card">
           <h4 className="font-semibold text-surface-100 mb-2">Lazy Init</h4>
           <p className="text-sm text-surface-400">
-            Pass a function to defer computation. reset() re-runs the initializer.
+            Pass a function to defer computation. reset() re-runs the
+            initializer.
           </p>
         </div>
         <div className="card">

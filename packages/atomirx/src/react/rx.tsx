@@ -18,38 +18,38 @@ import { ReactiveSelector } from "../core/select";
  *
  * ```tsx
  * // ❌ WRONG - Don't use async function
- * rx(async ({ get }) => {
+ * rx(async ({ read }) => {
  *   const data = await fetch('/api');
  *   return data.name;
  * });
  *
  * // ❌ WRONG - Don't return a Promise
- * rx(({ get }) => fetch('/api').then(r => r.json()));
+ * rx(({ read }) => fetch('/api').then(r => r.json()));
  *
- * // ✅ CORRECT - Create async atom and read with get()
+ * // ✅ CORRECT - Create async atom and read with read()
  * const data$ = atom(fetch('/api').then(r => r.json()));
- * rx(({ get }) => get(data$).name); // Suspends until resolved
+ * rx(({ read }) => read(data$).name); // Suspends until resolved
  * ```
  *
  * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
  *
- * **Never wrap `get()` calls in try/catch blocks.** The `get()` function throws
+ * **Never wrap `read()` calls in try/catch blocks.** The `read()` function throws
  * Promises when atoms are loading (Suspense pattern). A try/catch will catch
  * these Promises and break the Suspense mechanism.
  *
  * ```tsx
  * // ❌ WRONG - Catches Suspense Promise, breaks loading state
- * rx(({ get }) => {
+ * rx(({ read }) => {
  *   try {
- *     return <span>{get(user$).name}</span>;
+ *     return <span>{read(user$).name}</span>;
  *   } catch (e) {
  *     return <span>Error</span>; // Catches BOTH errors AND loading promises!
  *   }
  * });
  *
  * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
- * rx(({ get, safe }) => {
- *   const [err, user] = safe(() => get(user$));
+ * rx(({ read, safe }) => {
+ *   const [err, user] = safe(() => read(user$));
  *   if (err) return <span>Error: {err.message}</span>;
  *   return <span>{user.name}</span>;
  * });
@@ -83,8 +83,8 @@ import { ReactiveSelector } from "../core/select";
  * function Page() {
  *   return (
  *     <Suspense fallback={<Loading />}>
- *       {rx(({ get }) =>
- *         get(postsAtom).map((post) => <Post post={post} />)
+ *       {rx(({ read }) =>
+ *         read(postsAtom).map((post) => <Post post={post} />)
  *       )}
  *     </Suspense>
  *   );
@@ -113,7 +113,7 @@ import { ReactiveSelector } from "../core/select";
  *   return (
  *     <ErrorBoundary fallback={<div>Error!</div>}>
  *       <Suspense fallback={<div>Loading...</div>}>
- *         {rx(({ get }) => get(userAtom).name)}
+ *         {rx(({ read }) => read(userAtom).name)}
  *       </Suspense>
  *     </ErrorBoundary>
  *   );
@@ -122,9 +122,9 @@ import { ReactiveSelector } from "../core/select";
  *
  * Or catch errors in the selector to handle loading/error inline:
  * ```tsx
- * {rx(({ get }) => {
+ * {rx(({ read }) => {
  *   try {
- *     return get(userAtom).name;
+ *     return read(userAtom).name;
  *   } catch {
  *     return "Loading...";
  *   }
@@ -132,7 +132,7 @@ import { ReactiveSelector } from "../core/select";
  * ```
  *
  * @template T - The type of the selected/derived value
- * @param selector - Context-based selector function with `{ get, all, any, race, settled }`.
+ * @param selector - Context-based selector function with `{ read, all, any, race, settled }`.
  *                   Must return sync value, not a Promise.
  * @param equals - Equality function or shorthand ("strict", "shallow", "deep").
  *                 Defaults to "shallow".
@@ -153,7 +153,7 @@ import { ReactiveSelector } from "../core/select";
  * const count = atom(5);
  *
  * function DoubledCounter() {
- *   return <div>Doubled: {rx(({ get }) => get(count) * 2)}</div>;
+ *   return <div>Doubled: {rx(({ read }) => read(count) * 2)}</div>;
  * }
  * ```
  *
@@ -165,7 +165,7 @@ import { ReactiveSelector } from "../core/select";
  * function FullName() {
  *   return (
  *     <div>
- *       {rx(({ get }) => `${get(firstName)} ${get(lastName)}`)}
+ *       {rx(({ read }) => `${read(firstName)} ${read(lastName)}`)}
  *     </div>
  *   );
  * }
@@ -192,14 +192,14 @@ import { ReactiveSelector } from "../core/select";
  *   return (
  *     <div>
  *       <header>
- *         <Suspense fallback="...">{rx(({ get }) => get(userAtom).name)}</Suspense>
+ *         <Suspense fallback="...">{rx(({ read }) => read(userAtom).name)}</Suspense>
  *       </header>
  *       <main>
  *         <Suspense fallback="...">
- *           {rx(({ get }) => get(postsAtom).length)} posts
+ *           {rx(({ read }) => read(postsAtom).length)} posts
  *         </Suspense>
  *         <Suspense fallback="...">
- *           {rx(({ get }) => get(notificationsAtom).length)} notifications
+ *           {rx(({ read }) => read(notificationsAtom).length)} notifications
  *         </Suspense>
  *       </main>
  *     </div>
@@ -216,8 +216,8 @@ import { ReactiveSelector } from "../core/select";
  * function Info() {
  *   return (
  *     <div>
- *       {rx(({ get }) =>
- *         get(showDetails) ? get(details) : get(summary)
+ *       {rx(({ read }) =>
+ *         read(showDetails) ? read(details) : read(summary)
  *       )}
  *     </div>
  *   );
@@ -232,7 +232,7 @@ import { ReactiveSelector } from "../core/select";
  *   return (
  *     <div>
  *       {rx(
- *         ({ get }) => get(user).name,
+ *         ({ read }) => read(user).name,
  *         (a, b) => a === b // Only re-render if name string changes
  *       )}
  *     </div>
@@ -317,7 +317,7 @@ const Rx = memo(
   }) {
     // Convert atom shorthand to context selector
     const selector: ReactiveSelector<unknown> = isAtom(props.selectorOrAtom)
-      ? ({ get }) => get(props.selectorOrAtom as Atom<unknown>)
+      ? ({ read }) => read(props.selectorOrAtom as Atom<unknown>)
       : (props.selectorOrAtom as ReactiveSelector<unknown>);
 
     const selected = useValue(selector, props.equals);

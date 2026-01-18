@@ -28,8 +28,8 @@ export const SYMBOL_DERIVED = Symbol.for("atomirx.derived");
  * @example
  * ```ts
  * const enhanced = atom(0)
- *   .use(source => ({ ...source, double: () => source.value * 2 }))
- *   .use(source => ({ ...source, triple: () => source.value * 3 }));
+ *   .use(source => ({ ...source, double: () => source.get() * 2 }))
+ *   .use(source => ({ ...source, triple: () => source.get() * 3 }));
  * ```
  */
 export interface Pipeable {
@@ -61,10 +61,13 @@ export interface AtomMeta {
 export interface Atom<T> {
   /** Symbol marker to identify atom instances */
   readonly [SYMBOL_ATOM]: true;
-  /** The current value */
-  readonly value: T;
+
   /** Optional metadata for the atom */
   readonly meta?: AtomMeta;
+
+  /** Get the current value */
+  get(): T;
+
   /**
    * Subscribe to value changes.
    * @param listener - Callback invoked when value changes
@@ -91,7 +94,7 @@ export interface Atom<T> {
  *
  * // Async value (stores Promise as-is)
  * const posts = atom(fetchPosts());
- * posts.value; // Promise<Post[]>
+ * posts.get(); // Promise<Post[]>
  * posts.set(fetchPosts()); // Store new Promise
  * ```
  */
@@ -132,7 +135,7 @@ export interface MutableAtom<T> extends Atom<T>, Pipeable {
  * A derived (computed) atom that always returns Promise<T> for its value.
  *
  * DerivedAtom computes its value from other atoms. The computation is
- * re-run whenever dependencies change. The `.value` always returns a Promise,
+ * re-run whenever dependencies change. The `.get()` always returns a Promise,
  * even for synchronous computations.
  *
  * @template T - The resolved type of the computed value
@@ -141,13 +144,13 @@ export interface MutableAtom<T> extends Atom<T>, Pipeable {
  * @example
  * ```ts
  * // Without fallback
- * const double$ = derived(({ get }) => get(count$) * 2);
- * await double$.value; // number
+ * const double$ = derived(({ read }) => read(count$) * 2);
+ * await double$.get(); // number
  * double$.staleValue;  // number | undefined
  * double$.state();     // { status: "ready", value: 10 }
  *
  * // With fallback - during loading
- * const double$ = derived(({ get }) => get(count$) * 2, { fallback: 0 });
+ * const double$ = derived(({ read }) => read(count$) * 2, { fallback: 0 });
  * double$.staleValue;  // number (guaranteed)
  * double$.state();     // { status: "loading", promise } during loading
  * ```
@@ -202,6 +205,8 @@ export type AtomState<T> =
   | { status: "ready"; value: T }
   | { status: "error"; error: unknown }
   | { status: "loading"; promise: Promise<T> };
+
+export type AtomPlugin = <T extends Atom<any>>(atom: T) => T | void;
 
 /**
  * Result type for settled operations.

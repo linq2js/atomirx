@@ -44,7 +44,7 @@ onCreateHook.override((prev) => (info) => {
       }
     }
     info.atom.on(() => {
-      localStorage.setItem(key, JSON.stringify(info.atom.value));
+      localStorage.setItem(key, JSON.stringify(info.atom.get()));
     });
   }
 });
@@ -82,9 +82,9 @@ const TodoListModule = define(() => {
 
   // derived() - reconciles remote and local changes
   // Local changes override remote data
-  const todoList$ = derived(({ get }) => {
-    const remoteTodos = get(remoteTodoList$); // Promise auto-unwrapped
-    const localChanges = get(localTodoList$);
+  const todoList$ = derived(({ read }) => {
+    const remoteTodos = read(remoteTodoList$); // Promise auto-unwrapped
+    const localChanges = read(localTodoList$);
 
     return remoteTodos.map((todo) => {
       const localChange = localChanges[todo.id];
@@ -96,9 +96,9 @@ const TodoListModule = define(() => {
   });
 
   // derived() - filters reconciled todos based on filter$
-  const filteredTodos$ = derived(({ get }) => {
-    const filter = get(filter$);
-    const todos = get(todoList$);
+  const filteredTodos$ = derived(({ read }) => {
+    const filter = read(filter$);
+    const todos = read(todoList$);
 
     switch (filter) {
       case "active":
@@ -319,7 +319,7 @@ function TodoListDemoContent() {
   // Sync local filter state with atom
   useEffect(() => {
     const unsub = filter$.on(() => {
-      setActiveFilter(filter$.value);
+      setActiveFilter(filter$.get());
     });
     return unsub;
   }, [filter$]);
@@ -403,9 +403,9 @@ const TodoModule = define(() => {
   const localTodoList$ = atom<Record<string, Partial<Todo>>>({});
   
   // Reconcile: local changes override remote
-  const todoList$ = derived(({ get }) => {
-    const remote = get(remoteTodoList$); // Promise auto-unwrapped
-    const local = get(localTodoList$);
+  const todoList$ = derived(({ read }) => {
+    const remote = read(remoteTodoList$); // Promise auto-unwrapped
+    const local = read(localTodoList$);
     
     return remote.map(todo => ({
       ...todo,
@@ -415,9 +415,9 @@ const TodoModule = define(() => {
 
   const filter$ = atom<"all" | "active" | "completed">("all");
   
-  const filteredTodos$ = derived(({ get }) => {
-    const todos = get(todoList$);
-    const filter = get(filter$);
+  const filteredTodos$ = derived(({ read }) => {
+    const todos = read(todoList$);
+    const filter = read(filter$);
     return filter === "all" ? todos : todos.filter(/* ... */);
   });
 
@@ -527,7 +527,7 @@ const TodoModule = define(() => {
             <p className="text-sm text-primary-300">
               <strong>Pattern:</strong> Use <code>define()</code> to organize
               atoms in stable scope. <code>atom()</code> stores the Promise.{" "}
-              <code>derived()</code> unwraps it via <code>get()</code>.{" "}
+              <code>derived()</code> unwraps it via <code>read()</code>.{" "}
               <code>useValue()</code> suspends until ready.
             </p>
           </div>
@@ -565,9 +565,9 @@ Module.invalidate(); // Reset for next test`}
               Computes values from other atoms. Automatically unwraps Promises.
             </p>
             <CodeBlock
-              code={`const filtered$ = derived(({ get }) => {
-  const filter = get(filter$);
-  const todos = get(todos$); // Unwrapped!
+              code={`const filtered$ = derived(({ read }) => {
+  const filter = read(filter$);
+  const todos = read(todos$); // Unwrapped!
   return todos.filter(/* ... */);
 });`}
             />

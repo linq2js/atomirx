@@ -81,7 +81,7 @@ import { isAtom } from "../core/isAtom";
  * function MyComponent() {
  *   // Access staleValue directly - always has a value (with fallback)
  *   const count = myDerivedAtom$.staleValue;
- *   const isLoading = isPending(myDerivedAtom$.value);
+ *   const isLoading = isPending(myDerivedAtom$.get());
  *
  *   return (
  *     <div>
@@ -185,7 +185,7 @@ export function useValue<T>(
 ): T {
   // Convert atom shorthand to context selector
   const selector: ReactiveSelector<T> = isAtom(selectorOrAtom)
-    ? ({ get }) => get(selectorOrAtom as Atom<T>) as T
+    ? ({ read }) => read(selectorOrAtom as Atom<T>) as T
     : (selectorOrAtom as ReactiveSelector<T>);
 
   // Default to shallow equality

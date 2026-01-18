@@ -114,10 +114,10 @@ export function AsyncUtilitiesDemo() {
     const fresh = createFreshAtoms();
     setAtoms(fresh);
     setDerivedAtoms({
-      apiA$: derived(({ get }) => get(fresh.apiA$)),
-      apiB$: derived(({ get }) => get(fresh.apiB$)),
-      apiC$: derived(({ get }) => get(fresh.apiC$)),
-      failing$: derived(({ get }) => get(fresh.failing$)),
+      apiA$: derived(({ read }) => read(fresh.apiA$)),
+      apiB$: derived(({ read }) => read(fresh.apiB$)),
+      apiC$: derived(({ read }) => read(fresh.apiC$)),
+      failing$: derived(({ read }) => read(fresh.failing$)),
     });
     return fresh;
   };
