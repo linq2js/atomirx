@@ -1,6 +1,7 @@
+import { isDerived } from "./isAtom";
 import { isPromiseLike } from "./isPromiseLike";
 import { trackPromise } from "./promiseCache";
-import { Atom, AtomState } from "./types";
+import { Atom, AtomState, DerivedAtom } from "./types";
 
 /**
  * Returns the current state of an atom as a discriminated union.
@@ -30,6 +31,9 @@ import { Atom, AtomState } from "./types";
  * ```
  */
 export function getAtomState<T>(atom: Atom<T>): AtomState<Awaited<T>> {
+  if (isDerived(atom)) {
+    return (atom as DerivedAtom<Awaited<T>>).state();
+  }
   const value = atom.get();
 
   // 1. Sync value - ready

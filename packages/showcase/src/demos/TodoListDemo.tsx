@@ -56,7 +56,9 @@ type FilterType = "all" | "active" | "completed";
 // =============================================================================
 
 const fetchTodos = (): Promise<Todo[]> =>
-  fetch("https://jsonplaceholder.typicode.com/todos?_limit=10").then((res) => {
+  fetch(
+    "https://jsonplaceholder.typicode.com/todos?_limit=10&_delay=2000"
+  ).then((res) => {
     if (!res.ok) throw new Error("Failed to fetch todos");
     return res.json();
   });

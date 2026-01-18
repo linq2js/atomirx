@@ -202,9 +202,14 @@ export type AtomValue<A> =
  * @template T - The type of the atom's value
  */
 export type AtomState<T> =
-  | { status: "ready"; value: T }
-  | { status: "error"; error: unknown }
-  | { status: "loading"; promise: Promise<T> };
+  | { status: "ready"; value: T; error?: undefined; promise?: undefined }
+  | { status: "error"; error: unknown; value?: undefined; promise?: undefined }
+  | {
+      status: "loading";
+      promise: Promise<T>;
+      value?: undefined;
+      error?: undefined;
+    };
 
 export type AtomPlugin = <T extends Atom<any>>(atom: T) => T | void;
 
@@ -300,15 +305,3 @@ export interface ModuleMeta {}
 export type Listener<T> = (value: T) => void;
 
 export type SingleOrMultipleListeners<T> = Listener<T> | Listener<T>[];
-
-/**
- * Type guard to check if a value is an Atom.
- */
-export declare function isAtom<T>(value: unknown): value is Atom<T>;
-
-/**
- * Type guard to check if a value is a DerivedAtom.
- */
-export declare function isDerived<T>(
-  value: unknown
-): value is DerivedAtom<T, boolean>;

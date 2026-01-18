@@ -215,6 +215,13 @@ export function derived<T>(
    * Creates a new Promise that resolves when the computation completes.
    */
   const compute = (silent = false) => {
+    // If already loading, don't create new Promise - reuse existing one
+    // The current computation will complete and retry, picking up new dependency values
+    // This prevents orphaned promises that React is waiting on
+    if (isLoading && currentPromise) {
+      return currentPromise;
+    }
+
     const computeVersion = ++version;
     isLoading = true;
     lastError = undefined; // Clear error when starting new computation
@@ -229,6 +236,9 @@ export function derived<T>(
         updateSubscriptions(result.dependencies);
 
         if (result.promise) {
+          // Notify subscribers that we're now in loading state
+          // This allows downstream derived atoms and useValue to suspend
+          if (!silent) notify();
           // Promise thrown - wait for it and retry
           result.promise.then(
             () => {
