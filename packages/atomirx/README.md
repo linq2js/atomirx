@@ -78,7 +78,6 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
   - [React Integration](#react-integration)
     - [useValue Hook](#usevalue-hook)
       - [Custom Equality](#custom-equality)
-    - [useAsyncState Hook](#useasyncstate-hook)
     - [Reactive Components with rx](#reactive-components-with-rx)
     - [Async Actions with useAction](#async-actions-with-useaction)
       - [Eager Execution](#eager-execution)
@@ -98,7 +97,6 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
     - [SelectContext API](#selectcontext-api)
     - [React API](#react-api)
       - [`useValue`](#usevalue)
-      - [`useAsyncState`](#useasyncstate)
       - [`rx`](#rx)
       - [`useAction`](#useaction)
       - [`useStable`](#usestable)
@@ -179,8 +177,7 @@ atomirx includes these APIs:
 ### React Bindings (`atomirx/react`)
 
 - **`useValue()`**: Subscribe to atoms with automatic re-rendering (Suspense-based)
-- **`useAsyncState()`**: Subscribe to atoms returning `AsyncState` for imperative loading/error handling
-- **`rx()`**: Inline reactive components for fine-grained updates
+- **`rx()`**: Inline reactive components with optional loading/error handlers
 - **`useAction()`**: Handle async operations with loading/error states
 - **`useStable()`**: Stabilize object/array/callback references
 
@@ -1379,70 +1376,6 @@ const userName = useValue(
 );
 ```
 
-### useAsyncState Hook
-
-When you want to handle loading and error states **imperatively** instead of using Suspense and ErrorBoundary, use `useAsyncState`. It returns an `AsyncState<T>` discriminated union instead of throwing.
-
-```tsx
-import { useAsyncState } from "atomirx/react";
-import { atom } from "atomirx";
-
-const userData$ = atom(fetchUser());
-
-function UserProfile() {
-  // Returns AsyncState<User> - never suspends or throws
-  const state = useAsyncState(userData$);
-
-  // Handle states imperatively
-  if (state.status === "loading") {
-    return <Spinner />;
-  }
-
-  if (state.status === "error") {
-    return <ErrorMessage error={state.error} />;
-  }
-
-  // state.status === "ready"
-  return <div>{state.value.name}</div>;
-}
-```
-
-**AsyncState type:**
-
-```typescript
-type AsyncState<T> =
-  | { status: "ready"; value: T }
-  | { status: "error"; error: unknown }
-  | { status: "loading"; promise: Promise<T> };
-```
-
-**With selector:**
-
-```tsx
-function Dashboard() {
-  const state = useAsyncState(({ all }) => {
-    const [user, posts] = all(user$, posts$);
-    return { user, posts };
-  });
-
-  switch (state.status) {
-    case "loading":
-      return <LoadingDashboard />;
-    case "error":
-      return <ErrorDashboard error={state.error} />;
-    case "ready":
-      return <Dashboard user={state.value.user} posts={state.value.posts} />;
-  }
-}
-```
-
-**When to use `useAsyncState` vs `useValue`:**
-
-| Hook            | Behavior             | Use When                                         |
-| --------------- | -------------------- | ------------------------------------------------ |
-| `useValue`      | Suspends, throws     | Using Suspense/ErrorBoundary                     |
-| `useAsyncState` | Returns `AsyncState` | Handling loading/error inline without boundaries |
-
 ### Reactive Components with rx
 
 The `rx()` function creates inline reactive components for fine-grained updates.
@@ -1521,6 +1454,36 @@ function Dashboard() {
 | `rx()` with Suspense          | Shared loading UI across multiple components           |
 | `rx()` with `loading`/`error` | Self-contained component with custom inline UI         |
 | `rx()` with `state()`         | Complex conditional rendering based on multiple states |
+
+#### Selector Memoization with `deps`
+
+By default, function selectors are recreated on every render. Use `deps` to control memoization:
+
+```tsx
+function Component({ multiplier }: { multiplier: number }) {
+  return (
+    <div>
+      {/* No memoization (default) - selector recreated every render */}
+      {rx(({ read }) => read(count$) * 2)}
+      {/* Stable forever - selector never recreated */}
+      {rx(({ read }) => read(count$) * 2, { deps: [] })}
+      {/* Recreate when multiplier changes */}
+      {rx(({ read }) => read(count$) * multiplier, { deps: [multiplier] })}
+      {/* Atom shorthand is always stable by reference */}
+      {rx(count$)} {/* No deps needed */}
+    </div>
+  );
+}
+```
+
+**Memoization behavior:**
+
+| Input                           | `deps`      | Behavior                          |
+| ------------------------------- | ----------- | --------------------------------- |
+| Atom (`rx(atom$)`)              | (ignored)   | Always memoized by atom reference |
+| Function (`rx(({ read }) => …`) | `undefined` | No memoization (recreated always) |
+| Function                        | `[]`        | Stable forever (never recreated)  |
+| Function                        | `[a, b]`    | Recreated when deps change        |
 
 ### Async Actions with useAction
 
@@ -1856,26 +1819,6 @@ function useValue<T>(
 ): T;
 ```
 
-#### `useAsyncState`
-
-Returns `AsyncState<T>` for imperative loading/error handling instead of suspending.
-
-```typescript
-type AsyncState<T> =
-  | { status: "ready"; value: T }
-  | { status: "error"; error: unknown }
-  | { status: "loading"; promise: Promise<T> };
-
-// Shorthand
-function useAsyncState<T>(atom: Atom<T>): AsyncState<Awaited<T>>;
-
-// Context selector
-function useAsyncState<T>(
-  selector: (context: SelectContext) => T,
-  equals?: (prev: T, next: T) => boolean
-): AsyncState<T>;
-```
-
 #### `rx`
 
 ```typescript
@@ -1891,10 +1834,31 @@ function rx<T>(
 ): ReactNode;
 
 interface RxOptions<T> {
+  /** Equality function for value comparison */
   equals?: Equality<T>;
+  /** Render function for loading state (wraps with Suspense) */
   loading?: () => ReactNode;
+  /** Render function for error state (wraps with ErrorBoundary) */
   error?: (props: { error: unknown }) => ReactNode;
+  /** Dependencies for selector memoization */
+  deps?: unknown[];
 }
+```
+
+**Selector memoization with `deps`:**
+
+```tsx
+// No memoization (default) - selector recreated every render
+rx(({ read }) => read(count$) * multiplier);
+
+// Stable forever - never recreated
+rx(({ read }) => read(count$) * 2, { deps: [] });
+
+// Recreate when multiplier changes
+rx(({ read }) => read(count$) * multiplier, { deps: [multiplier] });
+
+// Atom shorthand is always stable (deps ignored)
+rx(count$);
 ```
 
 **With inline loading/error handlers:**
