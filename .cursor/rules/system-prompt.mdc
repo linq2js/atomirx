@@ -18,22 +18,32 @@ All non-trivial work MUST follow this sequence. Skipping phases is not allowed.
 ## 1. Research (No code changes)
 
 - Read existing code, docs, tests before guessing
+- **Never assume function/class purpose from names alone** — for both internal and 3rd party code:
+  - Read JSDoc/comments for actual behavior and edge cases
+  - Check error conditions and return values
+  - Understand design intent and constraints
+  - Lookup SKILL files (`.cursor/skills/`) for project-specific patterns
+  - Read type definitions (`*.d.ts`, `node_modules/@types/`)
+  - Use WebSearch for external library documentation
 - Ask: "Do you have a PRD or Technical Doc?" (user may skip)
 - Present **3 approaches** as comparison table:
-  | Approach | Pros | Cons | Risk | Effort |
-  |----------|------|------|------|--------|
-  | A | ... | ... | Low/Med/High | Low/Med/High |
-- Recommend best option based on: Safety → Stability → Least impact
+
+  | Approach | Pros | Cons | Security     | Data-Loss Risk | Effort       |
+  | -------- | ---- | ---- | ------------ | -------------- | ------------ |
+  | A        | ...  | ...  | Low/Med/High | Low/Med/High   | Low/Med/High |
+
+- **Priority order when recommending**: Security → Data Safety → Stability → Least Impact → Effort
+- Always recommend the most secure, least data-loss approach first, even if it requires more effort
 
 ## 2. Plan
 
 - Define: scope, non-goals, risks, testing strategy
 - **Task Breakdown** (atomic pieces, each independently testable):
-  ```
-  | # | Task | Files | New | Modified | Description |
-  |---|------|-------|-----|----------|-------------|
-  | 1 | ... | 3 | 2 | 1 | ... |
-  ```
+
+  | #   | Task | Files | New | Modified | Description |
+  | --- | ---- | ----- | --- | -------- | ----------- |
+  | 1   | ...  | 3     | 2   | 1        | ...         |
+
 - Show dependency graph (Mermaid) when helpful
 - Search repo for: existing utils, similar patterns, shared abstractions
 
@@ -70,6 +80,52 @@ Before any change, analyze:
 - ❌ Avoid tightly coupled, untestable logic
 - ✅ Prefer: pure functions, dependency injection, clear separation of concerns
 
+## Comments & Documentation
+
+**JSDoc** — write comprehensive documentation:
+
+- `@description` — what the function does and why
+- `@param` — each parameter with type and purpose
+- `@returns` — return value and possible states (null, undefined, empty)
+- `@throws` — errors thrown and conditions that trigger them
+- `@example` — usage examples, especially for non-obvious cases
+- Edge cases and special behaviors
+- User intent / design decisions
+
+```typescript
+/**
+ * Fetches user by ID with caching support.
+ * Returns cached result if available and not expired.
+ *
+ * @param id - User ID to fetch
+ * @param options - Fetch options
+ * @param options.bypassCache - Skip cache lookup, always fetch fresh
+ * @returns User object, or null if not found
+ * @throws {AuthError} If user lacks permission to view this user
+ * @throws {NetworkError} If API request fails after retries
+ *
+ * @example
+ * // Basic usage
+ * const user = await getUser('123');
+ *
+ * @example
+ * // Force fresh fetch
+ * const user = await getUser('123', { bypassCache: true });
+ */
+```
+
+**Inline comments** — explain the "why", not the "what":
+
+- User intent / business logic reasoning
+- Non-obvious implementation choices
+- Workarounds with context (link to issue if applicable)
+
+```typescript
+// Skip validation for admin users — they manage raw data directly
+// See: https://github.com/org/repo/issues/123
+if (user.role === "admin") return data;
+```
+
 ## DRY & Code Reuse
 
 Before implementing, search codebase using:
@@ -86,13 +142,11 @@ Look for:
 
 Present findings:
 
-```
-| Need | Existing | Location | Strategy |
-|------|----------|----------|----------|
-| Debounce | useDebounce | hooks/ | Use directly |
-| Validation | validateInput | utils/ | Extend |
-| N/A | - | - | Create new |
-```
+| Need       | Existing      | Location | Strategy     |
+| ---------- | ------------- | -------- | ------------ |
+| Debounce   | useDebounce   | hooks/   | Use directly |
+| Validation | validateInput | utils/   | Extend       |
+| N/A        | -             | -        | Create new   |
 
 ❌ Don't create new code if existing covers 80%+ of need
 ✅ Extend existing abstractions when possible
@@ -129,21 +183,72 @@ List affected tests:
 - Report: "X passed, Y updated, Z new"
 - Run linter, fix errors
 - Remove unused imports/variables
+- **Verify SKILL files** — check if changes affect any SKILL documentation:
+  - Review `.cursor/skills/` for related skills
+  - Update existing SKILL files if behavior/API changed
+  - Create new SKILL files if new patterns/features were added
+  - Keep skills in sync with actual implementation
 
 # SESSION MANAGEMENT
 
-The AI has limited context. To prevent work loss:
+The AI has limited context. To prevent work loss and enable handoff to other agents:
 
 1. **Use Todos** — for tasks with 3+ steps
-2. **Checkpoint complex work** — create `.WORKING_NOTES.md`:
+2. **Write plan files for large tasks (3+ items)** — create in `.AI_WORKING/` directory:
+   - Filename: short description, e.g., `refactor-auth-module.md`, `add-caching-layer.md`
+   - Update task status immediately after completing each item
+   - Note any deviations from original task description
+
+   ```markdown
+   # Plan: [Short Description]
+
+   ## Context
+
+   [Why this work is being done]
+
+   ## Tasks
+
+   | #   | Task           | Status         | Dependencies | Updated    |
+   | --- | -------------- | -------------- | ------------ | ---------- |
+   | 1   | Setup types    | ✅ done        | -            | 2024-01-15 |
+   | 2   | Implement core | 🔄 in-progress | 1            | 2024-01-15 |
+   | 3   | Add tests      | ⏳ pending     | 2            | -          |
+   | 4   | Update docs    | ⏳ pending     | 3            | -          |
+
+   ---
+
+   ## Task Details
+
+   ### Task 1: Setup types ✅
+
+   **Files changed:**
+
+   - `src/auth/types.ts` - new
+
+   **Notes:**
+
+   - Added AuthConfig and AuthResult interfaces
+   - Used existing BaseError pattern from `src/core/errors.ts`
+
+   ### Task 2: Implement core 🔄
+
+   **Files changed:**
+
+   - `src/auth/handler.ts` - modified
+
+   **Notes:**
+
+   - [AI updates this section after completing the task]
+   - [Include any deviations from original plan]
    ```
-   ## Task: [description]
-   ## Status: in-progress / blocked
-   ## Completed: [what's done]
-   ## Remaining: [what's left]
-   ## Files Changed: [list]
-   ```
+
 3. **Commit incrementally** — preserve progress in git
+
+**Why plan files matter:**
+
+- Context window may exceed limits mid-task
+- Other AI agents can continue the work
+- User can review progress asynchronously
 
 # PR REVIEW MODE
 
