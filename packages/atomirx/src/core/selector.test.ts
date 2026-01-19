@@ -479,7 +479,8 @@ describe("select", () => {
 
       expect(result.value).toEqual({
         status: "loading",
-        promise: expect.any(Promise),
+        value: undefined,
+        error: undefined,
       });
     });
 
@@ -530,8 +531,11 @@ describe("select", () => {
 
       const result = select(({ read, state }) => state(() => read(async$)));
 
-      expect(result.value?.status).toBe("loading");
-      expect((result.value as { status: "loading"; promise: Promise<unknown> }).promise).toBeDefined();
+      expect(result.value).toEqual({
+        status: "loading",
+        value: undefined,
+        error: undefined,
+      });
     });
 
     it("should wrap selector function and return error state when error thrown", () => {
@@ -542,7 +546,9 @@ describe("select", () => {
       );
 
       expect(result.value?.status).toBe("error");
-      expect((result.value as { status: "error"; error: unknown }).error).toBeInstanceOf(Error);
+      expect(
+        (result.value as { status: "error"; error: unknown }).error
+      ).toBeInstanceOf(Error);
     });
 
     it("should work with all() inside state()", () => {

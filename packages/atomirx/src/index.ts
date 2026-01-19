@@ -36,6 +36,7 @@ export type {
   MutableAtom,
   MutableAtomMeta,
   Pipeable,
+  SelectStateResult,
   SettledResult,
 } from "./core/types";
 

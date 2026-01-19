@@ -211,6 +211,25 @@ export type AtomState<T> =
       error?: undefined;
     };
 
+/**
+ * Result type for SelectContext.state() - simplified AtomState without promise.
+ *
+ * All properties (`status`, `value`, `error`) are always present:
+ * - `value` is `T` when ready, `undefined` otherwise
+ * - `error` is the error when errored, `undefined` otherwise
+ *
+ * This enables easy destructuring without type narrowing:
+ * ```ts
+ * const { status, value, error } = state(atom$);
+ * ```
+ *
+ * Equality comparisons work correctly (no promise reference issues).
+ */
+export type SelectStateResult<T> =
+  | { status: "ready"; value: T; error: undefined }
+  | { status: "error"; value: undefined; error: unknown }
+  | { status: "loading"; value: undefined; error: undefined };
+
 export type AtomPlugin = <T extends Atom<any>>(atom: T) => T | void;
 
 /**

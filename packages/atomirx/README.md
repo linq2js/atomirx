@@ -78,6 +78,7 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
   - [React Integration](#react-integration)
     - [useValue Hook](#usevalue-hook)
       - [Custom Equality](#custom-equality)
+      - [Why useValue is Powerful](#why-usevalue-is-powerful)
     - [Reactive Components with rx](#reactive-components-with-rx)
     - [Async Actions with useAction](#async-actions-with-useaction)
       - [Eager Execution](#eager-execution)
@@ -1376,6 +1377,89 @@ const userName = useValue(
 );
 ```
 
+#### Why useValue is Powerful
+
+`useValue` provides a unified API that replaces multiple hooks from other libraries:
+
+**One hook for all use cases:**
+
+```tsx
+// 1. Single atom (shorthand)
+const count = useValue(count$);
+
+// 2. Derived value (selector)
+const doubled = useValue(({ read }) => read(count$) * 2);
+
+// 3. Multiple atoms (all)
+const [user, posts] = useValue(({ all }) => all(user$, posts$));
+
+// 4. Loadable mode (state) - no Suspense needed
+const userState = useValue(({ state }) => state(user$));
+// { status: "loading" | "ready" | "error", value, error }
+
+// 5. Error handling (safe) - preserves Suspense
+const result = useValue(({ read, safe }) => {
+  const [err, data] = safe(() => JSON.parse(read(rawJson$)));
+  return err ? { error: err.message } : { data };
+});
+
+// 6. First ready (any), race, allSettled
+const fastest = useValue(({ any }) => any(cache$, api$));
+const results = useValue(({ settled }) => settled(a$, b$, c$));
+```
+
+**Comparison with other libraries:**
+
+| Use Case            | atomirx                                 | Jotai                          | Recoil                          | Zustand                    |
+| ------------------- | --------------------------------------- | ------------------------------ | ------------------------------- | -------------------------- |
+| Single atom         | `useValue(atom$)`                       | `useAtomValue(atom)`           | `useRecoilValue(atom)`          | `useStore(s => s.value)`   |
+| Derived value       | `useValue(({ read }) => ...)`           | `useAtomValue(derivedAtom)`    | `useRecoilValue(selector)`      | `useStore(s => derive(s))` |
+| Multiple atoms      | `useValue(({ all }) => all(a$, b$))`    | Multiple `useAtomValue` calls  | Multiple `useRecoilValue` calls | Multiple selectors         |
+| Suspense mode       | Built-in (default)                      | Built-in                       | Built-in                        | Manual                     |
+| Loadable mode       | `useValue(({ state }) => state(atom$))` | `useAtomValue(loadable(atom))` | `useRecoilValueLoadable(atom)`  | Manual                     |
+| Safe error handling | `safe()` in selector                    | Manual try/catch               | Manual try/catch                | Manual                     |
+| Custom equality     | 2nd parameter                           | `selectAtom`                   | N/A                             | 2nd parameter              |
+
+**Key advantages:**
+
+1. **Single unified hook** - No need to choose between `useAtomValue`, `useAtomValueLoadable`, etc.
+2. **Composable selectors** - Combine multiple atoms, derive values, handle errors in one selector
+3. **Flexible async modes** - Switch between Suspense and loadable without changing atoms
+4. **Built-in utilities** - `all()`, `any()`, `race()`, `settled()`, `safe()`, `state()` available in selector
+5. **Type-safe** - Full TypeScript inference across all patterns
+
+**Boilerplate comparison - Loading multiple async atoms:**
+
+```tsx
+// ❌ Jotai - Multiple hooks + loadable wrapper
+const userLoadable = useAtomValue(loadable(userAtom));
+const postsLoadable = useAtomValue(loadable(postsAtom));
+const isLoading =
+  userLoadable.state === "loading" || postsLoadable.state === "loading";
+const user = userLoadable.state === "hasData" ? userLoadable.data : null;
+const posts = postsLoadable.state === "hasData" ? postsLoadable.data : [];
+
+// ❌ Recoil - Multiple hooks
+const userLoadable = useRecoilValueLoadable(userAtom);
+const postsLoadable = useRecoilValueLoadable(postsAtom);
+const isLoading =
+  userLoadable.state === "loading" || postsLoadable.state === "loading";
+const user = userLoadable.state === "hasValue" ? userLoadable.contents : null;
+const posts = postsLoadable.state === "hasValue" ? postsLoadable.contents : [];
+
+// ✅ atomirx - One hook, one selector
+const { isLoading, user, posts } = useValue(({ state }) => {
+  const userState = state(user$);
+  const postsState = state(posts$);
+  return {
+    isLoading:
+      userState.status === "loading" || postsState.status === "loading",
+    user: userState.value,
+    posts: postsState.value ?? [],
+  };
+});
+```
+
 ### Reactive Components with rx
 
 The `rx()` function creates inline reactive components for fine-grained updates.
@@ -1722,15 +1806,15 @@ function isAtom<T>(value: unknown): value is Atom<T>;
 
 Available in `derived()`, `effect()`, `useValue()`, and `rx()`:
 
-| Method    | Signature                          | Description                                  |
-| --------- | ---------------------------------- | -------------------------------------------- |
-| `read`    | `<T>(atom: Atom<T>) => Awaited<T>` | Read atom value with dependency tracking     |
-| `all`     | `(...atoms) => [values...]`        | Wait for all atoms (Promise.all semantics)   |
-| `any`     | `(...atoms) => value`              | First ready value (Promise.any semantics)    |
-| `race`    | `(...atoms) => value`              | First settled value (Promise.race semantics) |
-| `settled` | `(...atoms) => SettledResult[]`    | All results (Promise.allSettled semantics)   |
-| `state`   | `(atom \| selector) => AtomState`  | Get async state without throwing             |
-| `safe`    | `(fn) => [error, result]`          | Catch errors, preserve Suspense              |
+| Method    | Signature                                 | Description                                          |
+| --------- | ----------------------------------------- | ---------------------------------------------------- |
+| `read`    | `<T>(atom: Atom<T>) => Awaited<T>`        | Read atom value with dependency tracking             |
+| `all`     | `(...atoms) => [values...]`               | Wait for all atoms (Promise.all semantics)           |
+| `any`     | `(...atoms) => value`                     | First ready value (Promise.any semantics)            |
+| `race`    | `(...atoms) => value`                     | First settled value (Promise.race semantics)         |
+| `settled` | `(...atoms) => SettledResult[]`           | All results (Promise.allSettled semantics)           |
+| `state`   | `(atom \| selector) => SelectStateResult` | Get async state without throwing (equality-friendly) |
+| `safe`    | `(fn) => [error, result]`                 | Catch errors, preserve Suspense                      |
 
 **Behavior:**
 
@@ -1799,10 +1883,12 @@ const allData$ = derived(({ state, all }) => {
 
 **`state()` vs `read()`:**
 
-| Method    | On Loading                               | On Error                             | On Ready                             |
-| --------- | ---------------------------------------- | ------------------------------------ | ------------------------------------ |
-| `read()`  | Throws Promise (Suspense)                | Throws Error                         | Returns value                        |
-| `state()` | Returns `{ status: "loading", promise }` | Returns `{ status: "error", error }` | Returns `{ status: "ready", value }` |
+| Method    | On Loading                                                          | On Error                                               | On Ready                                               |
+| --------- | ------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
+| `read()`  | Throws Promise (Suspense)                                           | Throws Error                                           | Returns value                                          |
+| `state()` | Returns `{ status: "loading", value: undefined, error: undefined }` | Returns `{ status: "error", value: undefined, error }` | Returns `{ status: "ready", value, error: undefined }` |
+
+**Note:** `state()` returns `SelectStateResult<T>` with all properties always present (`status`, `value`, `error`). This enables easy destructuring and equality comparisons (no promise reference issues).
 
 ### React API
 
