@@ -2,6 +2,8 @@ import { useReducer, useCallback, useRef, useEffect } from "react";
 import { isPromiseLike } from "../core/isPromiseLike";
 import { useValue } from "./useValue";
 import { isAtom } from "../core/isAtom";
+import { Pipeable } from "../core/types";
+import { withUse } from "../core/withUse";
 
 /**
  * State for an action that hasn't been dispatched yet.
@@ -85,7 +87,7 @@ export interface UseActionOptions {
 /**
  * Context passed to the action function.
  */
-export interface ActionContext {
+export interface ActionContext extends Pipeable {
   /** AbortSignal for cancellation. New signal per dispatch. */
   signal: AbortSignal;
 }
@@ -506,7 +508,7 @@ export function useAction<TResult, TLazy extends boolean = true>(
 
     let result: TResult;
     try {
-      result = fnRef.current({ signal: abortController.signal });
+      result = fnRef.current(withUse({ signal: abortController.signal }));
     } catch (error) {
       // Sync error - update state and return rejected promise
       dispatchAction({ type: "ERROR", error });
