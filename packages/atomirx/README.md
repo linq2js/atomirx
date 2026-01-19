@@ -1479,6 +1479,49 @@ function Dashboard() {
 
 **Key benefit**: The parent component doesn't re-render when atoms change - only the `rx` components do.
 
+#### Inline Loading and Error Handling
+
+`rx()` supports optional `loading` and `error` handlers for inline async state handling without Suspense/ErrorBoundary:
+
+```tsx
+function Dashboard() {
+  return (
+    <div>
+      {/* With loading handler - no Suspense needed */}
+      {rx(userData$, {
+        loading: () => <Spinner />,
+      })}
+
+      {/* With error handler - no ErrorBoundary needed */}
+      {rx(userData$, {
+        error: ({ error }) => <Alert>{String(error)}</Alert>,
+      })}
+
+      {/* Both handlers - fully self-contained */}
+      {rx(userData$, {
+        loading: () => <UserSkeleton />,
+        error: ({ error }) => <UserError error={error} />,
+      })}
+
+      {/* With selector and options */}
+      {rx(({ read }) => read(posts$).slice(0, 5), {
+        loading: () => <PostsSkeleton count={5} />,
+        error: ({ error }) => <PostsError onRetry={() => posts$.refresh()} />,
+        equals: "shallow",
+      })}
+    </div>
+  );
+}
+```
+
+**When to use each approach:**
+
+| Approach                      | Use When                                               |
+| ----------------------------- | ------------------------------------------------------ |
+| `rx()` with Suspense          | Shared loading UI across multiple components           |
+| `rx()` with `loading`/`error` | Self-contained component with custom inline UI         |
+| `rx()` with `state()`         | Complex conditional rendering based on multiple states |
+
 ### Async Actions with useAction
 
 Handle async operations with built-in loading/error states:
@@ -1723,6 +1766,8 @@ Available in `derived()`, `effect()`, `useValue()`, and `rx()`:
 | `any`     | `(...atoms) => value`              | First ready value (Promise.any semantics)    |
 | `race`    | `(...atoms) => value`              | First settled value (Promise.race semantics) |
 | `settled` | `(...atoms) => SettledResult[]`    | All results (Promise.allSettled semantics)   |
+| `state`   | `(atom \| selector) => AtomState`  | Get async state without throwing             |
+| `safe`    | `(fn) => [error, result]`          | Catch errors, preserve Suspense              |
 
 **Behavior:**
 
@@ -1731,6 +1776,70 @@ Available in `derived()`, `effect()`, `useValue()`, and `rx()`:
 - `any()`: Returns first ready value, throws AggregateError if all error
 - `race()`: Returns first settled (ready or error)
 - `settled()`: Returns `{ status: "ready", value }` or `{ status: "error", error }` for each atom
+- `state()`: Returns `AtomState<T>` without throwing - useful for inline state handling
+- `safe()`: Catches errors but re-throws Promises to preserve Suspense
+
+#### `state()` - Get Async State Without Throwing
+
+The `state()` method returns an `AtomState<T>` object instead of throwing. This is useful when you want to handle loading/error states inline without Suspense.
+
+**Available at every level** - derived, rx, useValue, effect:
+
+```typescript
+// 1. In derived() - Build dashboard with partial loading
+const dashboard$ = derived(({ state }) => {
+  const userState = state(user$);
+  const postsState = state(posts$);
+
+  return {
+    user: userState.status === 'ready' ? userState.value : null,
+    posts: postsState.status === 'ready' ? postsState.value : [],
+    isLoading: userState.status === 'loading' || postsState.status === 'loading',
+  };
+});
+
+// 2. In rx() - Inline loading/error UI
+{rx(({ state }) => {
+  const dataState = state(data$);
+
+  if (dataState.status === 'loading') return <Spinner />;
+  if (dataState.status === 'error') return <Error error={dataState.error} />;
+  return <Content data={dataState.value} />;
+})}
+
+// 3. In useValue() - Get state object in component
+function Component() {
+  const dataState = useValue(({ state }) => state(asyncAtom$));
+
+  if (dataState.status === 'loading') return <Spinner />;
+  // ...
+}
+
+// 4. In effect() - React to state changes
+effect(({ state }) => {
+  const connState = state(connection$);
+
+  if (connState.status === 'ready') {
+    console.log('Connected:', connState.value);
+  }
+});
+
+// 5. With combined operations
+const allData$ = derived(({ state, all }) => {
+  const result = state(() => all(a$, b$, c$));
+
+  if (result.status === 'loading') return { loading: true };
+  if (result.status === 'error') return { error: result.error };
+  return { data: result.value };
+});
+```
+
+**`state()` vs `read()`:**
+
+| Method    | On Loading                               | On Error                             | On Ready                             |
+| --------- | ---------------------------------------- | ------------------------------------ | ------------------------------------ |
+| `read()`  | Throws Promise (Suspense)                | Throws Error                         | Returns value                        |
+| `state()` | Returns `{ status: "loading", promise }` | Returns `{ status: "error", error }` | Returns `{ status: "ready", value }` |
 
 ### React API
 
@@ -1772,13 +1881,65 @@ function useAsyncState<T>(
 ```typescript
 // Shorthand
 function rx<T>(atom: Atom<T>): ReactNode;
+function rx<T>(atom: Atom<T>, options?: RxOptions<T>): ReactNode;
 
 // Context selector
+function rx<T>(selector: (context: SelectContext) => T): ReactNode;
 function rx<T>(
   selector: (context: SelectContext) => T,
-  equals?: (prev: T, next: T) => boolean
+  options?: Equality<T> | RxOptions<T>
 ): ReactNode;
+
+interface RxOptions<T> {
+  equals?: Equality<T>;
+  loading?: () => ReactNode;
+  error?: (props: { error: unknown }) => ReactNode;
+}
 ```
+
+**With inline loading/error handlers:**
+
+```tsx
+// Loading handler only
+{
+  rx(asyncAtom$, {
+    loading: () => <Spinner />,
+  });
+}
+
+// Error handler only
+{
+  rx(asyncAtom$, {
+    error: ({ error }) => <Alert>{String(error)}</Alert>,
+  });
+}
+
+// Both handlers
+{
+  rx(asyncAtom$, {
+    loading: () => <Skeleton />,
+    error: ({ error }) => <ErrorMessage error={error} />,
+  });
+}
+
+// With selector and options
+{
+  rx(({ read }) => read(user$).profile, {
+    loading: () => <ProfileSkeleton />,
+    error: ({ error }) => <ProfileError error={error} />,
+    equals: "shallow",
+  });
+}
+```
+
+**Behavior with options:**
+
+| Options              | Loading State      | Error State      | Ready State  |
+| -------------------- | ------------------ | ---------------- | ------------ |
+| No options           | Suspense           | ErrorBoundary    | Render value |
+| `{ loading }`        | Render `loading()` | ErrorBoundary    | Render value |
+| `{ error }`          | Suspense           | Render `error()` | Render value |
+| `{ loading, error }` | Render `loading()` | Render `error()` | Render value |
 
 #### `useAction`
 

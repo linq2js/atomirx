@@ -462,6 +462,146 @@ describe("select", () => {
     });
   });
 
+  describe("state()", () => {
+    it("should return ready state for sync atom", () => {
+      const count$ = atom(5);
+
+      const result = select(({ state }) => state(count$));
+
+      expect(result.value).toEqual({ status: "ready", value: 5 });
+    });
+
+    it("should return loading state for pending promise atom", () => {
+      const promise = new Promise<number>(() => {});
+      const async$ = atom(promise);
+
+      const result = select(({ state }) => state(async$));
+
+      expect(result.value).toEqual({
+        status: "loading",
+        promise: expect.any(Promise),
+      });
+    });
+
+    it("should return error state for rejected promise atom", async () => {
+      const error = new Error("Test error");
+      const rejectedPromise = Promise.reject(error);
+      rejectedPromise.catch(() => {});
+      const async$ = atom(rejectedPromise);
+
+      // Track first
+      select(({ state }) => state(async$));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const result = select(({ state }) => state(async$));
+
+      expect(result.value).toEqual({ status: "error", error });
+    });
+
+    it("should track dependencies when using state(atom)", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+
+      const result = select(({ state }) => {
+        state(a$);
+        state(b$);
+        return "done";
+      });
+
+      expect(result.dependencies.size).toBe(2);
+      expect(result.dependencies.has(a$)).toBe(true);
+      expect(result.dependencies.has(b$)).toBe(true);
+    });
+
+    it("should wrap selector function with try/catch and return ready state", () => {
+      const a$ = atom(10);
+      const b$ = atom(20);
+
+      const result = select(({ read, state }) =>
+        state(() => read(a$) + read(b$))
+      );
+
+      expect(result.value).toEqual({ status: "ready", value: 30 });
+    });
+
+    it("should wrap selector function and return loading state when promise thrown", () => {
+      const async$ = atom(new Promise<number>(() => {}));
+
+      const result = select(({ read, state }) => state(() => read(async$)));
+
+      expect(result.value?.status).toBe("loading");
+      expect((result.value as { status: "loading"; promise: Promise<unknown> }).promise).toBeDefined();
+    });
+
+    it("should wrap selector function and return error state when error thrown", () => {
+      const result = select(({ state }) =>
+        state(() => {
+          throw new Error("Test error");
+        })
+      );
+
+      expect(result.value?.status).toBe("error");
+      expect((result.value as { status: "error"; error: unknown }).error).toBeInstanceOf(Error);
+    });
+
+    it("should work with all() inside state()", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+
+      const result = select(({ all, state }) => state(() => all(a$, b$)));
+
+      expect(result.value).toEqual({ status: "ready", value: [1, 2] });
+    });
+
+    it("should return loading state when all() has pending atoms", () => {
+      const a$ = atom(1);
+      const b$ = atom(new Promise<number>(() => {}));
+
+      const result = select(({ all, state }) => state(() => all(a$, b$)));
+
+      expect(result.value?.status).toBe("loading");
+    });
+
+    it("should allow building dashboard-style derived atoms", () => {
+      const user$ = atom({ name: "John" });
+      const posts$ = atom(new Promise<string[]>(() => {})); // Loading
+
+      const result = select(({ state }) => {
+        const userState = state(user$);
+        const postsState = state(posts$);
+
+        return {
+          user: userState.status === "ready" ? userState.value : null,
+          posts: postsState.status === "ready" ? postsState.value : [],
+          isLoading:
+            userState.status === "loading" || postsState.status === "loading",
+        };
+      });
+
+      expect(result.value).toEqual({
+        user: { name: "John" },
+        posts: [],
+        isLoading: true,
+      });
+    });
+
+    it("should throw error when called outside selection context", () => {
+      const a$ = atom(1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let capturedState: any = null;
+
+      select(({ state }) => {
+        capturedState = state;
+        return state(a$);
+      });
+
+      expect(() => capturedState(a$)).toThrow(
+        "state() was called outside of the selection context"
+      );
+    });
+  });
+
   describe("parallel waiting behavior", () => {
     it("all() should throw combined Promise.all for parallel waiting", async () => {
       let resolve1: (value: number) => void;

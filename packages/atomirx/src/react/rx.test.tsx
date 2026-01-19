@@ -417,4 +417,155 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       expect(screen.getByTestId("result").textContent).toBe("12");
     });
   });
+
+  describe("loading/error options", () => {
+    it("should render loading fallback when atom is pending", () => {
+      const asyncAtom = atom(new Promise<string>(() => {}));
+
+      render(
+        <div data-testid="result">
+          {rx(asyncAtom, { loading: () => <span>Loading...</span> })}
+        </div>
+      );
+
+      expect(screen.getByTestId("result").textContent).toBe("Loading...");
+    });
+
+    it("should render error fallback when atom has error", async () => {
+      const error = new Error("Test error");
+      const rejectedPromise = Promise.reject(error);
+      rejectedPromise.catch(() => {}); // Prevent unhandled rejection
+      const asyncAtom = atom(rejectedPromise);
+
+      // Wait for promise to be tracked
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      render(
+        <div data-testid="result">
+          {rx(asyncAtom, {
+            error: ({ error: e }) => <span>Error: {(e as Error).message}</span>,
+          })}
+        </div>
+      );
+
+      expect(screen.getByTestId("result").textContent).toBe(
+        "Error: Test error"
+      );
+    });
+
+    it("should render value when atom resolves with loading option", async () => {
+      let resolve: (value: string) => void;
+      const promise = new Promise<string>((r) => {
+        resolve = r;
+      });
+      const asyncAtom = atom(promise);
+
+      const { rerender } = render(
+        <div data-testid="result">
+          {rx(asyncAtom, {
+            loading: () => <span>Loading...</span>,
+          })}
+        </div>
+      );
+
+      expect(screen.getByTestId("result").textContent).toBe("Loading...");
+
+      await act(async () => {
+        resolve!("Hello");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      rerender(
+        <div data-testid="result">
+          {rx(asyncAtom, {
+            loading: () => <span>Loading...</span>,
+          })}
+        </div>
+      );
+
+      expect(screen.getByTestId("result").textContent).toBe("Hello");
+    });
+
+    it("should work with selector function and loading option", () => {
+      const asyncAtom = atom(new Promise<number>(() => {}));
+
+      render(
+        <div data-testid="result">
+          {rx(({ read }) => read(asyncAtom) * 2, {
+            loading: () => <span>Computing...</span>,
+          })}
+        </div>
+      );
+
+      expect(screen.getByTestId("result").textContent).toBe("Computing...");
+    });
+
+    it("should support both loading and error options", async () => {
+      const error = new Error("Failed");
+      const rejectedPromise = Promise.reject(error);
+      rejectedPromise.catch(() => {});
+      const asyncAtom = atom(rejectedPromise);
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      render(
+        <div data-testid="result">
+          {rx(asyncAtom, {
+            loading: () => <span>Loading...</span>,
+            error: ({ error: e }) => (
+              <span>Failed: {(e as Error).message}</span>
+            ),
+          })}
+        </div>
+      );
+
+      expect(screen.getByTestId("result").textContent).toBe("Failed: Failed");
+    });
+
+    it("should pass equality in options object", () => {
+      const user = atom({ id: 1, name: "John" });
+      const renderSpy = vi.fn();
+
+      function TestComponent() {
+        renderSpy();
+        return (
+          <div data-testid="result">
+            {rx(({ read }) => read(user).name, {
+              equals: (a, b) => a === b,
+            })}
+          </div>
+        );
+      }
+
+      render(<TestComponent />);
+      expect(screen.getByTestId("result").textContent).toBe("John");
+
+      // Update with same name
+      act(() => {
+        user.set({ id: 2, name: "John" });
+      });
+
+      // Name didn't change, so rx content should be same
+      expect(screen.getByTestId("result").textContent).toBe("John");
+    });
+
+    it("should still work with legacy equality parameter", () => {
+      const count = atom(5);
+
+      render(
+        <div data-testid="result">
+          {rx(({ read }) => read(count) * 2, "strict")}
+        </div>
+      );
+
+      expect(screen.getByTestId("result").textContent).toBe("10");
+    });
+  });
 });

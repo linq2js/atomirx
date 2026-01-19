@@ -1,7 +1,8 @@
 import { isPromiseLike } from "./isPromiseLike";
 import { getAtomState } from "./getAtomState";
 import { createCombinedPromise } from "./promiseCache";
-import { Atom, AtomValue, Pipeable, SettledResult } from "./types";
+import { isAtom } from "./isAtom";
+import { Atom, AtomState, AtomValue, Pipeable, SettledResult } from "./types";
 import { withUse } from "./withUse";
 
 // AggregateError polyfill for environments that don't support it
@@ -157,6 +158,56 @@ export interface SelectContext extends Pipeable {
    * ```
    */
   safe<T>(fn: () => T): SafeResult<T>;
+
+  /**
+   * Get the async state of an atom or selector without throwing.
+   *
+   * Unlike `read()` which throws promises/errors (Suspense pattern),
+   * `state()` always returns an `AtomState<T>` object that you can
+   * inspect and handle inline.
+   *
+   * @param atom - The atom to get state from
+   * @returns AtomState with status, value/error/promise
+   *
+   * @example
+   * ```ts
+   * // Get state of single atom
+   * const dashboard$ = derived(({ state }) => {
+   *   const userState = state(user$);
+   *   const postsState = state(posts$);
+   *
+   *   return {
+   *     user: userState.status === 'ready' ? userState.value : null,
+   *     isLoading: userState.status === 'loading' || postsState.status === 'loading',
+   *   };
+   * });
+   * ```
+   */
+  state<T>(atom: Atom<T>): AtomState<Awaited<T>>;
+
+  /**
+   * Get the async state of a selector function without throwing.
+   *
+   * Wraps the selector in try/catch and returns the result as an
+   * `AtomState<T>` object. Useful for getting state of combined
+   * operations like `all()`, `race()`, etc.
+   *
+   * @param selector - Function that may throw promises or errors
+   * @returns AtomState with status, value/error/promise
+   *
+   * @example
+   * ```ts
+   * // Get state of combined operation
+   * const allData$ = derived(({ state, all }) => {
+   *   const result = state(() => all(a$, b$, c$));
+   *
+   *   if (result.status === 'loading') return { loading: true };
+   *   if (result.status === 'error') return { error: result.error };
+   *   return { data: result.value };
+   * });
+   * ```
+   */
+  state<T>(selector: () => T): AtomState<T>;
 }
 
 /**
@@ -516,6 +567,35 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
     }
   };
 
+  /**
+   * state() - Get async state without throwing
+   * Overloaded: accepts atom or selector function
+   */
+  function state<T>(atom: Atom<T>): AtomState<Awaited<T>>;
+  function state<T>(selector: () => T): AtomState<T>;
+  function state<T>(
+    atomOrSelector: Atom<T> | (() => T)
+  ): AtomState<Awaited<T>> | AtomState<T> {
+    assertExecuting("state");
+
+    // Atom shorthand - get state directly
+    if (isAtom(atomOrSelector)) {
+      dependencies.add(atomOrSelector as Atom<unknown>);
+      return getAtomState(atomOrSelector) as AtomState<Awaited<T>>;
+    }
+
+    // Selector function - wrap in try/catch
+    try {
+      const value = atomOrSelector();
+      return { status: "ready", value } as AtomState<T>;
+    } catch (e) {
+      if (isPromiseLike(e)) {
+        return { status: "loading", promise: e as Promise<T> } as AtomState<T>;
+      }
+      return { status: "error", error: e } as AtomState<T>;
+    }
+  }
+
   // Create the context
   const context: SelectContext = withUse({
     read,
@@ -524,6 +604,7 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
     race,
     settled,
     safe,
+    state,
   });
 
   // Execute the selector function

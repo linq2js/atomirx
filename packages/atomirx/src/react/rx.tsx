@@ -1,9 +1,22 @@
-import { memo } from "react";
+import { memo, ReactElement, ReactNode } from "react";
 import { Atom, Equality } from "../core/types";
 import { useValue } from "./useValue";
+import { useAsyncState } from "./useAsyncState";
 import { shallowEqual } from "../core/equality";
 import { isAtom } from "../core/isAtom";
 import { ReactiveSelector } from "../core/select";
+
+/**
+ * Options for rx() with inline loading/error handling.
+ */
+export interface RxOptions<T> {
+  /** Equality function for value comparison */
+  equals?: Equality<T>;
+  /** Render function for loading state */
+  loading?: () => ReactNode;
+  /** Render function for error state */
+  error?: (props: { error: unknown }) => ReactNode;
+}
 
 /**
  * Reactive inline component that renders atom values directly in JSX.
@@ -281,23 +294,40 @@ import { ReactiveSelector } from "../core/select";
  * ```
  */
 // Overload: Pass atom directly to get its value (shorthand)
-export function rx<T>(atom: Atom<T>, equals?: Equality<Awaited<T>>): Awaited<T>;
+export function rx<T extends ReactNode | PromiseLike<ReactNode>>(
+  atom: Atom<T>,
+  options?: Equality<T> | RxOptions<T>
+): ReactElement;
 
 // Overload: Context-based selector function
-export function rx<T>(selector: ReactiveSelector<T>, equals?: Equality<T>): T;
+export function rx<T extends ReactNode | PromiseLike<ReactNode>>(
+  selector: ReactiveSelector<T>,
+  options?: Equality<T> | RxOptions<T>
+): ReactElement;
 
 export function rx<T>(
   selectorOrAtom: ReactiveSelector<T> | Atom<T>,
-  equals?: Equality<unknown>
-): T {
+  options?: Equality<unknown> | RxOptions<unknown>
+): ReactElement {
+  // Normalize options
+  const normalizedOptions: RxOptions<unknown> | undefined =
+    options === undefined
+      ? undefined
+      : typeof options === "object" &&
+          options !== null &&
+          !Array.isArray(options) &&
+          ("equals" in options || "loading" in options || "error" in options)
+        ? (options as RxOptions<unknown>)
+        : { equals: options as Equality<unknown> };
+
   return (
     <Rx
       selectorOrAtom={
         selectorOrAtom as ReactiveSelector<unknown> | Atom<unknown>
       }
-      equals={equals}
+      options={normalizedOptions}
     />
-  ) as unknown as T;
+  );
 }
 
 /**
@@ -306,24 +336,53 @@ export function rx<T>(
  * Memoized with React.memo to ensure:
  * 1. Parent components don't cause unnecessary re-renders
  * 2. Only atom changes trigger re-renders
- * 3. Props comparison is shallow (selectorOrAtom, equals references)
+ * 3. Props comparison is shallow (selectorOrAtom, options references)
  *
  * Renders `selected ?? null` to handle null/undefined values gracefully in JSX.
  */
 const Rx = memo(
   function Rx(props: {
     selectorOrAtom: ReactiveSelector<unknown> | Atom<unknown>;
-    equals?: Equality<unknown>;
+    options?: RxOptions<unknown>;
   }) {
     // Convert atom shorthand to context selector
     const selector: ReactiveSelector<unknown> = isAtom(props.selectorOrAtom)
       ? ({ read }) => read(props.selectorOrAtom as Atom<unknown>)
       : (props.selectorOrAtom as ReactiveSelector<unknown>);
 
-    const selected = useValue(selector, props.equals);
+    const hasHandlers = props.options?.loading || props.options?.error;
+
+    // If we have loading/error handlers, use useAsyncState for inline handling
+    if (hasHandlers) {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      const state = useAsyncState(selector, props.options?.equals);
+
+      if (state.status === "loading" && props.options?.loading) {
+        return <>{props.options.loading()}</>;
+      }
+
+      if (state.status === "error" && props.options?.error) {
+        return <>{props.options.error({ error: state.error })}</>;
+      }
+
+      // If no handler for current state, fall through to default behavior
+      if (state.status === "loading") {
+        throw state.promise; // Suspense
+      }
+
+      if (state.status === "error") {
+        throw state.error; // ErrorBoundary
+      }
+
+      return <>{state.value ?? null}</>;
+    }
+
+    // Default: use useValue (Suspense-style)
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const selected = useValue(selector, props.options?.equals);
     return <>{selected ?? null}</>;
   },
   (prev, next) =>
     shallowEqual(prev.selectorOrAtom, next.selectorOrAtom) &&
-    prev.equals === next.equals
+    shallowEqual(prev.options, next.options)
 );
