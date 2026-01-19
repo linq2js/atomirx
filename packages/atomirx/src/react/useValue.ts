@@ -1,6 +1,8 @@
-import { ReactiveSelector } from "../core/select";
+import { useCallback, useRef, useSyncExternalStore } from "react";
+import { ReactiveSelector, select } from "../core/select";
 import { Atom, Equality } from "../core/types";
-import { useAsyncState } from "./useAsyncState";
+import { resolveEquality } from "../core/equality";
+import { isAtom } from "../core/isAtom";
 
 /**
  * React hook that selects/derives a value from atom(s) with automatic subscriptions.
@@ -179,17 +181,112 @@ export function useValue<T>(
   selectorOrAtom: ReactiveSelector<T> | Atom<T>,
   equals?: Equality<T>
 ): T {
-  // Use useAsyncState as the base implementation
-  const state = useAsyncState(selectorOrAtom as Atom<T>, equals);
+  // Convert atom shorthand to context selector
+  const selector: ReactiveSelector<T> = isAtom(selectorOrAtom)
+    ? ({ read }) => read(selectorOrAtom as Atom<T>) as T
+    : (selectorOrAtom as ReactiveSelector<T>);
 
-  // Handle Suspense-style states by throwing
-  if (state.status === "loading") {
-    throw state.promise;
-  }
+  // Default to shallow equality
+  const eq = resolveEquality((equals as Equality<unknown>) ?? "shallow");
 
-  if (state.status === "error") {
-    throw state.error;
-  }
+  // Store selector in ref to avoid recreating callbacks
+  const selectorRef = useRef(selector);
+  const eqRef = useRef(eq);
 
-  return state.value as T;
+  // Update refs on each render
+  selectorRef.current = selector;
+  eqRef.current = eq;
+
+  // Track current dependencies and their unsubscribe functions
+  const subscriptionsRef = useRef<Map<Atom<unknown>, VoidFunction>>(new Map());
+  const dependenciesRef = useRef<Set<Atom<unknown>>>(new Set());
+
+  // Cache the last snapshot
+  const snapshotRef = useRef<{ value: T; initialized: boolean }>({
+    value: undefined as T,
+    initialized: false,
+  });
+
+  /**
+   * Get the current snapshot by running the selector.
+   */
+  const getSnapshot = useCallback(() => {
+    const result = select(selectorRef.current);
+
+    // Update dependencies
+    dependenciesRef.current = result.dependencies;
+
+    // Handle Suspense-style states
+    if (result.promise !== undefined) {
+      // Loading state - throw Promise
+      throw result.promise;
+    }
+
+    if (result.error !== undefined) {
+      // Error state - throw error
+      throw result.error;
+    }
+
+    // Success - check equality and update cache
+    const newValue = result.value as T;
+
+    if (
+      !snapshotRef.current.initialized ||
+      !eqRef.current(newValue, snapshotRef.current.value)
+    ) {
+      snapshotRef.current = { value: newValue, initialized: true };
+    }
+
+    return snapshotRef.current.value;
+  }, []);
+
+  /**
+   * Subscribe to atom changes.
+   */
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    const subscriptions = subscriptionsRef.current;
+
+    const updateSubscriptions = () => {
+      const currentDeps = dependenciesRef.current;
+
+      // Unsubscribe from atoms no longer dependencies
+      for (const [atom, unsubscribe] of subscriptions) {
+        if (!currentDeps.has(atom)) {
+          unsubscribe();
+          subscriptions.delete(atom);
+        }
+      }
+
+      // Subscribe to new dependencies
+      for (const atom of currentDeps) {
+        if (!subscriptions.has(atom)) {
+          const unsubscribe = atom.on(() => {
+            // Re-run selector to update dependencies
+            const result = select(selectorRef.current);
+            dependenciesRef.current = result.dependencies;
+
+            // Update subscriptions if dependencies changed
+            updateSubscriptions();
+
+            // Notify React
+            onStoreChange();
+          });
+          subscriptions.set(atom, unsubscribe);
+        }
+      }
+    };
+
+    // Initial subscription setup
+    updateSubscriptions();
+
+    // Cleanup function
+    return () => {
+      for (const unsubscribe of subscriptions.values()) {
+        unsubscribe();
+      }
+      subscriptions.clear();
+    };
+  }, []);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
