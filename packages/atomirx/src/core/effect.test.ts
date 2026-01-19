@@ -216,7 +216,7 @@ describe("effect", () => {
       const b$ = atom(2);
 
       effect(({ all }) => {
-        const [a, b] = all(a$, b$);
+        const [a, b] = all([a$, b$]);
         effectFn(a + b);
       });
 

@@ -134,7 +134,7 @@ export function AsyncUtilitiesDemo() {
 
     // Create a derived atom that uses all()
     const allDerived$ = derived(({ all }) => {
-      return all(freshAtoms.apiA$, freshAtoms.apiB$, freshAtoms.apiC$);
+      return all([freshAtoms.apiA$, freshAtoms.apiB$, freshAtoms.apiC$]);
     });
 
     pollIntervalRef.current = setInterval(() => {
@@ -143,7 +143,7 @@ export function AsyncUtilitiesDemo() {
         stopPolling();
         const results = state.value;
         log(
-          `✓ all() resolved after ~3s: [${results.map((r) => r.name).join(", ")}]`,
+          `✓ all() resolved after ~3s: [${results.map((r: { name: string }) => r.name).join(", ")}]`,
           "success"
         );
         setActiveDemo(null);
@@ -170,15 +170,22 @@ export function AsyncUtilitiesDemo() {
 
     // Create a derived atom that uses race()
     const raceDerived$ = derived(({ race }) => {
-      return race(freshAtoms.apiA$, freshAtoms.apiB$, freshAtoms.apiC$);
+      return race({
+        apiA: freshAtoms.apiA$,
+        apiB: freshAtoms.apiB$,
+        apiC: freshAtoms.apiC$,
+      });
     });
 
     pollIntervalRef.current = setInterval(() => {
       const state = raceDerived$.state();
       if (state.status === "ready") {
         stopPolling();
-        const value = state.value;
-        log(`✓ race() winner after ~1s: ${value.name}`, "success");
+        const result = state.value;
+        log(
+          `✓ race() winner after ~1s: ${result.key} = ${(result.value as { name: string }).name}`,
+          "success"
+        );
         setActiveDemo(null);
       } else if (state.status === "error") {
         stopPolling();
@@ -206,16 +213,20 @@ export function AsyncUtilitiesDemo() {
 
     // Create a derived atom that uses any()
     const anyDerived$ = derived(({ any }) => {
-      return any(freshAtoms.failing$, freshAtoms.apiA$, freshAtoms.apiC$);
+      return any({
+        failing: freshAtoms.failing$,
+        apiA: freshAtoms.apiA$,
+        apiC: freshAtoms.apiC$,
+      });
     });
 
     pollIntervalRef.current = setInterval(() => {
       const state = anyDerived$.state();
       if (state.status === "ready") {
         stopPolling();
-        const value = state.value;
+        const result = state.value;
         log(
-          `✓ any() winner after ~1s: ${value.name} (Failing was ignored)`,
+          `✓ any() winner after ~1s: ${result.key} = ${(result.value as { name: string }).name} (Failing was ignored)`,
           "success"
         );
         setActiveDemo(null);
@@ -252,7 +263,7 @@ export function AsyncUtilitiesDemo() {
 
     // Create a derived atom that uses settled()
     const settledDerived$ = derived(({ settled }) => {
-      return settled(freshAtoms.apiA$, freshAtoms.failing$, freshAtoms.apiC$);
+      return settled([freshAtoms.apiA$, freshAtoms.failing$, freshAtoms.apiC$]);
     });
 
     pollIntervalRef.current = setInterval(() => {
@@ -327,26 +338,32 @@ export function AsyncUtilitiesDemo() {
 // Using SelectContext utilities in derived/useSelector/effect/rx
 
 // all() - Wait for all to resolve (like Promise.all)
+// Array-based: pass atoms as an array, returns array of values
 const dashboard$ = derived(({ all }) => {
-  const [user, posts] = all(user$, posts$);
+  const [user, posts] = all([user$, posts$]);
   return { user, posts };
 });
 
 // race() - First settled wins (like Promise.race)
+// Object-based: pass atoms as record, returns { key, value }
 const fastest$ = derived(({ race }) => {
-  const value = race(cache$, api$);
-  return value;
+  const result = race({ cache: cache$, api: api$ });
+  console.log(result.key);   // "cache" or "api" (which one won)
+  return result.value;
 });
 
 // any() - First resolved wins, ignores rejections (like Promise.any)
+// Object-based: pass atoms as record, returns { key, value }
 const data$ = derived(({ any }) => {
-  const value = any(primary$, fallback$);
-  return value;
+  const result = any({ primary: primary$, fallback: fallback$ });
+  console.log(result.key);   // "primary" or "fallback" (first to resolve)
+  return result.value;
 });
 
 // settled() - Get all statuses (like Promise.allSettled)
+// Array-based: pass atoms as array, returns array of status objects
 const results$ = derived(({ settled }) => {
-  const [userResult, postsResult] = settled(user$, posts$);
+  const [userResult, postsResult] = settled([user$, posts$]);
   return {
     user: userResult.status === "ready" ? userResult.value : null,
     posts: postsResult.status === "ready" ? postsResult.value : [],

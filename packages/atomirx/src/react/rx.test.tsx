@@ -400,7 +400,7 @@ describe.each(wrappers)("rx - $mode", ({ render }) => {
       render(
         <div data-testid="result">
           {rx(({ all }) => {
-            const [valA, valB] = all(a, b);
+            const [valA, valB] = all([a, b]);
             return valA + valB;
           })}
         </div>

@@ -33,6 +33,7 @@ export type {
   Equality,
   EqualityShorthand,
   Getter,
+  KeyedResult,
   MutableAtom,
   MutableAtomMeta,
   Pipeable,

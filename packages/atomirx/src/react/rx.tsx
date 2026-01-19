@@ -294,7 +294,7 @@ export interface RxOptions<T> {
  *     <Suspense fallback={<Loading />}>
  *       {rx(({ all }) => {
  *         // Use all() to wait for multiple atoms
- *         const [user, posts] = all([userAtom, postsAtom]);
+ *         const [user, posts] = all([user$, posts$]);
  *         return <DashboardContent user={user} posts={posts} />;
  *       })}
  *     </Suspense>

@@ -323,7 +323,7 @@ describe("derived", () => {
       const c$ = atom(3);
 
       const sum$ = derived(({ all }) => {
-        const [a, b, c] = all(a$, b$, c$);
+        const [a, b, c] = all([a$, b$, c$]);
         return a + b + c;
       });
 

@@ -230,6 +230,19 @@ export type SelectStateResult<T> =
   | { status: "error"; value: undefined; error: unknown }
   | { status: "loading"; value: undefined; error: undefined };
 
+/**
+ * Result type for race() and any() - includes winning key.
+ *
+ * @template K - The key type (string literal union)
+ * @template V - The value type
+ */
+export type KeyedResult<K extends string, V> = {
+  /** The key that won the race/any */
+  key: K;
+  /** The resolved value */
+  value: V;
+};
+
 export type AtomPlugin = <T extends Atom<any>>(atom: T) => T | void;
 
 /**

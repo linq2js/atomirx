@@ -5,6 +5,7 @@ import { isAtom } from "./isAtom";
 import {
   Atom,
   AtomValue,
+  KeyedResult,
   Pipeable,
   SelectStateResult,
   SettledResult,
@@ -71,68 +72,93 @@ export interface SelectContext extends Pipeable {
 
   /**
    * Wait for all atoms to resolve (like Promise.all).
-   * Variadic form - pass atoms as arguments.
+   * Array-based - pass atoms as an array.
    *
    * - If all atoms are ready → returns array of values
    * - If any atom has error → throws that error
    * - If any atom is loading (no fallback) → throws Promise
    * - If loading with fallback → uses staleValue
    *
-   * @param atoms - Atoms to wait for (variadic)
+   * @param atoms - Array of atoms to wait for
    * @returns Array of resolved values (same order as input)
    *
    * @example
    * ```ts
-   * const [user, posts] = all(user$, posts$);
+   * const [user, posts] = all([user$, posts$]);
    * ```
    */
-  all<A extends Atom<unknown>[]>(
-    ...atoms: A
-  ): { [K in keyof A]: AtomValue<A[K]> };
+  all<A extends Atom<unknown>[]>(atoms: A): { [K in keyof A]: AtomValue<A[K]> };
 
   /**
    * Return the first settled value (like Promise.race).
-   * Variadic form - pass atoms as arguments.
+   * Object-based - pass atoms as a record with keys.
    *
-   * - If any atom is ready → returns first ready value
+   * - If any atom is ready → returns `{ key, value }` for first ready
    * - If any atom has error → throws first error
    * - If all atoms are loading → throws first Promise
    *
+   * The `key` in the result identifies which atom won the race.
+   *
    * Note: race() does NOT use fallback - it's meant for first "real" settled value.
    *
-   * @param atoms - Atoms to race (variadic)
-   * @returns First settled value
+   * @param atoms - Record of atoms to race
+   * @returns KeyedResult with winning key and value
+   *
+   * @example
+   * ```ts
+   * const result = race({ cache: cache$, api: api$ });
+   * console.log(result.key);   // "cache" or "api"
+   * console.log(result.value); // The winning value
+   * ```
    */
-  race<A extends Atom<unknown>[]>(...atoms: A): AtomValue<A[number]>;
+  race<T extends Record<string, Atom<unknown>>>(
+    atoms: T
+  ): KeyedResult<keyof T & string, AtomValue<T[keyof T]>>;
 
   /**
    * Return the first ready value (like Promise.any).
-   * Variadic form - pass atoms as arguments.
+   * Object-based - pass atoms as a record with keys.
    *
-   * - If any atom is ready → returns first ready value
+   * - If any atom is ready → returns `{ key, value }` for first ready
    * - If all atoms have errors → throws AggregateError
    * - If any loading (not all errored) → throws Promise
    *
+   * The `key` in the result identifies which atom resolved first.
+   *
    * Note: any() does NOT use fallback - it waits for a real ready value.
    *
-   * @param atoms - Atoms to check (variadic)
-   * @returns First ready value
+   * @param atoms - Record of atoms to check
+   * @returns KeyedResult with winning key and value
+   *
+   * @example
+   * ```ts
+   * const result = any({ primary: primaryApi$, fallback: fallbackApi$ });
+   * console.log(result.key);   // "primary" or "fallback"
+   * console.log(result.value); // The winning value
+   * ```
    */
-  any<A extends Atom<unknown>[]>(...atoms: A): AtomValue<A[number]>;
+  any<T extends Record<string, Atom<unknown>>>(
+    atoms: T
+  ): KeyedResult<keyof T & string, AtomValue<T[keyof T]>>;
 
   /**
    * Get all atom statuses when all are settled (like Promise.allSettled).
-   * Variadic form - pass atoms as arguments.
+   * Array-based - pass atoms as an array.
    *
    * - If all atoms are settled → returns array of statuses
    * - If any atom is loading (no fallback) → throws Promise
    * - If loading with fallback → { status: "ready", value: staleValue }
    *
-   * @param atoms - Atoms to check (variadic)
+   * @param atoms - Array of atoms to check
    * @returns Array of settled results
+   *
+   * @example
+   * ```ts
+   * const [userResult, postsResult] = settled([user$, posts$]);
+   * ```
    */
   settled<A extends Atom<unknown>[]>(
-    ...atoms: A
+    atoms: A
   ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> };
 
   /**
@@ -351,7 +377,7 @@ export class AllAtomsRejectedError extends Error {
  * ```ts
  * select(({ read, all }) => {
  *   const user = read(user$);
- *   const [posts, comments] = all(posts$, comments$);
+ *   const [posts, comments] = all([posts$, comments$]);
  *   return { user, posts, comments };
  * });
  * ```
@@ -402,10 +428,10 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
   /**
    * all() - like Promise.all
-   * Waits for ALL loading atoms in parallel, not sequentially
+   * Array-based: waits for ALL loading atoms in parallel
    */
   const all = <A extends Atom<unknown>[]>(
-    ...atoms: A
+    atoms: A
   ): { [K in keyof A]: AtomValue<A[K]> } => {
     assertExecuting("all");
 
@@ -442,16 +468,17 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
   /**
    * race() - like Promise.race
-   * Races all loading atoms in parallel, first to settle wins
+   * Object-based: races all atoms, returns { key, value } for winner
    */
-  const race = <A extends Atom<unknown>[]>(
-    ...atoms: A
-  ): AtomValue<A[number]> => {
+  const race = <T extends Record<string, Atom<unknown>>>(
+    atoms: T
+  ): KeyedResult<keyof T & string, AtomValue<T[keyof T]>> => {
     assertExecuting("race");
 
     const loadingPromises: Promise<unknown>[] = [];
+    const entries = Object.entries(atoms);
 
-    for (const atom of atoms) {
+    for (const [key, atom] of entries) {
       dependencies.add(atom);
 
       // For race(), we need raw state without fallback handling
@@ -459,7 +486,10 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
       switch (state.status) {
         case "ready":
-          return state.value as AtomValue<A[number]>;
+          return {
+            key: key as keyof T & string,
+            value: state.value as AtomValue<T[keyof T]>,
+          };
 
         case "error":
           throw state.error;
@@ -480,17 +510,18 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
   /**
    * any() - like Promise.any
-   * Races all loading atoms in parallel, returns first to fulfill
+   * Object-based: returns { key, value } for first ready atom
    */
-  const any = <A extends Atom<unknown>[]>(
-    ...atoms: A
-  ): AtomValue<A[number]> => {
+  const any = <T extends Record<string, Atom<unknown>>>(
+    atoms: T
+  ): KeyedResult<keyof T & string, AtomValue<T[keyof T]>> => {
     assertExecuting("any");
 
     const errors: unknown[] = [];
     const loadingPromises: Promise<unknown>[] = [];
+    const entries = Object.entries(atoms);
 
-    for (const atom of atoms) {
+    for (const [key, atom] of entries) {
       dependencies.add(atom);
 
       // For any(), we need raw state without fallback handling
@@ -498,7 +529,10 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
       switch (state.status) {
         case "ready":
-          return state.value as AtomValue<A[number]>;
+          return {
+            key: key as keyof T & string,
+            value: state.value as AtomValue<T[keyof T]>,
+          };
 
         case "error":
           errors.push(state.error);
@@ -521,10 +555,10 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
 
   /**
    * settled() - like Promise.allSettled
-   * Waits for ALL loading atoms in parallel
+   * Array-based: waits for ALL atoms in parallel
    */
   const settled = <A extends Atom<unknown>[]>(
-    ...atoms: A
+    atoms: A
   ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> } => {
     assertExecuting("settled");
 

@@ -141,7 +141,7 @@ describe("useSelector", () => {
 
       const { result } = renderHook(() =>
         useSelector(({ all }) => {
-          const [a, b, c] = all(a$, b$, c$);
+          const [a, b, c] = all([a$, b$, c$]);
           return a + b + c;
         })
       );
