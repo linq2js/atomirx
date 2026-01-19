@@ -1,4 +1,5 @@
 import { isPromiseLike } from "./isPromiseLike";
+import { trackPromise } from "./promiseCache";
 import { SelectContext } from "./select";
 import { Atom } from "./types";
 
@@ -93,17 +94,33 @@ export function withReady() {
       ...context,
       ready: (atom: Atom<any>, selector?: (current: any) => any): any => {
         const value = context.read(atom);
-        if (selector) {
-          const selected = selector(value);
-          if (isPromiseLike(selected)) {
-            throw new Error(
-              "Selector must return a synchronous value, not a Promise. " +
-                "If you need async transformation, create a separate derived atom."
-            );
+        // we allow selector to return a promise, and wait for that promise if it is not resolved yet
+        const selected = selector ? selector(value) : value;
+        // Handle async selectors: when the selector returns a Promise,
+        // we track its state and handle suspension/resolution accordingly
+        if (isPromiseLike(selected)) {
+          const p = trackPromise(selected);
+
+          // Promise is still pending - suspend computation by throwing
+          // the tracked promise. This enables React Suspense integration.
+          if (p.status === "pending") {
+            throw p.promise;
           }
-          return waitForValue(selected);
+
+          // Promise resolved successfully - return the resolved value.
+          // Note: This bypasses null/undefined checking for async results,
+          // allowing async selectors to return any value including null.
+          if (p.status === "fulfilled") {
+            return p.value;
+          }
+
+          // Promise rejected - propagate the error
+          throw p.error;
         }
-        return waitForValue(value);
+
+        // For sync values (no selector, or selector returned sync value),
+        // check for null/undefined and suspend if not ready
+        return waitForValue(selected);
       },
     };
   };

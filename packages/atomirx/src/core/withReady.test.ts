@@ -220,4 +220,142 @@ describe("withReady", () => {
       expect(raceResult).toBe("timeout");
     });
   });
+
+  describe("ready() with async selector", () => {
+    it("should suspend when selector returns a pending promise", () => {
+      const data$ = atom({ id: 1 });
+      const pendingPromise = new Promise<string>(() => {
+        // Never resolves - stays pending
+      });
+
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => pendingPromise);
+      });
+
+      // Should suspend with the tracked promise
+      expect(result.value).toBeUndefined();
+      expect(result.error).toBeUndefined();
+      expect(result.promise).toBeInstanceOf(Promise);
+    });
+
+    it("should return value when selector returns a resolved promise", async () => {
+      const data$ = atom({ id: 1 });
+      const resolvedPromise = Promise.resolve("async result");
+
+      // First call to track the promise and trigger state tracking
+      select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => resolvedPromise);
+      });
+
+      // Wait for the promise .then() handlers to run and update cache
+      await resolvedPromise;
+      await new Promise((r) => queueMicrotask(r));
+
+      // Second call - promise should now be fulfilled in cache
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => resolvedPromise);
+      });
+
+      expect(result.value).toBe("async result");
+      expect(result.error).toBeUndefined();
+      expect(result.promise).toBeUndefined();
+    });
+
+    it("should throw error when selector returns a rejected promise", async () => {
+      const data$ = atom({ id: 1 });
+      const testError = new Error("async error");
+      const rejectedPromise = Promise.reject(testError);
+
+      // Prevent unhandled rejection warning
+      rejectedPromise.catch(() => {});
+
+      // First call to track the promise
+      select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => rejectedPromise);
+      });
+
+      // Wait for the promise rejection handlers to run
+      await new Promise((r) => queueMicrotask(r));
+      await new Promise((r) => queueMicrotask(r));
+
+      // Second call - promise should now be rejected in cache
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => rejectedPromise);
+      });
+
+      expect(result.value).toBeUndefined();
+      expect(result.error).toBe(testError);
+      expect(result.promise).toBeUndefined();
+    });
+
+    it("should return null when async selector resolves to null (bypasses null check)", async () => {
+      const data$ = atom({ id: 1 });
+      const resolvedToNull = Promise.resolve(null);
+
+      // First call to track the promise
+      select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => resolvedToNull);
+      });
+
+      // Wait for the promise to be tracked as fulfilled
+      await resolvedToNull;
+      await new Promise((r) => queueMicrotask(r));
+
+      // Second call - promise should now be fulfilled in cache
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => resolvedToNull);
+      });
+
+      // Async selectors bypass null/undefined checking - value is returned as-is
+      expect(result.value).toBe(null);
+      expect(result.error).toBeUndefined();
+      expect(result.promise).toBeUndefined();
+    });
+
+    it("should return undefined when async selector resolves to undefined (bypasses undefined check)", async () => {
+      const data$ = atom({ id: 1 });
+      const resolvedToUndefined = Promise.resolve(undefined);
+
+      // First call to track the promise
+      select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => resolvedToUndefined);
+      });
+
+      // Wait for the promise to be tracked as fulfilled
+      await resolvedToUndefined;
+      await new Promise((r) => queueMicrotask(r));
+
+      // Second call - promise should now be fulfilled in cache
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => resolvedToUndefined);
+      });
+
+      // Async selectors bypass null/undefined checking - value is returned as-is
+      expect(result.value).toBe(undefined);
+      expect(result.error).toBeUndefined();
+      expect(result.promise).toBeUndefined();
+    });
+
+    it("should track atom as dependency when using async selector", () => {
+      const data$ = atom({ id: 1 });
+      const pendingPromise = new Promise<string>(() => {});
+
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(data$, () => pendingPromise);
+      });
+
+      // Dependency is tracked even when suspending
+      expect(result.dependencies.has(data$)).toBe(true);
+    });
+  });
 });
