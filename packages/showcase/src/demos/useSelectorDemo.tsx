@@ -1,6 +1,6 @@
 import { useRef, memo } from "react";
 import { atom } from "atomirx";
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
@@ -9,12 +9,12 @@ import { Eye, RefreshCw, Layers } from "lucide-react";
 // Create atoms for demo (use $ suffix convention)
 const user$ = atom(
   { name: "John Doe", email: "john@example.com", age: 30 },
-  { meta: { key: "user" } },
+  { meta: { key: "user" } }
 );
 
 const settings$ = atom(
   { theme: "dark", notifications: true, language: "en" },
-  { meta: { key: "settings" } },
+  { meta: { key: "settings" } }
 );
 
 const counter$ = atom(0, { meta: { key: "counter" } });
@@ -38,7 +38,7 @@ function RenderCounter({ name }: { name: string }) {
 
 // Component that selects only name - memoized to prevent parent re-renders
 const UserNameDisplay = memo(function UserNameDisplay() {
-  const name = useValue(({ read }) => read(user$).name);
+  const name = useSelector(({ read }) => read(user$).name);
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -55,7 +55,7 @@ const UserNameDisplay = memo(function UserNameDisplay() {
 
 // Component that selects only email - memoized to prevent parent re-renders
 const UserEmailDisplay = memo(function UserEmailDisplay() {
-  const email = useValue(({ read }) => read(user$).email);
+  const email = useSelector(({ read }) => read(user$).email);
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -72,7 +72,7 @@ const UserEmailDisplay = memo(function UserEmailDisplay() {
 
 // Component that selects entire user - memoized to prevent parent re-renders
 const FullUserDisplay = memo(function FullUserDisplay() {
-  const user = useValue(({ read }) => read(user$));
+  const user = useSelector(({ read }) => read(user$));
 
   return (
     <div className="p-3 bg-surface-800/50 rounded-lg">
@@ -90,7 +90,7 @@ const FullUserDisplay = memo(function FullUserDisplay() {
 
 // Multi-source selector component - memoized to prevent parent re-renders
 const CombinedDisplay = memo(function CombinedDisplay() {
-  const combined = useValue(({ read }) => ({
+  const combined = useSelector(({ read }) => ({
     userName: read(user$).name,
     theme: read(settings$).theme,
   }));
@@ -110,9 +110,9 @@ const CombinedDisplay = memo(function CombinedDisplay() {
   );
 });
 
-export function useValueDemo() {
+export function useSelectorDemo() {
   // Shorthand: pass atom directly to get its value
-  const counter = useValue(counter$);
+  const counter = useSelector(counter$);
   const { log } = useEventLog();
 
   const updateName = () => {
@@ -151,7 +151,7 @@ export function useValueDemo() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h2 className="text-3xl font-bold text-gradient mb-2">useValue</h2>
+        <h2 className="text-3xl font-bold text-gradient mb-2">useSelector</h2>
         <p className="text-surface-400">
           Subscribe to atoms in React components with fine-grained control over
           which changes trigger re-renders.
@@ -161,22 +161,22 @@ export function useValueDemo() {
       {/* Code Example */}
       <CodeBlock
         code={`
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 
 // Shorthand: pass atom directly to get its value
-const user = useValue(user$);
+const user = useSelector(user$);
 
 // Select with transformation (only re-render when name changes)
-const name = useValue(({ read }) => read(user$).name);
+const name = useSelector(({ read }) => read(user$).name);
 
 // Multiple atoms
-const combined = useValue(({ read }) => ({
+const combined = useSelector(({ read }) => ({
   userName: read(user$).name,
   theme: read(settings$).theme,
 }));
 
 // With equals option
-const data = useValue(({ read }) => read(data$).value, "shallow");
+const data = useSelector(({ read }) => read(data$).value, "shallow");
         `}
       />
 
@@ -250,7 +250,7 @@ const data = useValue(({ read }) => read(data$).value, "shallow");
           <CodeBlock
             code={`
 // Shorthand: pass atom directly
-const counter = useValue(counter$);
+const counter = useSelector(counter$);
             `}
           />
         </div>

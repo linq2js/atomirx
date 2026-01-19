@@ -27,7 +27,7 @@ import { TodoListDemo } from "./demos/TodoListDemo";
 import { DerivedAtomDemo } from "./demos/DerivedAtomDemo";
 import { BatchDemo } from "./demos/BatchDemo";
 import { UseActionDemo } from "./demos/UseActionDemo";
-import { useValueDemo } from "./demos/useValueDemo";
+import { useSelectorDemo } from "./demos/useSelectorDemo";
 import { AsyncUtilitiesDemo } from "./demos/AsyncUtilitiesDemo";
 
 type DemoId =
@@ -73,7 +73,7 @@ const navItems: NavItem[] = [
   },
   {
     id: "use-selector",
-    label: "useValue",
+    label: "useSelector",
     icon: <MousePointer className="w-4 h-4" />,
   },
   {
@@ -89,7 +89,7 @@ const demoComponents: Record<DemoId, React.ComponentType> = {
   derived: DerivedAtomDemo,
   batch: BatchDemo,
   "use-action": UseActionDemo,
-  "use-selector": useValueDemo,
+  "use-selector": useSelectorDemo,
   "async-utils": AsyncUtilitiesDemo,
 };
 

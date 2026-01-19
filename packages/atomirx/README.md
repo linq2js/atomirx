@@ -76,10 +76,12 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
       - [Multiple Middleware Example](#multiple-middleware-example)
       - [Hook Info Types](#hook-info-types)
   - [React Integration](#react-integration)
-    - [useValue Hook](#usevalue-hook)
+    - [useSelector Hook](#useselector-hook)
       - [Custom Equality](#custom-equality)
-      - [Why useValue is Powerful](#why-usevalue-is-powerful)
+      - [Why useSelector is Powerful](#why-useselector-is-powerful)
     - [Reactive Components with rx](#reactive-components-with-rx)
+      - [Inline Loading and Error Handling](#inline-loading-and-error-handling)
+      - [Selector Memoization with `deps`](#selector-memoization-with-deps)
     - [Async Actions with useAction](#async-actions-with-useaction)
       - [Eager Execution](#eager-execution)
       - [useAction API](#useaction-api)
@@ -96,8 +98,9 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
       - [`define<T>(factory, options?)`](#definetfactory-options)
       - [`isAtom(value)`](#isatomvalue)
     - [SelectContext API](#selectcontext-api)
+      - [`state()` - Get Async State Without Throwing](#state---get-async-state-without-throwing)
     - [React API](#react-api)
-      - [`useValue`](#usevalue)
+      - [`useSelector`](#useselector)
       - [`rx`](#rx)
       - [`useAction`](#useaction)
       - [`useStable`](#usestable)
@@ -177,7 +180,7 @@ atomirx includes these APIs:
 
 ### React Bindings (`atomirx/react`)
 
-- **`useValue()`**: Subscribe to atoms with automatic re-rendering (Suspense-based)
+- **`useSelector()`**: Subscribe to atoms with automatic re-rendering (Suspense-based)
 - **`rx()`**: Inline reactive components with optional loading/error handlers
 - **`useAction()`**: Handle async operations with loading/error states
 - **`useStable()`**: Stabilize object/array/callback references
@@ -214,7 +217,7 @@ count$.set((n) => n + 1); // Logs: Current count: 6, Doubled value: 12
 
 ```tsx
 import { atom, derived } from "atomirx";
-import { useValue, rx } from "atomirx/react";
+import { useSelector, rx } from "atomirx/react";
 
 // Define your state
 interface Todo {
@@ -263,7 +266,7 @@ const toggleTodo = (id: number) => {
 
 // Components
 function TodoList() {
-  const todos = useValue(filteredTodos$);
+  const todos = useSelector(filteredTodos$);
 
   return (
     <ul>
@@ -346,7 +349,7 @@ const todos$ = atom(() => fetchTodos());
 const filter$ = atom("all");
 
 function TodoList() {
-  const todos = useValue(filteredTodos$);
+  const todos = useSelector(filteredTodos$);
   // ...
 }
 ```
@@ -379,7 +382,7 @@ const TodoModule = define(() => {
 // Usage in React
 function TodoList() {
   const { filteredTodos$, setFilter } = TodoModule();
-  const todos = useValue(filteredTodos$);
+  const todos = useSelector(filteredTodos$);
   // ...
 }
 ```
@@ -449,7 +452,7 @@ effect(({ read }) => {
 
 ### Error Handling: Use `safe()` Not try/catch
 
-When working with reactive selectors in `derived()`, `effect()`, `useValue()`, and `rx()`, you need to be careful about how you handle errors. The standard JavaScript `try/catch` pattern can break atomirx's Suspense mechanism.
+When working with reactive selectors in `derived()`, `effect()`, `useSelector()`, and `rx()`, you need to be careful about how you handle errors. The standard JavaScript `try/catch` pattern can break atomirx's Suspense mechanism.
 
 #### The Problem with try/catch
 
@@ -568,7 +571,7 @@ effect(({ read, safe }) => {
 
 ```tsx
 function UserProfile() {
-  const result = useValue(({ read, safe }) => {
+  const result = useSelector(({ read, safe }) => {
     const [err, user] = safe(() => read(user$));
     return { err, user };
   });
@@ -644,7 +647,7 @@ effect(({ read }) => {
 
 ```typescript
 import { atom, derived } from "atomirx";
-import { useValue, rx } from "atomirx/react";
+import { useSelector, rx } from "atomirx/react";
 import { Suspense } from "react";
 
 // Atoms store values (including Promises)
@@ -663,9 +666,9 @@ const filteredTodoList$ = derived(({ read }) => {
   }
 });
 
-// In UI - useValue suspends until data is ready
+// In UI - useSelector suspends until data is ready
 function TodoList() {
-  const filteredTodoList = useValue(filteredTodoList$);
+  const filteredTodoList = useSelector(filteredTodoList$);
 
   return (
     <ul>
@@ -1336,14 +1339,14 @@ interface ModuleCreateInfo {
 
 atomirx provides first-class React integration through the `atomirx/react` package.
 
-### useValue Hook
+### useSelector Hook
 
 Subscribe to atom values with automatic re-rendering.
 
 > **Note:** For error handling in selectors, use `safe()` instead of try/catch. See [Error Handling: Use `safe()` Not try/catch](#error-handling-use-safe-not-trycatch).
 
 ```tsx
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 import { atom } from "atomirx";
 
 const count$ = atom(0);
@@ -1351,13 +1354,13 @@ const user$ = atom<User | null>(null);
 
 function Counter() {
   // Shorthand: pass atom directly
-  const count = useValue(count$);
+  const count = useSelector(count$);
 
   // Context selector: compute derived value
-  const doubled = useValue(({ read }) => read(count$) * 2);
+  const doubled = useSelector(({ read }) => read(count$) * 2);
 
   // Multiple atoms
-  const display = useValue(({ read }) => {
+  const display = useSelector(({ read }) => {
     const count = read(count$);
     const user = read(user$);
     return user ? `${user.name}: ${count}` : `Anonymous: ${count}`;
@@ -1371,54 +1374,54 @@ function Counter() {
 
 ```tsx
 // Only re-render when specific fields change
-const userName = useValue(
+const userName = useSelector(
   ({ read }) => read(user$)?.name,
   (prev, next) => prev === next
 );
 ```
 
-#### Why useValue is Powerful
+#### Why useSelector is Powerful
 
-`useValue` provides a unified API that replaces multiple hooks from other libraries:
+`useSelector` provides a unified API that replaces multiple hooks from other libraries:
 
 **One hook for all use cases:**
 
 ```tsx
 // 1. Single atom (shorthand)
-const count = useValue(count$);
+const count = useSelector(count$);
 
 // 2. Derived value (selector)
-const doubled = useValue(({ read }) => read(count$) * 2);
+const doubled = useSelector(({ read }) => read(count$) * 2);
 
 // 3. Multiple atoms (all)
-const [user, posts] = useValue(({ all }) => all(user$, posts$));
+const [user, posts] = useSelector(({ all }) => all(user$, posts$));
 
 // 4. Loadable mode (state) - no Suspense needed
-const userState = useValue(({ state }) => state(user$));
+const userState = useSelector(({ state }) => state(user$));
 // { status: "loading" | "ready" | "error", value, error }
 
 // 5. Error handling (safe) - preserves Suspense
-const result = useValue(({ read, safe }) => {
+const result = useSelector(({ read, safe }) => {
   const [err, data] = safe(() => JSON.parse(read(rawJson$)));
   return err ? { error: err.message } : { data };
 });
 
 // 6. First ready (any), race, allSettled
-const fastest = useValue(({ any }) => any(cache$, api$));
-const results = useValue(({ settled }) => settled(a$, b$, c$));
+const fastest = useSelector(({ any }) => any(cache$, api$));
+const results = useSelector(({ settled }) => settled(a$, b$, c$));
 ```
 
 **Comparison with other libraries:**
 
-| Use Case            | atomirx                                 | Jotai                          | Recoil                          | Zustand                    |
-| ------------------- | --------------------------------------- | ------------------------------ | ------------------------------- | -------------------------- |
-| Single atom         | `useValue(atom$)`                       | `useAtomValue(atom)`           | `useRecoilValue(atom)`          | `useStore(s => s.value)`   |
-| Derived value       | `useValue(({ read }) => ...)`           | `useAtomValue(derivedAtom)`    | `useRecoilValue(selector)`      | `useStore(s => derive(s))` |
-| Multiple atoms      | `useValue(({ all }) => all(a$, b$))`    | Multiple `useAtomValue` calls  | Multiple `useRecoilValue` calls | Multiple selectors         |
-| Suspense mode       | Built-in (default)                      | Built-in                       | Built-in                        | Manual                     |
-| Loadable mode       | `useValue(({ state }) => state(atom$))` | `useAtomValue(loadable(atom))` | `useRecoilValueLoadable(atom)`  | Manual                     |
-| Safe error handling | `safe()` in selector                    | Manual try/catch               | Manual try/catch                | Manual                     |
-| Custom equality     | 2nd parameter                           | `selectAtom`                   | N/A                             | 2nd parameter              |
+| Use Case            | atomirx                                    | Jotai                          | Recoil                          | Zustand                    |
+| ------------------- | ------------------------------------------ | ------------------------------ | ------------------------------- | -------------------------- |
+| Single atom         | `useSelector(atom$)`                       | `useAtomValue(atom)`           | `useRecoilValue(atom)`          | `useStore(s => s.value)`   |
+| Derived value       | `useSelector(({ read }) => ...)`           | `useAtomValue(derivedAtom)`    | `useRecoilValue(selector)`      | `useStore(s => derive(s))` |
+| Multiple atoms      | `useSelector(({ all }) => all(a$, b$))`    | Multiple `useAtomValue` calls  | Multiple `useRecoilValue` calls | Multiple selectors         |
+| Suspense mode       | Built-in (default)                         | Built-in                       | Built-in                        | Manual                     |
+| Loadable mode       | `useSelector(({ state }) => state(atom$))` | `useAtomValue(loadable(atom))` | `useRecoilValueLoadable(atom)`  | Manual                     |
+| Safe error handling | `safe()` in selector                       | Manual try/catch               | Manual try/catch                | Manual                     |
+| Custom equality     | 2nd parameter                              | `selectAtom`                   | N/A                             | 2nd parameter              |
 
 **Key advantages:**
 
@@ -1448,7 +1451,7 @@ const user = userLoadable.state === "hasValue" ? userLoadable.contents : null;
 const posts = postsLoadable.state === "hasValue" ? postsLoadable.contents : [];
 
 // ✅ atomirx - One hook, one selector
-const { isLoading, user, posts } = useValue(({ state }) => {
+const { isLoading, user, posts } = useSelector(({ state }) => {
   const userState = state(user$);
   const postsState = state(posts$);
   return {
@@ -1669,13 +1672,13 @@ atomirx is designed to work seamlessly with React Suspense:
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { atom } from "atomirx";
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 
 const user$ = atom(fetchUser());
 
 function UserProfile() {
   // Suspends until user$ resolves
-  const user = useValue(user$);
+  const user = useSelector(user$);
   return <div>{user.name}</div>;
 }
 
@@ -1804,7 +1807,7 @@ function isAtom<T>(value: unknown): value is Atom<T>;
 
 ### SelectContext API
 
-Available in `derived()`, `effect()`, `useValue()`, and `rx()`:
+Available in `derived()`, `effect()`, `useSelector()`, and `rx()`:
 
 | Method    | Signature                                 | Description                                          |
 | --------- | ----------------------------------------- | ---------------------------------------------------- |
@@ -1830,7 +1833,7 @@ Available in `derived()`, `effect()`, `useValue()`, and `rx()`:
 
 The `state()` method returns an `AtomState<T>` object instead of throwing. This is useful when you want to handle loading/error states inline without Suspense.
 
-**Available at every level** - derived, rx, useValue, effect:
+**Available at every level** - derived, rx, useSelector, effect:
 
 ```typescript
 // 1. In derived() - Build dashboard with partial loading
@@ -1854,9 +1857,9 @@ const dashboard$ = derived(({ state }) => {
   return <Content data={dataState.value} />;
 })}
 
-// 3. In useValue() - Get state object in component
+// 3. In useSelector() - Get state object in component
 function Component() {
-  const dataState = useValue(({ state }) => state(asyncAtom$));
+  const dataState = useSelector(({ state }) => state(asyncAtom$));
 
   if (dataState.status === 'loading') return <Spinner />;
   // ...
@@ -1892,14 +1895,14 @@ const allData$ = derived(({ state, all }) => {
 
 ### React API
 
-#### `useValue`
+#### `useSelector`
 
 ```typescript
 // Shorthand
-function useValue<T>(atom: Atom<T>): T;
+function useSelector<T>(atom: Atom<T>): T;
 
 // Context selector
-function useValue<T>(
+function useSelector<T>(
   selector: (context: SelectContext) => T,
   equals?: (prev: T, next: T) => boolean
 ): T;

@@ -9,7 +9,7 @@
 - Provide simple, intuitive APIs for reactive state (`atom`, `derived`, `effect`)
 - Support async values with Suspense-like behavior (loading/error states)
 - Enable fine-grained reactivity with conditional dependency tracking
-- Offer React hooks (`useValue`, `useAction`, `useStable`, `rx`) for seamless integration
+- Offer React hooks (`useSelector`, `useAction`, `useStable`, `rx`) for seamless integration
 - Maintain small bundle size with zero/minimal dependencies
 - Support both ESM and CommonJS builds
 
@@ -31,7 +31,7 @@
 ### Packages
 
 - `atomirx` - Core library (atoms, derived, effect, batch, emitter, define)
-- `atomirx/react` - React bindings (useValue, useAction, useStable, rx)
+- `atomirx/react` - React bindings (useSelector, useAction, useStable, rx)
 - `showcase` - Demo application (React + Tailwind CSS)
 
 ### Runtime Dependencies
@@ -87,7 +87,7 @@
 
 #### React Integration
 
-- `useValue` - Subscribe to atom values with automatic re-render
+- `useSelector` - Subscribe to atom values with automatic re-render
 - `useAction` - Async action management with loading/error states
 - `useStable` - Create stable atom instances scoped to component lifecycle
 - `rx` - JSX helper for inline atom subscriptions

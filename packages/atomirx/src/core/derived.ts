@@ -237,7 +237,7 @@ export function derived<T>(
 
         if (result.promise) {
           // Notify subscribers that we're now in loading state
-          // This allows downstream derived atoms and useValue to suspend
+          // This allows downstream derived atoms and useSelector to suspend
           if (!silent) notify();
           // Promise thrown - wait for it and retry
           result.promise.then(

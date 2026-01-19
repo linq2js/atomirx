@@ -1,4 +1,4 @@
-export { useValue } from "./useValue";
+export { useSelector } from "./useSelector";
 export { useStable } from "./useStable";
 export type { UseStableResult } from "./useStable";
 export { useAction } from "./useAction";

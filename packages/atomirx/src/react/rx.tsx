@@ -9,7 +9,7 @@ import {
   useRef,
 } from "react";
 import { Atom, Equality } from "../core/types";
-import { useValue } from "./useValue";
+import { useSelector } from "./useSelector";
 import { shallowEqual } from "../core/equality";
 import { isAtom } from "../core/isAtom";
 import { ReactiveSelector, SelectContext } from "../core/select";
@@ -52,7 +52,7 @@ export interface RxOptions<T> {
 /**
  * Reactive inline component that renders atom values directly in JSX.
  *
- * `rx` is a convenience wrapper around `useValue` that returns a memoized
+ * `rx` is a convenience wrapper around `useSelector` that returns a memoized
  * React component instead of a value. This enables fine-grained reactivity
  * without creating separate components for each reactive value.
  *
@@ -109,7 +109,7 @@ export interface RxOptions<T> {
  * Without `rx`, you need a separate component to subscribe to an atom:
  * ```tsx
  * function PostsList() {
- *   const posts = useValue(postsAtom);
+ *   const posts = useSelector(postsAtom);
  *   return posts.map((post) => <Post post={post} />);
  * }
  *
@@ -146,7 +146,7 @@ export interface RxOptions<T> {
  *
  * ## Async Atoms (Suspense-Style API)
  *
- * `rx` inherits the Suspense-style API from `useValue`:
+ * `rx` inherits the Suspense-style API from `useSelector`:
  * - **Loading state**: The getter throws a Promise (triggers Suspense)
  * - **Error state**: The getter throws the error (triggers ErrorBoundary)
  * - **Resolved state**: The getter returns the value
@@ -409,7 +409,7 @@ function RxInner(props: {
   selector: ReactiveSelector<unknown>;
   equals?: Equality<unknown>;
 }) {
-  const selected = useValue(props.selector, props.equals);
+  const selected = useSelector(props.selector, props.equals);
   return <>{selected ?? null}</>;
 }
 

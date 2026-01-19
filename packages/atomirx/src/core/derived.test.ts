@@ -384,7 +384,7 @@ describe("derived", () => {
       it("should notify downstream derived atoms when entering loading state", async () => {
         // Bug: When a derived atom's dependency starts loading,
         // it didn't notify subscribers, causing downstream atoms
-        // and useValue to not suspend properly
+        // and useSelector to not suspend properly
         let resolveFirst: (value: number) => void;
         const firstPromise = new Promise<number>((r) => {
           resolveFirst = r;

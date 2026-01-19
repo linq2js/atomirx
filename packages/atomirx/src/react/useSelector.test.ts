@@ -1,19 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { atom } from "../core/atom";
-import { useValue } from "./useValue";
+import { useSelector } from "./useSelector";
 
-describe("useValue", () => {
+describe("useSelector", () => {
   describe("basic functionality", () => {
     it("should read value from sync atom", () => {
       const count$ = atom(5);
-      const { result } = renderHook(() => useValue(count$));
+      const { result } = renderHook(() => useSelector(count$));
       expect(result.current).toBe(5);
     });
 
     it("should update when atom value changes", async () => {
       const count$ = atom(0);
-      const { result } = renderHook(() => useValue(count$));
+      const { result } = renderHook(() => useSelector(count$));
 
       expect(result.current).toBe(0);
 
@@ -28,7 +28,7 @@ describe("useValue", () => {
 
     it("should work with object values", () => {
       const user$ = atom({ name: "John", age: 30 });
-      const { result } = renderHook(() => useValue(user$));
+      const { result } = renderHook(() => useSelector(user$));
 
       expect(result.current).toEqual({ name: "John", age: 30 });
     });
@@ -38,7 +38,7 @@ describe("useValue", () => {
     it("should support selector function", () => {
       const count$ = atom(5);
       const { result } = renderHook(() =>
-        useValue(({ read }) => read(count$) * 2)
+        useSelector(({ read }) => read(count$) * 2)
       );
 
       expect(result.current).toBe(10);
@@ -48,7 +48,7 @@ describe("useValue", () => {
       const a$ = atom(2);
       const b$ = atom(3);
       const { result } = renderHook(() =>
-        useValue(({ read }) => read(a$) + read(b$))
+        useSelector(({ read }) => read(a$) + read(b$))
       );
 
       expect(result.current).toBe(5);
@@ -58,7 +58,7 @@ describe("useValue", () => {
       const a$ = atom(2);
       const b$ = atom(3);
       const { result } = renderHook(() =>
-        useValue(({ read }) => read(a$) * read(b$))
+        useSelector(({ read }) => read(a$) * read(b$))
       );
 
       expect(result.current).toBe(6);
@@ -80,7 +80,7 @@ describe("useValue", () => {
       const details$ = atom("Detailed");
 
       const { result } = renderHook(() =>
-        useValue(({ read }) =>
+        useSelector(({ read }) =>
           read(showDetails$) ? read(details$) : read(summary$)
         )
       );
@@ -104,7 +104,7 @@ describe("useValue", () => {
 
       const { result } = renderHook(() => {
         renderCount();
-        return useValue(source$);
+        return useSelector(source$);
       });
 
       expect(result.current).toEqual({ a: 1 });
@@ -120,7 +120,7 @@ describe("useValue", () => {
     it("should support custom equality", async () => {
       const source$ = atom({ id: 1, name: "John" });
       const { result } = renderHook(() =>
-        useValue(source$, (a, b) => a.id === b.id)
+        useSelector(source$, (a, b) => a.id === b.id)
       );
 
       expect(result.current.name).toBe("John");
@@ -140,7 +140,7 @@ describe("useValue", () => {
       const c$ = atom(3);
 
       const { result } = renderHook(() =>
-        useValue(({ all }) => {
+        useSelector(({ all }) => {
           const [a, b, c] = all(a$, b$, c$);
           return a + b + c;
         })
@@ -153,7 +153,7 @@ describe("useValue", () => {
   describe("cleanup", () => {
     it("should unsubscribe on unmount", async () => {
       const count$ = atom(0);
-      const { unmount } = renderHook(() => useValue(count$));
+      const { unmount } = renderHook(() => useSelector(count$));
 
       unmount();
 
@@ -171,7 +171,7 @@ describe("useValue", () => {
 
   describe("async atoms", () => {
     it("should throw promise for pending atom (Suspense)", () => {
-      // When an atom's value is a pending Promise, useValue should throw
+      // When an atom's value is a pending Promise, useSelector should throw
       // the Promise to trigger Suspense. This is hard to test without
       // proper Suspense boundary setup.
       // The hook will throw the Promise which is caught by Suspense

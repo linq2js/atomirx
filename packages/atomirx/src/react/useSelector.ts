@@ -16,17 +16,17 @@ import { isAtom } from "../core/isAtom";
  *
  * ```tsx
  * // ❌ WRONG - Don't use async function
- * useValue(async ({ read }) => {
+ * useSelector(async ({ read }) => {
  *   const data = await fetch('/api');
  *   return data;
  * });
  *
  * // ❌ WRONG - Don't return a Promise
- * useValue(({ read }) => fetch('/api').then(r => r.json()));
+ * useSelector(({ read }) => fetch('/api').then(r => r.json()));
  *
  * // ✅ CORRECT - Create async atom and read with read()
  * const data$ = atom(fetch('/api').then(r => r.json()));
- * useValue(({ read }) => read(data$)); // Suspends until resolved
+ * useSelector(({ read }) => read(data$)); // Suspends until resolved
  * ```
  *
  * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
@@ -37,7 +37,7 @@ import { isAtom } from "../core/isAtom";
  *
  * ```tsx
  * // ❌ WRONG - Catches Suspense Promise, breaks loading state
- * const data = useValue(({ read }) => {
+ * const data = useSelector(({ read }) => {
  *   try {
  *     return read(asyncAtom$);
  *   } catch (e) {
@@ -46,7 +46,7 @@ import { isAtom } from "../core/isAtom";
  * });
  *
  * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
- * const result = useValue(({ read, safe }) => {
+ * const result = useSelector(({ read, safe }) => {
  *   const [err, data] = safe(() => {
  *     const raw = read(asyncAtom$);    // Can throw Promise (Suspense)
  *     return JSON.parse(raw);          // Can throw Error
@@ -101,7 +101,7 @@ import { isAtom } from "../core/isAtom";
  * const count = atom(5);
  *
  * function Counter() {
- *   const value = useValue(count);
+ *   const value = useSelector(count);
  *   return <div>{value}</div>;
  * }
  * ```
@@ -111,7 +111,7 @@ import { isAtom } from "../core/isAtom";
  * const count = atom(5);
  *
  * function Counter() {
- *   const doubled = useValue(({ read }) => read(count) * 2);
+ *   const doubled = useSelector(({ read }) => read(count) * 2);
  *   return <div>{doubled}</div>;
  * }
  * ```
@@ -122,7 +122,7 @@ import { isAtom } from "../core/isAtom";
  * const lastName = atom("Doe");
  *
  * function FullName() {
- *   const fullName = useValue(({ read }) =>
+ *   const fullName = useSelector(({ read }) =>
  *     `${read(firstName)} ${read(lastName)}`
  *   );
  *   return <div>{fullName}</div>;
@@ -134,7 +134,7 @@ import { isAtom } from "../core/isAtom";
  * const userAtom = atom(fetchUser());
  *
  * function UserProfile() {
- *   const user = useValue(({ read }) => read(userAtom));
+ *   const user = useSelector(({ read }) => read(userAtom));
  *   return <div>{user.name}</div>;
  * }
  *
@@ -156,7 +156,7 @@ import { isAtom } from "../core/isAtom";
  * const postsAtom = atom(fetchPosts());
  *
  * function Dashboard() {
- *   const data = useValue(({ all }) => {
+ *   const data = useSelector(({ all }) => {
  *     const [user, posts] = all(userAtom, postsAtom);
  *     return { user, posts };
  *   });
@@ -166,18 +166,18 @@ import { isAtom } from "../core/isAtom";
  * ```
  */
 // Overload: Pass atom directly
-export function useValue<T>(
+export function useSelector<T>(
   atom: Atom<T>,
   equals?: Equality<Awaited<T>>
 ): Awaited<T>;
 
 // Overload: Context-based selector function
-export function useValue<T>(
+export function useSelector<T>(
   selector: ReactiveSelector<T>,
   equals?: Equality<T>
 ): T;
 
-export function useValue<T>(
+export function useSelector<T>(
   selectorOrAtom: ReactiveSelector<T> | Atom<T>,
   equals?: Equality<T>
 ): T {

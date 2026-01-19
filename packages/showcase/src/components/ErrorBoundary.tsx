@@ -11,7 +11,7 @@ interface ErrorBoundaryState {
 
 /**
  * Error boundary component that catches errors thrown by children.
- * Used with useValue for async atoms that may throw errors.
+ * Used with useSelector for async atoms that may throw errors.
  */
 export class ErrorBoundary extends Component<
   ErrorBoundaryProps,

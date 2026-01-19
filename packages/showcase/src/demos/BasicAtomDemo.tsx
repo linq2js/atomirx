@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { atom } from "atomirx";
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
@@ -16,9 +16,9 @@ const timestamp$ = atom(() => Date.now(), { meta: { key: "timestamp" } });
 
 export function BasicAtomDemo() {
   // Shorthand: pass atom directly to get its value
-  const count = useValue(count$);
-  const name = useValue(name$);
-  const timestamp = useValue(timestamp$);
+  const count = useSelector(count$);
+  const name = useSelector(name$);
+  const timestamp = useSelector(timestamp$);
   const { log } = useEventLog();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -77,7 +77,7 @@ export function BasicAtomDemo() {
       <CodeBlock
         code={`
 import { atom } from "atomirx";
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 
 // Create an atom with initial value (use $ suffix convention)
 const count$ = atom(0);
@@ -86,7 +86,7 @@ const count$ = atom(0);
 const timestamp$ = atom(() => Date.now());
 
 // In your component (shorthand: pass atom directly)
-const count = useValue(count$);
+const count = useSelector(count$);
 
 // Update the atom
 count$.set(5);              // Direct value

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { atom, batch } from "atomirx";
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
@@ -14,10 +14,10 @@ const c$ = atom(0, { meta: { key: "c" } });
 
 export function BatchDemo() {
   // Shorthand: pass atom directly to get its value
-  const counter = useValue(counter$);
-  const a = useValue(a$);
-  const b = useValue(b$);
-  const c = useValue(c$);
+  const counter = useSelector(counter$);
+  const a = useSelector(a$);
+  const b = useSelector(b$);
+  const c = useSelector(c$);
 
   const { log, clear } = useEventLog();
   const [notificationCount, setNotificationCount] = useState(0);

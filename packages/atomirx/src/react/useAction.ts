@@ -1,6 +1,6 @@
 import { useReducer, useCallback, useRef, useEffect } from "react";
 import { isPromiseLike } from "../core/isPromiseLike";
-import { useValue } from "./useValue";
+import { useSelector } from "./useSelector";
 import { isAtom } from "../core/isAtom";
 import { Pipeable } from "../core/types";
 import { withUse } from "../core/withUse";
@@ -78,7 +78,7 @@ export interface UseActionOptions {
   /**
    * Dependencies array. When lazy is false, re-executes when deps change.
    * - Regular values: compared by reference (like useEffect deps)
-   * - Atoms: automatically tracked via useValue, re-executes when atom values change
+   * - Atoms: automatically tracked via useSelector, re-executes when atom values change
    * @default []
    */
   deps?: unknown[];
@@ -311,7 +311,7 @@ function reducer<T>(
  *     { lazy: false, deps: [userIdAtom] }
  *   );
  *   // Automatically re-fetches when userIdAtom changes
- *   // Atoms in deps are tracked reactively via useValue
+ *   // Atoms in deps are tracked reactively via useSelector
  * }
  * ```
  *
@@ -489,8 +489,8 @@ export function useAction<TResult, TLazy extends boolean = true>(
   // Get atoms from deps for reactive tracking
   const atomDeps = (lazy ? [] : (deps ?? [])).filter(isAtom);
 
-  // Use useValue to track atom deps and get their values for effect deps comparison
-  const atomValues = useValue(({ read }) => {
+  // Use useSelector to track atom deps and get their values for effect deps comparison
+  const atomValues = useSelector(({ read }) => {
     return atomDeps.map((atom) => read(atom));
   });
 

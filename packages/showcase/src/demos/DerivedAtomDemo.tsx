@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { atom, derived } from "atomirx";
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { useEventLog } from "../App";
@@ -35,14 +35,14 @@ const info$ = derived(({ read }) =>
 
 export function DerivedAtomDemo() {
   // Shorthand: pass atom directly to get its value
-  const price = useValue(price$);
-  const quantity = useValue(quantity$);
-  const discount = useValue(discount$);
-  const subtotal = useValue(subtotal$);
-  const discountAmount = useValue(discountAmount$);
-  const total = useValue(total$);
-  const showDetails = useValue(showDetails$);
-  const info = useValue(info$);
+  const price = useSelector(price$);
+  const quantity = useSelector(quantity$);
+  const discount = useSelector(discount$);
+  const subtotal = useSelector(subtotal$);
+  const discountAmount = useSelector(discountAmount$);
+  const total = useSelector(total$);
+  const showDetails = useSelector(showDetails$);
+  const info = useSelector(info$);
 
   const { log } = useEventLog();
 

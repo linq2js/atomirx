@@ -1,6 +1,6 @@
 import { useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { atom, derived, define, DerivedAtom, onCreateHook } from "atomirx";
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { StatusBadge } from "../components/StatusBadge";
@@ -172,7 +172,7 @@ function TodoItem({
 }
 
 /**
- * Todo list component - uses useValue with derived atom.
+ * Todo list component - uses useSelector with derived atom.
  * Suspends while loading, throws on error.
  * MUST be wrapped with Suspense and ErrorBoundary.
  */
@@ -185,8 +185,8 @@ function TodoList({
   onSuccess: () => void;
   onToggle: (id: number, completed: boolean) => void;
 }) {
-  // useValue with derived atom - suspends until Promise resolves
-  const todos = useValue(filteredTodos$);
+  // useSelector with derived atom - suspends until Promise resolves
+  const todos = useSelector(filteredTodos$);
 
   // Report success only once when component first mounts (data loaded)
   const hasReportedSuccess = useRef(false);
@@ -395,7 +395,7 @@ function TodoListDemoContent() {
       {/* Code Example */}
       <CodeBlock
         code={`import { atom, derived, define } from "atomirx";
-import { useValue } from "atomirx/react";
+import { useSelector } from "atomirx/react";
 
 const TodoModule = define(() => {
   // Remote data from server
@@ -530,7 +530,7 @@ const TodoModule = define(() => {
               <strong>Pattern:</strong> Use <code>define()</code> to organize
               atoms in stable scope. <code>atom()</code> stores the Promise.{" "}
               <code>derived()</code> unwraps it via <code>read()</code>.{" "}
-              <code>useValue()</code> suspends until ready.
+              <code>useSelector()</code> suspends until ready.
             </p>
           </div>
         </div>
@@ -577,7 +577,7 @@ Module.invalidate(); // Reset for next test`}
 
           <div className="card">
             <h4 className="font-semibold text-surface-100 mb-2">
-              useValue() - Subscribe in React
+              useSelector() - Subscribe in React
             </h4>
             <p className="text-sm text-surface-400 mb-2">
               Subscribes to atom changes. With derived atoms, suspends until
@@ -586,7 +586,7 @@ Module.invalidate(); // Reset for next test`}
             <CodeBlock
               code={`function TodoList() {
   const { filteredTodos$ } = TodoModule();
-  const todos = useValue(filteredTodos$);
+  const todos = useSelector(filteredTodos$);
   // Component suspends while loading
   return <ul>{todos.map(...)}</ul>;
 }`}

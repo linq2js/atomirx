@@ -1,5 +1,5 @@
 import { atom } from "atomirx";
-import { useAction, useValue } from "atomirx/react";
+import { useAction, useSelector } from "atomirx/react";
 import { DemoSection } from "../components/DemoSection";
 import { CodeBlock } from "../components/CodeBlock";
 import { StatusBadge } from "../components/StatusBadge";
@@ -18,7 +18,7 @@ import {
 const fetchData = async (
   signal: AbortSignal,
   delay = 2000,
-  shouldFail = false,
+  shouldFail = false
 ): Promise<{ id: number; data: string }> => {
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(resolve, delay);
@@ -43,7 +43,7 @@ const userId$ = atom(1, { meta: { key: "userId" } });
 
 export function UseActionDemo() {
   // Shorthand: pass atom directly to get its value
-  const userId = useValue(userId$);
+  const userId = useSelector(userId$);
   const { log } = useEventLog();
 
   // Basic manual dispatch (lazy: true by default)
@@ -56,7 +56,7 @@ export function UseActionDemo() {
     async ({ signal }) => {
       return fetchData(signal, 3000);
     },
-    { exclusive: false },
+    { exclusive: false }
   );
 
   // Auto-dispatch with deps (lazy: false)
@@ -64,7 +64,7 @@ export function UseActionDemo() {
     async ({ signal }) => {
       return fetchData(signal, 1500);
     },
-    { lazy: false, deps: [userId$] },
+    { lazy: false, deps: [userId$] }
   );
 
   // Sync action
@@ -309,7 +309,7 @@ const autoFetch = useAction(
               <p className="text-emerald-400">
                 Computed:{" "}
                 {(syncAction.result as { computed: number })?.computed.toFixed(
-                  2,
+                  2
                 )}
               </p>
             )}
