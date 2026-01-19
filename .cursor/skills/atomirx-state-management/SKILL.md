@@ -39,10 +39,85 @@ description: Guide for working with atomirx reactive state management library. U
 
 ## Key Rules
 
-1. **Never use try/catch with read()** - breaks Suspense. Use `safe()` instead.
-2. **Never store atoms in component scope** - causes memory leaks. Use `define()`.
-3. **Co-locate mutations in module** - all `.set()` calls for an atom belong in its module.
-4. **SelectContext is synchronous only** - can't use `read()` in setTimeout/Promise.then.
+1. **MUST use define() for all state/logic** - Global classes/utils OK, but variables/state MUST be in `define()`.
+2. **MUST use batch() for multiple atom updates** - Wrap multiple `.set()` calls in `batch()` for single notification.
+3. **Group multiple useSelector calls** - Each call creates a subscription. Group reads into single selector.
+4. **useAction deps: pass atoms, not values** - For `lazy: false` auto re-dispatch, pass atoms to `deps` and use `.get()` inside.
+5. **Never use try/catch with read()** - breaks Suspense. Use `safe()` instead.
+6. **Co-locate mutations in module** - all `.set()` calls for an atom belong in its module.
+7. **Export readonly atoms** - Use `readonly({ atom$ })` to prevent external mutations.
+8. **SelectContext is synchronous only** - can't use `read()` in setTimeout/Promise.then.
+
+### useSelector Grouping (IMPORTANT)
+
+```tsx
+// ✅ DO: Single useSelector with multiple reads
+const { user, posts, settings } = useSelector(({ read }) => ({
+  user: read(user$),
+  posts: read(posts$),
+  settings: read(settings$),
+}));
+
+// ❌ DON'T: Multiple useSelector calls
+const user = useSelector(user$);
+const posts = useSelector(posts$);
+const settings = useSelector(settings$);
+```
+
+### useAction with Atom Deps (IMPORTANT)
+
+```tsx
+// ✅ DO: Pass atoms to deps, use .get() inside
+const [load] = useAction(async () => atom1$.get() + (await atom2$.get()), {
+  deps: [atom1$, atom2$],
+  lazy: false,
+});
+
+// ❌ DON'T: useSelector values in deps (causes Suspense, stale closures)
+const { v1, v2 } = useSelector(({ read }) => ({
+  v1: read(atom1$),
+  v2: read(atom2$),
+}));
+const [load] = useAction(async () => v1 + v2, { deps: [v1, v2], lazy: false });
+```
+
+### batch() for Multiple Updates (IMPORTANT)
+
+```tsx
+// ✅ DO: Wrap multiple updates in batch()
+batch(() => {
+  user$.set(newUser);
+  settings$.set(newSettings);
+  lastUpdated$.set(Date.now());
+});
+
+// ❌ DON'T: Multiple separate updates (triggers multiple re-renders)
+user$.set(newUser);
+settings$.set(newSettings);
+lastUpdated$.set(Date.now());
+```
+
+### define() Module Isolation (CRITICAL)
+
+```tsx
+// ✅ DO: All state and logic in define()
+export const counterModule = define(() => {
+  const count$ = atom(0);
+  return {
+    ...readonly({ count$ }), // Prevent external mutations
+    increment: () => count$.set((x) => x + 1),
+  };
+});
+
+// ✅ DO: Override for environment/testing
+const storageModule = define((): StorageModule => {
+  throw new Error("Not implemented");
+});
+storageModule.override(webStorageModule); // or nativeStorageModule
+
+// ❌ DON'T: Global variables outside define()
+const count$ = atom(0); // Not testable, not mockable
+```
 
 See [references/rules.md](references/rules.md) for detailed examples.
 

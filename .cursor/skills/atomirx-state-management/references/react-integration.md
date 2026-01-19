@@ -4,18 +4,43 @@
 
 Subscribe to atom values with automatic re-rendering.
 
+### IMPORTANT: Group Multiple Selectors
+
+**MUST** group multiple atom reads into a single `useSelector` call. Each `useSelector` creates a separate subscription - grouping reduces re-renders and improves performance.
+
+```tsx
+// ✅ DO: Group multiple reads into single useSelector
+const { count, user, settings } = useSelector(({ read }) => ({
+  count: read(count$),
+  user: read(user$),
+  settings: read(settings$),
+}));
+
+// ❌ DON'T: Multiple separate useSelector calls
+const count = useSelector(count$);
+const user = useSelector(user$);
+const settings = useSelector(settings$);
+```
+
+**Why grouping matters:**
+
+- Each `useSelector` creates an independent subscription
+- Multiple subscriptions = multiple re-render checks per state change
+- Grouped selector computes all values in single subscription
+- Easier to add custom equality check for the entire result
+
 ### Basic Usage
 
 ```tsx
 import { useSelector } from "atomirx/react";
 
-// Shorthand: pass atom directly
+// Single atom shorthand (OK when only one atom needed)
 const count = useSelector(count$);
 
 // Selector: compute derived value
 const doubled = useSelector(({ read }) => read(count$) * 2);
 
-// Multiple atoms
+// Multiple atoms - ALWAYS use grouped form
 const display = useSelector(({ read }) => {
   const count = read(count$);
   const user = read(user$);
@@ -129,6 +154,40 @@ const [_, { loading, data }] = useAction(async () => fetchInitialData(), {
   eager: true,
 });
 ```
+
+### Auto Re-dispatch with Atom Dependencies
+
+When using `lazy: false` and you want the action to re-dispatch when atoms change, pass atoms directly to `deps` and use `.get()` inside the action.
+
+```tsx
+// ✅ DO: Pass atoms to deps, use .get() inside action
+const [loadData, { loading, data }] = useAction(
+  async () => {
+    const filter = filterAtom$.get();
+    const config = await configAtom$.get(); // await if atom contains Promise
+    return fetchData(filter, config);
+  },
+  { deps: [filterAtom$, configAtom$], lazy: false }
+);
+// Action auto re-dispatches when filterAtom$ or configAtom$ changes
+
+// ❌ DON'T: Use useSelector + pass values to deps
+const { filter, config } = useSelector(({ read }) => ({
+  filter: read(filterAtom$),
+  config: read(configAtom$), // If async, component suspends HERE before useAction runs
+}));
+const [loadData, { loading, data }] = useAction(
+  async () => fetchData(filter, config),
+  { deps: [filter, config], lazy: false }
+);
+```
+
+**Why pass atoms to deps:**
+
+| Approach                | Behavior                                                         |
+| ----------------------- | ---------------------------------------------------------------- |
+| Atoms in deps           | Action reads latest values, no extra Suspense                    |
+| Values from useSelector | Component suspends first, extra subscription, stale closure risk |
 
 ## Suspense Integration
 
