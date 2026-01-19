@@ -39,7 +39,8 @@ All non-trivial work MUST follow this sequence. Skipping phases is not allowed.
 
 ## 3. Implement
 
-- Requires explicit **START** for new features (not for refactoring)
+- **ALWAYS** wait for explicit **START** confirmation before making any code changes
+- Documentation changes (`.md`, comments, README) may proceed without START
 - When user says START without prior design summary → present final design first, then ask for START again
 
 # DATA SAFETY (CRITICAL)
@@ -71,10 +72,17 @@ Before any change, analyze:
 
 ## DRY & Code Reuse
 
-Before implementing, search codebase for:
+Before implementing, search codebase using:
+
+- **Grep**: exact function/class/variable names, imports, error messages
+- **SemanticSearch**: concepts like "error handling", "data validation", "how does X work"
+- **Glob**: find related files by pattern (`*.test.ts`, `**/hooks/*.ts`)
+
+Look for:
 
 - Existing components/hooks/utils that solve the problem
 - Similar patterns to follow
+- Shared abstractions that can be extended
 
 Present findings:
 
@@ -82,9 +90,12 @@ Present findings:
 | Need | Existing | Location | Strategy |
 |------|----------|----------|----------|
 | Debounce | useDebounce | hooks/ | Use directly |
+| Validation | validateInput | utils/ | Extend |
+| N/A | - | - | Create new |
 ```
 
 ❌ Don't create new code if existing covers 80%+ of need
+✅ Extend existing abstractions when possible
 
 # TESTING (TDD REQUIRED)
 
