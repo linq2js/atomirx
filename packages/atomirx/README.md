@@ -44,6 +44,13 @@ We can't solve every use case, but in the spirit of [`create-react-app`](https:/
       - [Use Cases for safe()](#use-cases-for-safe)
     - [SelectContext Methods: Synchronous Only](#selectcontext-methods-synchronous-only)
     - [Complete Example: Todo App with Async](#complete-example-todo-app-with-async)
+    - [Deferred Entity Loading with `ready()`](#deferred-entity-loading-with-ready)
+      - [The Pattern](#the-pattern)
+      - [How It Works](#how-it-works)
+      - [Component Usage](#component-usage)
+      - [Benefits](#benefits)
+      - [When to Use `ready()`](#when-to-use-ready)
+      - [Important Notes](#important-notes)
   - [Usage Guide](#usage-guide)
     - [Atoms: The Foundation](#atoms-the-foundation)
       - [Creating Atoms](#creating-atoms)
@@ -700,6 +707,229 @@ function RefreshButton() {
 }
 ```
 
+### Deferred Entity Loading with `ready()`
+
+When building detail pages (e.g., `/article/:id`), you often need to:
+
+1. Wait for a route parameter to be set
+2. Fetch data based on that parameter
+3. Share the loaded entity across multiple components
+
+The `ready()` method in derived atoms provides an elegant solution for this pattern.
+
+#### The Pattern
+
+```typescript
+import { atom, derived, effect, readonly, define } from "atomirx";
+
+const articleModule = define(() => {
+  // Current article ID - set from route
+  const currentArticleId$ = atom<string | undefined>(undefined);
+
+  // Article cache - normalized storage
+  const articleCache$ = atom<Record<string, Article>>({});
+
+  // Current article - uses ready() to wait for both ID and cached data
+  const currentArticle$ = derived(({ ready }) => {
+    const id = ready(currentArticleId$); // Suspends if undefined
+    const article = ready(articleCache$, (cache) => cache[id]); // Suspends if not cached
+    return article;
+  });
+
+  // Fetch article when ID changes
+  effect(({ read }) => {
+    const id = read(currentArticleId$);
+    if (!id) return;
+
+    // Skip if already cached
+    const cache = read(articleCache$);
+    if (cache[id]) return;
+
+    // Fetch and cache
+    // ─────────────────────────────────────────────────────────────
+    // Optional: Track loading/error states in cache for more control
+    // type CacheEntry<T> =
+    //   | { status: "loading" }
+    //   | { status: "error"; error: Error }
+    //   | { status: "success"; data: T };
+    // const articleCache$ = atom<Record<string, CacheEntry<Article>>>({});
+    //
+    // articleCache$.set((prev) => ({ ...prev, [id]: { status: "loading" } }));
+    // fetch(...)
+    //   .then((article) => articleCache$.set((prev) => ({
+    //     ...prev, [id]: { status: "success", data: article }
+    //   })))
+    //   .catch((error) => articleCache$.set((prev) => ({
+    //     ...prev, [id]: { status: "error", error }
+    //   })));
+    // ─────────────────────────────────────────────────────────────
+    fetch(`/api/articles/${id}`)
+      .then((r) => r.json())
+      .then((article) => {
+        articleCache$.set((prev) => ({ ...prev, [id]: article }));
+      });
+  });
+
+  return {
+    ...readonly({ currentArticleId$, currentArticle$ }),
+
+    // ─────────────────────────────────────────────────────────────
+    // navigateTo(id) - Navigate to a new article
+    // ─────────────────────────────────────────────────────────────
+    // Flow:
+    // 1. Set currentArticleId$ to new ID
+    // 2. currentArticle$ recomputes:
+    //    - If cached: ready() succeeds → UI shows article immediately
+    //    - If not cached: ready() suspends → UI shows <Skeleton />
+    // 3. effect() runs in parallel:
+    //    - If cached: early return (no fetch)
+    //    - If not cached: fetch → update articleCache$
+    // 4. When cache updated, currentArticle$ recomputes → UI shows article
+    navigateTo: (id: string) => currentArticleId$.set(id),
+
+    // ─────────────────────────────────────────────────────────────
+    // invalidate(id) - Mark an article as stale (soft invalidation)
+    // ─────────────────────────────────────────────────────────────
+    // Flow:
+    // 1. Guard: Skip if id === currentArticleId (don't disrupt current view)
+    // 2. Remove article from cache
+    // 3. No immediate effect on UI (current article unchanged)
+    // 4. Next navigateTo(id) will trigger fresh fetch
+    // Use case: Background sync detected article was updated elsewhere
+    invalidate: (id: string) => {
+      if (id === currentArticleId$.get()) return;
+      articleCache$.set((prev) => {
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      });
+    },
+
+    // ─────────────────────────────────────────────────────────────
+    // refresh() - Force refetch current article (hard refresh)
+    // ─────────────────────────────────────────────────────────────
+    // Flow:
+    // 1. Remove current article from cache
+    // 2. currentArticle$ recomputes:
+    //    - ready() suspends (cache miss) → UI shows <Skeleton />
+    // 3. effect() runs:
+    //    - Cache miss detected → fetch starts
+    // 4. Fetch completes → cache updated → UI shows fresh data
+    // Use case: Pull-to-refresh, retry after error
+    refresh() {
+      articleCache$.set((prev) => {
+        const { [currentArticleId$.get()]: _, ...rest } = prev;
+        return rest;
+      });
+    },
+  };
+});
+```
+
+#### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Route: /article/:id                                        │
+│  → navigateTo(id)                                           │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  effect() detects ID change                                 │
+│  → Checks cache, fetches if not cached                      │
+│  → Updates articleCache$                                    │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  currentArticle$ (derived with ready())                     │
+│  → Suspends until ID is set AND article is in cache         │
+│  → Returns article when both conditions met                 │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Components with Suspense                                   │
+│  → Show loading fallback while suspended                    │
+│  → Render article when ready                                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Component Usage
+
+```tsx
+// Page component - syncs route and provides boundaries
+export const ArticlePage = () => {
+  const { id } = useParams();
+  const { navigateTo } = articleModule();
+
+  useEffect(() => {
+    navigateTo(id);
+  }, [id]);
+
+  return (
+    <ErrorBoundary fallback={<ErrorDialog />}>
+      <Suspense fallback={<ArticleSkeleton />}>
+        <ArticleHeader />
+        <ArticleContent />
+        <ArticleMeta />
+      </Suspense>
+    </ErrorBoundary>
+  );
+};
+
+// Child components - clean, no loading/error handling needed
+export const ArticleHeader = () => {
+  const { currentArticle$ } = articleModule();
+  const article = useSelector(currentArticle$);
+
+  return <h1>{article.title}</h1>;
+};
+
+export const ArticleContent = () => {
+  const { currentArticle$ } = articleModule();
+  const article = useSelector(currentArticle$);
+
+  return <div className="content">{article.body}</div>;
+};
+
+export const ArticleMeta = () => {
+  const { currentArticle$ } = articleModule();
+  const article = useSelector(currentArticle$);
+
+  return (
+    <span>
+      By {article.author} • {article.date}
+    </span>
+  );
+};
+```
+
+#### Benefits
+
+| Benefit                  | Description                                                      |
+| ------------------------ | ---------------------------------------------------------------- |
+| **Clean components**     | Child components just read the atom - no loading/error handling  |
+| **No prop drilling**     | All components access `currentArticle$` directly from the module |
+| **Automatic suspension** | `ready()` handles the "wait for data" logic declaratively        |
+| **Centralized fetching** | Effect handles when/how to fetch, components just consume        |
+| **Cache management**     | Normalized cache enables invalidation and updates                |
+
+#### When to Use `ready()`
+
+| Use Case             | Example                                          |
+| -------------------- | ------------------------------------------------ |
+| Route-based entities | `/article/:id`, `/user/:userId`, `/product/:sku` |
+| Auth-gated content   | Wait for `currentUser$` before showing dashboard |
+| Dependent data       | Wait for parent entity before fetching children  |
+| Multi-step forms     | Wait for previous step data before showing next  |
+
+#### Important Notes
+
+- **Only use in `derived()` or `effect()`** - `ready()` suspends computation, which only works in reactive contexts
+- **Separate fetching from derivation** - Use `effect()` for side effects (fetching), `derived()` for computing values
+- **Read from cache in effect** - Don't read `currentArticle$` in the effect that populates it; read `articleCache$` directly
+
 ## Usage Guide
 
 ### Atoms: The Foundation
@@ -921,7 +1151,7 @@ const state = dashboard$.state();
 
 // Or use all() for explicit parallel loading
 const dashboard2$ = derived(({ all }) => {
-  const [user, posts] = all(user$, posts$);
+  const [user, posts] = all([user$, posts$]);
   return { userName: user.name, postCount: posts.length };
 });
 ```
@@ -998,8 +1228,8 @@ const posts$ = atom(fetchPosts());
 const comments$ = atom(fetchComments());
 
 const dashboard$ = derived(({ all }) => {
-  // Suspends until ALL atoms resolve (variadic args)
-  const [user, posts, comments] = all(user$, posts$, comments$);
+  // Suspends until ALL atoms resolve (array-based)
+  const [user, posts, comments] = all([user$, posts$, comments$]);
 
   return { user, posts, comments };
 });
@@ -1012,8 +1242,9 @@ const primaryApi$ = atom(fetchFromPrimary());
 const fallbackApi$ = atom(fetchFromFallback());
 
 const data$ = derived(({ any }) => {
-  // Returns first successfully resolved value (variadic args)
-  return any(primaryApi$, fallbackApi$);
+  // Returns first successfully resolved value (object-based, returns { key, value })
+  const result = any({ primary: primaryApi$, fallback: fallbackApi$ });
+  return result.value;
 });
 ```
 
@@ -1024,8 +1255,9 @@ const cache$ = atom(checkCache());
 const api$ = atom(fetchFromApi());
 
 const data$ = derived(({ race }) => {
-  // Returns first settled (ready OR error) (variadic args)
-  return race(cache$, api$);
+  // Returns first settled (ready OR error) (object-based, returns { key, value })
+  const result = race({ cache: cache$, api: api$ });
+  return result.value;
 });
 ```
 
@@ -1036,8 +1268,8 @@ const user$ = atom(fetchUser());
 const posts$ = atom(fetchPosts());
 
 const results$ = derived(({ settled }) => {
-  // Returns status for each atom (variadic args)
-  const [userResult, postsResult] = settled(user$, posts$);
+  // Returns status for each atom (array-based)
+  const [userResult, postsResult] = settled([user$, posts$]);
 
   return {
     user: userResult.status === "ready" ? userResult.value : null,
@@ -1049,12 +1281,12 @@ const results$ = derived(({ settled }) => {
 
 #### Async Utility Summary
 
-| Utility     | Input          | Output                 | Behavior                           |
-| ----------- | -------------- | ---------------------- | ---------------------------------- |
-| `all()`     | Variadic atoms | Array of values        | Suspends until all ready           |
-| `any()`     | Variadic atoms | First ready value      | First to resolve wins              |
-| `race()`    | Variadic atoms | First settled value    | First to settle (ready/error) wins |
-| `settled()` | Variadic atoms | Array of SettledResult | Suspends until all settled         |
+| Utility     | Input           | Output                   | Behavior                           |
+| ----------- | --------------- | ------------------------ | ---------------------------------- |
+| `all()`     | Array of atoms  | Array of values          | Suspends until all ready           |
+| `any()`     | Record of atoms | `{ key, value }` (first) | First to resolve wins              |
+| `race()`    | Record of atoms | `{ key, value }` (first) | First to settle (ready/error) wins |
+| `settled()` | Array of atoms  | Array of SettledResult   | Suspends until all settled         |
 
 **SettledResult type:**
 
@@ -1393,8 +1625,8 @@ const count = useSelector(count$);
 // 2. Derived value (selector)
 const doubled = useSelector(({ read }) => read(count$) * 2);
 
-// 3. Multiple atoms (all)
-const [user, posts] = useSelector(({ all }) => all(user$, posts$));
+// 3. Multiple atoms (all) - array-based
+const [user, posts] = useSelector(({ all }) => all([user$, posts$]));
 
 // 4. Loadable mode (state) - no Suspense needed
 const userState = useSelector(({ state }) => state(user$));
@@ -1407,8 +1639,8 @@ const result = useSelector(({ read, safe }) => {
 });
 
 // 6. First ready (any), race, allSettled
-const fastest = useSelector(({ any }) => any(cache$, api$));
-const results = useSelector(({ settled }) => settled(a$, b$, c$));
+const fastest = useSelector(({ any }) => any({ cache: cache$, api: api$ }));
+const results = useSelector(({ settled }) => settled([a$, b$, c$]));
 ```
 
 **Comparison with other libraries:**
@@ -1417,7 +1649,7 @@ const results = useSelector(({ settled }) => settled(a$, b$, c$));
 | ------------------- | ------------------------------------------ | ------------------------------ | ------------------------------- | -------------------------- |
 | Single atom         | `useSelector(atom$)`                       | `useAtomValue(atom)`           | `useRecoilValue(atom)`          | `useStore(s => s.value)`   |
 | Derived value       | `useSelector(({ read }) => ...)`           | `useAtomValue(derivedAtom)`    | `useRecoilValue(selector)`      | `useStore(s => derive(s))` |
-| Multiple atoms      | `useSelector(({ all }) => all(a$, b$))`    | Multiple `useAtomValue` calls  | Multiple `useRecoilValue` calls | Multiple selectors         |
+| Multiple atoms      | `useSelector(({ all }) => all([a$, b$]))`  | Multiple `useAtomValue` calls  | Multiple `useRecoilValue` calls | Multiple selectors         |
 | Suspense mode       | Built-in (default)                         | Built-in                       | Built-in                        | Manual                     |
 | Loadable mode       | `useSelector(({ state }) => state(atom$))` | `useAtomValue(loadable(atom))` | `useRecoilValueLoadable(atom)`  | Manual                     |
 | Safe error handling | `safe()` in selector                       | Manual try/catch               | Manual try/catch                | Manual                     |
@@ -1489,7 +1721,7 @@ function Dashboard() {
 
       {/* Async with utilities */}
       {rx(({ all }) => {
-        const [user, posts] = all(user$, posts$);
+        const [user, posts] = all([user$, posts$]);
         return <Feed user={user} posts={posts} />;
       })}
     </div>
@@ -1812,16 +2044,18 @@ Available in `derived()`, `effect()`, `useSelector()`, and `rx()`:
 | Method    | Signature                                 | Description                                          |
 | --------- | ----------------------------------------- | ---------------------------------------------------- |
 | `read`    | `<T>(atom: Atom<T>) => Awaited<T>`        | Read atom value with dependency tracking             |
-| `all`     | `(...atoms) => [values...]`               | Wait for all atoms (Promise.all semantics)           |
-| `any`     | `(...atoms) => value`                     | First ready value (Promise.any semantics)            |
-| `race`    | `(...atoms) => value`                     | First settled value (Promise.race semantics)         |
-| `settled` | `(...atoms) => SettledResult[]`           | All results (Promise.allSettled semantics)           |
+| `ready`   | `<T>(atom: Atom<T>) => NonNullable<T>`    | Wait for non-null value (only in derived/effect)     |
+| `all`     | `(atoms[]) => values[]`                   | Wait for all atoms (Promise.all semantics)           |
+| `any`     | `({ key: atom }) => { key, value }`       | First ready value (Promise.any semantics)            |
+| `race`    | `({ key: atom }) => { key, value }`       | First settled value (Promise.race semantics)         |
+| `settled` | `(atoms[]) => SettledResult[]`            | All results (Promise.allSettled semantics)           |
 | `state`   | `(atom \| selector) => SelectStateResult` | Get async state without throwing (equality-friendly) |
 | `safe`    | `(fn) => [error, result]`                 | Catch errors, preserve Suspense                      |
 
 **Behavior:**
 
 - `read()`: Returns value if ready, throws error if error, throws Promise if loading
+- `ready()`: Returns non-null value, suspends if null/undefined (only in derived/effect)
 - `all()`: Suspends until all atoms are ready, throws on first error
 - `any()`: Returns first ready value, throws AggregateError if all error
 - `race()`: Returns first settled (ready or error)
@@ -1876,7 +2110,7 @@ effect(({ state }) => {
 
 // 5. With combined operations
 const allData$ = derived(({ state, all }) => {
-  const result = state(() => all(a$, b$, c$));
+  const result = state(() => all([a$, b$, c$]));
 
   if (result.status === 'loading') return { loading: true };
   if (result.status === 'error') return { error: result.error };

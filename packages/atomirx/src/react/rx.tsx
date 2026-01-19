@@ -183,6 +183,30 @@ export interface RxOptions<T> {
  * @returns A React element that renders the selected value
  * @throws Error if selector returns a Promise or PromiseLike
  *
+ * ## IMPORTANT: Atom Value Must Be ReactNode
+ *
+ * When using the shorthand `rx(atom)`, the atom's value must be a valid `ReactNode`
+ * (string, number, boolean, null, undefined, or React element). Objects and arrays
+ * are NOT valid ReactNode values and will cause React to throw an error.
+ *
+ * ```tsx
+ * // ✅ CORRECT - Atom contains ReactNode (number)
+ * const count$ = atom(5);
+ * rx(count$);
+ *
+ * // ✅ CORRECT - Atom contains ReactNode (string)
+ * const name$ = atom("John");
+ * rx(name$);
+ *
+ * // ❌ WRONG - Atom contains object (not ReactNode)
+ * const user$ = atom({ name: "John", age: 30 });
+ * rx(user$); // React error: "Objects are not valid as a React child"
+ *
+ * // ✅ CORRECT - Use selector to extract ReactNode from object
+ * rx(({ read }) => read(user$).name);
+ * rx(({ read }) => <UserCard user={read(user$)} />);
+ * ```
+ *
  * @example Shorthand - render atom value directly
  * ```tsx
  * const count = atom(5);

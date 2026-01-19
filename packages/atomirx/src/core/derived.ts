@@ -12,6 +12,7 @@ import {
   SYMBOL_ATOM,
   SYMBOL_DERIVED,
 } from "./types";
+import { withReady, WithReadySelectContext } from "./withReady";
 
 /**
  * Context object passed to derived atom selector functions.
@@ -20,7 +21,7 @@ import {
  * Currently identical to `SelectContext`, but defined separately to allow
  * future derived-specific extensions without breaking changes.
  */
-export interface DerivedContext extends SelectContext {}
+export interface DerivedContext extends SelectContext, WithReadySelectContext {}
 
 /**
  * Creates a derived (computed) atom from source atom(s).
@@ -175,6 +176,10 @@ export function derived<T>(
   let isLoading = false;
   let version = 0;
 
+  // Store resolve/reject to allow reusing the same promise across recomputations
+  let resolvePromise: ((value: T) => void) | null = null;
+  let rejectPromise: ((error: unknown) => void) | null = null;
+
   // Track current subscriptions (atom -> unsubscribe function)
   const subscriptions = new Map<Atom<unknown>, VoidFunction>();
 
@@ -212,80 +217,95 @@ export function derived<T>(
 
   /**
    * Computes the derived value.
-   * Creates a new Promise that resolves when the computation completes.
+   * Reuses the existing Promise if loading (to prevent orphaned promises
+   * that React Suspense might be waiting on).
    */
   const compute = (silent = false) => {
-    // If already loading, don't create new Promise - reuse existing one
-    // The current computation will complete and retry, picking up new dependency values
-    // This prevents orphaned promises that React is waiting on
-    if (isLoading && currentPromise) {
-      return currentPromise;
-    }
-
     const computeVersion = ++version;
     isLoading = true;
     lastError = undefined; // Clear error when starting new computation
 
-    // Create a new promise for this computation
-    currentPromise = new Promise<T>((resolve, reject) => {
-      // Run select to compute value and track dependencies
-      const attemptCompute = () => {
-        const result = select(fn);
+    // Create a new promise if:
+    // 1. We don't have one yet, OR
+    // 2. The previous computation completed (resolved/rejected) and we need a new one
+    // This ensures we reuse promises while loading (for Suspense) but create fresh
+    // promises for new computations after completion
+    if (!resolvePromise) {
+      currentPromise = new Promise<T>((resolve, reject) => {
+        resolvePromise = resolve;
+        rejectPromise = reject;
+      });
+    }
 
-        // Update subscriptions based on accessed deps
-        updateSubscriptions(result.dependencies);
+    // Run select to compute value and track dependencies
+    const attemptCompute = () => {
+      const result = select((context) => fn(context.use(withReady())));
 
-        if (result.promise) {
-          // Notify subscribers that we're now in loading state
-          // This allows downstream derived atoms and useSelector to suspend
-          if (!silent) notify();
-          // Promise thrown - wait for it and retry
-          result.promise.then(
-            () => {
-              // Check if we're still the current computation
-              if (version !== computeVersion) return;
-              attemptCompute();
-            },
-            (error) => {
-              // Check if we're still the current computation
-              if (version !== computeVersion) return;
-              isLoading = false;
-              lastError = error;
-              reject(error);
-              // Always notify when promise rejects - subscribers need to know
-              // state changed from loading to error
-              notify();
-            }
-          );
-        } else if (result.error !== undefined) {
-          // Error thrown
-          isLoading = false;
-          lastError = result.error;
-          reject(result.error);
-          if (!silent) notify();
-        } else {
-          // Success - update lastResolved and resolve
-          const newValue = result.value as T;
-          const wasFirstResolve = !lastResolved;
-          isLoading = false;
-          lastError = undefined;
+      // Update subscriptions based on accessed deps
+      updateSubscriptions(result.dependencies);
 
-          // Only update and notify if value changed
-          if (!lastResolved || !eq(newValue, lastResolved.value)) {
-            lastResolved = { value: newValue };
-            // Always notify on first resolve (loading → ready transition)
-            // even if silent, because subscribers need to know state changed
-            if (wasFirstResolve || !silent) notify();
+      if (result.promise) {
+        // Notify subscribers that we're now in loading state
+        // This allows downstream derived atoms and useSelector to suspend
+        if (!silent) notify();
+        // Promise thrown - wait for it and retry
+        // Note: For never-resolving promises (from ready()), this .then() will never fire.
+        // But when a dependency changes, compute() is called again via subscription,
+        // and the new computation will run (with a new version).
+        result.promise.then(
+          () => {
+            // Check if we're still the current computation
+            if (version !== computeVersion) return;
+            attemptCompute();
+          },
+          (error) => {
+            // Check if we're still the current computation
+            if (version !== computeVersion) return;
+            isLoading = false;
+            lastError = error;
+            rejectPromise?.(error);
+            // Clear resolve/reject so next computation creates new promise
+            resolvePromise = null;
+            rejectPromise = null;
+            // Always notify when promise rejects - subscribers need to know
+            // state changed from loading to error
+            notify();
           }
+        );
+      } else if (result.error !== undefined) {
+        // Error thrown
+        isLoading = false;
+        lastError = result.error;
+        rejectPromise?.(result.error);
+        // Clear resolve/reject so next computation creates new promise
+        resolvePromise = null;
+        rejectPromise = null;
+        if (!silent) notify();
+      } else {
+        // Success - update lastResolved and resolve
+        const newValue = result.value as T;
+        const wasFirstResolve = !lastResolved;
+        isLoading = false;
+        lastError = undefined;
 
-          resolve(newValue);
+        // Only update and notify if value changed
+        if (!lastResolved || !eq(newValue, lastResolved.value)) {
+          lastResolved = { value: newValue };
+          // Always notify on first resolve (loading → ready transition)
+          // even if silent, because subscribers need to know state changed
+          if (wasFirstResolve || !silent) notify();
         }
-      };
 
-      attemptCompute();
-    });
+        resolvePromise?.(newValue);
+        // Clear resolve/reject so next computation creates new promise
+        resolvePromise = null;
+        rejectPromise = null;
+      }
+    };
 
-    return currentPromise;
+    attemptCompute();
+
+    return currentPromise!;
   };
 
   /**

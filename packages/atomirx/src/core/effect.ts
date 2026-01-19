@@ -3,12 +3,13 @@ import { derived } from "./derived";
 import { emitter } from "./emitter";
 import { ReactiveSelector, SelectContext } from "./select";
 import { EffectOptions } from "./types";
+import { WithReadySelectContext } from "./withReady";
 
 /**
  * Context object passed to effect functions.
  * Extends `SelectContext` with cleanup utilities.
  */
-export interface EffectContext extends SelectContext {
+export interface EffectContext extends SelectContext, WithReadySelectContext {
   /**
    * Register a cleanup function that runs before the next execution or on dispose.
    * Multiple cleanup functions can be registered; they run in FIFO order.
@@ -136,6 +137,7 @@ export function effect(
     // Cast to EffectContext since we're adding onCleanup to the DerivedContext
     const effectContext = {
       ...context,
+      something: true,
       onCleanup: cleanupEmitter.on,
     } as unknown as EffectContext;
     batch(() => fn(effectContext));

@@ -637,4 +637,400 @@ describe("derived", () => {
       });
     });
   });
+
+  describe("ready() - reactive suspension", () => {
+    describe("basic functionality", () => {
+      it("should return non-null value immediately", async () => {
+        const id$ = atom("article-123");
+        const derived$ = derived(({ ready }) => {
+          const id = ready(id$);
+          return `loaded: ${id}`;
+        });
+
+        expect(await derived$.get()).toBe("loaded: article-123");
+      });
+
+      it("should suspend when value is null", async () => {
+        const id$ = atom<string | null>(null);
+        const derived$ = derived(({ ready }) => {
+          const id = ready(id$);
+          return `loaded: ${id}`;
+        });
+
+        // Should be in loading state (suspended)
+        expect(derived$.state().status).toBe("loading");
+      });
+
+      it("should suspend when value is undefined", async () => {
+        const id$ = atom<string | undefined>(undefined);
+        const derived$ = derived(({ ready }) => {
+          const id = ready(id$);
+          return `loaded: ${id}`;
+        });
+
+        expect(derived$.state().status).toBe("loading");
+      });
+
+      it("should NOT suspend for falsy but valid values (0, false, empty string)", async () => {
+        const zero$ = atom(0);
+        const false$ = atom(false);
+        const empty$ = atom("");
+
+        const zeroResult$ = derived(({ ready }) => ready(zero$));
+        const falseResult$ = derived(({ ready }) => ready(false$));
+        const emptyResult$ = derived(({ ready }) => ready(empty$));
+
+        expect(await zeroResult$.get()).toBe(0);
+        expect(await falseResult$.get()).toBe(false);
+        expect(await emptyResult$.get()).toBe("");
+      });
+    });
+
+    describe("reactive resumption", () => {
+      it("should resume when null value becomes non-null", async () => {
+        const id$ = atom<string | null>(null);
+        const computeCount = vi.fn();
+
+        const derived$ = derived(({ ready }) => {
+          computeCount();
+          const id = ready(id$);
+          return `loaded: ${id}`;
+        });
+
+        // Initially suspended
+        expect(derived$.state().status).toBe("loading");
+
+        // Set non-null value - should trigger recomputation
+        id$.set("article-123");
+
+        // Wait for recomputation
+        const result = await derived$.get();
+
+        expect(result).toBe("loaded: article-123");
+        expect(derived$.state().status).toBe("ready");
+        // Should have computed at least twice (once null, once with value)
+        expect(computeCount).toHaveBeenCalled();
+      });
+
+      it("should resume and compute with new value when dependency changes", async () => {
+        const id$ = atom<string | null>(null);
+        const derived$ = derived(({ ready }) => {
+          const id = ready(id$);
+          return id.toUpperCase();
+        });
+
+        // Set to first value
+        id$.set("hello");
+        expect(await derived$.get()).toBe("HELLO");
+
+        // Change to another value
+        id$.set("world");
+        expect(await derived$.get()).toBe("WORLD");
+
+        // Set back to null - should suspend again
+        id$.set(null);
+        expect(derived$.state().status).toBe("loading");
+
+        // Set to new value - should resume
+        id$.set("test");
+        expect(await derived$.get()).toBe("TEST");
+      });
+    });
+
+    describe("ready() with selector", () => {
+      it("should extract and return non-null property", async () => {
+        const user$ = atom({ id: 1, name: "John" });
+
+        const derived$ = derived(({ ready }) => {
+          const name = ready(user$, (u) => u.name);
+          return `Hello, ${name}!`;
+        });
+
+        expect(await derived$.get()).toBe("Hello, John!");
+      });
+
+      it("should suspend when selector returns null", async () => {
+        const user$ = atom<{ id: number; email: string | null }>({
+          id: 1,
+          email: null,
+        });
+
+        const derived$ = derived(({ ready }) => {
+          const email = ready(user$, (u) => u.email);
+          return `Email: ${email}`;
+        });
+
+        expect(derived$.state().status).toBe("loading");
+      });
+
+      it("should resume when selector result becomes non-null", async () => {
+        const user$ = atom<{ id: number; email: string | null }>({
+          id: 1,
+          email: null,
+        });
+
+        const derived$ = derived(({ ready }) => {
+          const email = ready(user$, (u) => u.email);
+          return `Email: ${email}`;
+        });
+
+        // Initially suspended
+        expect(derived$.state().status).toBe("loading");
+
+        // Update user with email
+        user$.set({ id: 1, email: "john@example.com" });
+
+        expect(await derived$.get()).toBe("Email: john@example.com");
+      });
+
+      it("should suspend when selector returns undefined", async () => {
+        const data$ = atom<{ value?: number }>({});
+
+        const derived$ = derived(({ ready }) => {
+          const value = ready(data$, (d) => d.value);
+          return value * 2;
+        });
+
+        expect(derived$.state().status).toBe("loading");
+
+        // Set the value
+        data$.set({ value: 21 });
+        expect(await derived$.get()).toBe(42);
+      });
+    });
+
+    describe("multiple ready() calls", () => {
+      it("should suspend until all ready() calls have non-null values", async () => {
+        const firstName$ = atom<string | null>(null);
+        const lastName$ = atom<string | null>(null);
+
+        const derived$ = derived(({ ready }) => {
+          const first = ready(firstName$);
+          const last = ready(lastName$);
+          return `${first} ${last}`;
+        });
+
+        // Both null - suspended
+        expect(derived$.state().status).toBe("loading");
+
+        // Set first name only - still suspended (lastName is null)
+        firstName$.set("John");
+        // Need to wait a tick for recomputation
+        await new Promise((r) => setTimeout(r, 0));
+        expect(derived$.state().status).toBe("loading");
+
+        // Set last name - should resolve
+        lastName$.set("Doe");
+        expect(await derived$.get()).toBe("John Doe");
+      });
+
+      it("should track all atoms from ready() calls as dependencies", async () => {
+        const a$ = atom<number | null>(null);
+        const b$ = atom<number | null>(null);
+        const listener = vi.fn();
+
+        const derived$ = derived(({ ready }) => {
+          const a = ready(a$);
+          const b = ready(b$);
+          return a + b;
+        });
+
+        derived$.on(listener);
+
+        // Set both values
+        a$.set(1);
+        b$.set(2);
+        await derived$.get();
+
+        // Should have been notified when resolved
+        expect(listener).toHaveBeenCalled();
+        expect(await derived$.get()).toBe(3);
+
+        // Clear listener calls
+        listener.mockClear();
+
+        // Change one value - should trigger recomputation
+        a$.set(10);
+        await derived$.get();
+        expect(listener).toHaveBeenCalled();
+        expect(await derived$.get()).toBe(12);
+      });
+    });
+
+    describe("combining ready() with read()", () => {
+      it("should allow mixing ready() and read() in same derived", async () => {
+        const requiredId$ = atom<string | null>(null);
+        const optionalName$ = atom("default");
+
+        const derived$ = derived(({ ready, read }) => {
+          const id = ready(requiredId$);
+          const name = read(optionalName$);
+          return { id, name };
+        });
+
+        // Suspended because requiredId is null
+        expect(derived$.state().status).toBe("loading");
+
+        // Set required value
+        requiredId$.set("123");
+        expect(await derived$.get()).toEqual({ id: "123", name: "default" });
+
+        // Change optional value
+        optionalName$.set("custom");
+        expect(await derived$.get()).toEqual({ id: "123", name: "custom" });
+      });
+
+      it("should suspend on ready() even if read() would succeed", async () => {
+        const readValue$ = atom(42);
+        const readyValue$ = atom<number | null>(null);
+
+        const derived$ = derived(({ ready, read }) => {
+          const readResult = read(readValue$);
+          const readyResult = ready(readyValue$);
+          return readResult + readyResult;
+        });
+
+        expect(derived$.state().status).toBe("loading");
+
+        readyValue$.set(8);
+        expect(await derived$.get()).toBe(50);
+      });
+    });
+
+    describe("real-world use case: current entity loading", () => {
+      it("should handle route-based entity loading pattern", async () => {
+        // Simulates /article/:id route pattern
+        const currentArticleId$ = atom<string | null>(null);
+
+        // Article cache
+        const articleCache$ = atom<Record<string, { title: string }>>({});
+
+        // Current article derived - waits for ID to be set
+        const currentArticle$ = derived(({ ready, read }) => {
+          const id = ready(currentArticleId$);
+          const cache = read(articleCache$);
+          return cache[id] ?? { title: "Not found" };
+        });
+
+        // Initially suspended (no article selected)
+        expect(currentArticle$.state().status).toBe("loading");
+
+        // User navigates to /article/123
+        currentArticleId$.set("123");
+        articleCache$.set({ "123": { title: "Hello World" } });
+
+        expect(await currentArticle$.get()).toEqual({ title: "Hello World" });
+
+        // User navigates away (deselects article)
+        currentArticleId$.set(null);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(currentArticle$.state().status).toBe("loading");
+
+        // User navigates to /article/456
+        articleCache$.set({
+          "123": { title: "Hello World" },
+          "456": { title: "Another Article" },
+        });
+        currentArticleId$.set("456");
+
+        expect(await currentArticle$.get()).toEqual({
+          title: "Another Article",
+        });
+      });
+
+      it("should handle authentication-gated content", async () => {
+        const currentUser$ = atom<{ id: string; name: string } | null>(null);
+
+        const userDashboard$ = derived(({ ready }) => {
+          const user = ready(currentUser$);
+          return {
+            greeting: `Welcome back, ${user.name}!`,
+            userId: user.id,
+          };
+        });
+
+        // Not logged in - suspended
+        expect(userDashboard$.state().status).toBe("loading");
+
+        // User logs in
+        currentUser$.set({ id: "u1", name: "Alice" });
+
+        expect(await userDashboard$.get()).toEqual({
+          greeting: "Welcome back, Alice!",
+          userId: "u1",
+        });
+
+        // User logs out
+        currentUser$.set(null);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(userDashboard$.state().status).toBe("loading");
+      });
+    });
+
+    describe("error handling", () => {
+      it("should propagate errors thrown after ready() succeeds", async () => {
+        const value$ = atom<number | null>(10);
+
+        const derived$ = derived(({ ready }) => {
+          const value = ready(value$);
+          if (value > 5) {
+            throw new Error("Value too high");
+          }
+          return value;
+        });
+
+        await expect(derived$.get()).rejects.toThrow("Value too high");
+        expect(derived$.state().status).toBe("error");
+      });
+
+      it("should recover from error when value changes to valid", async () => {
+        const value$ = atom<number | null>(10);
+
+        const derived$ = derived(({ ready }) => {
+          const value = ready(value$);
+          if (value > 5) {
+            throw new Error("Value too high");
+          }
+          return value * 2;
+        });
+
+        // First: error
+        await expect(derived$.get()).rejects.toThrow();
+
+        // Change to valid value
+        value$.set(3);
+        expect(await derived$.get()).toBe(6);
+      });
+    });
+
+    describe("with async dependencies", () => {
+      it("should wait for async atom AND ready() condition", async () => {
+        let resolveAsync: (value: number) => void;
+        const asyncValue$ = atom(
+          new Promise<number>((r) => {
+            resolveAsync = r;
+          })
+        );
+        const readyValue$ = atom<string | null>(null);
+
+        const derived$ = derived(({ read, ready }) => {
+          const asyncVal = read(asyncValue$);
+          const readyVal = ready(readyValue$);
+          return `${asyncVal}-${readyVal}`;
+        });
+
+        // Both loading/null - suspended
+        expect(derived$.state().status).toBe("loading");
+
+        // Resolve async - still suspended (ready is null)
+        resolveAsync!(42);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(derived$.state().status).toBe("loading");
+
+        // Set ready value - should resolve
+        readyValue$.set("test");
+        expect(await derived$.get()).toBe("42-test");
+      });
+    });
+  });
 });

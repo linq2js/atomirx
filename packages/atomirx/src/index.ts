@@ -1,8 +1,8 @@
 // Core
-export { atom } from "./core/atom";
+export { atom, readonly } from "./core/atom";
 export { batch } from "./core/batch";
 export { define } from "./core/define";
-export { derived } from "./core/derived";
+export { derived, type DerivedContext } from "./core/derived";
 export { effect, type EffectContext } from "./core/effect";
 export { emitter } from "./core/emitter";
 export { isAtom, isDerived } from "./core/isAtom";
