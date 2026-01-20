@@ -10,9 +10,9 @@
  * ```
  */
 
-// Domain components
-export { BackupDialog } from "./domain";
-export type { BackupDialogProps } from "./domain";
+// Components with business rules
+export { BackupDialog } from "./comps";
+export type { BackupDialogProps } from "./comps";
 
 // Services
 export {

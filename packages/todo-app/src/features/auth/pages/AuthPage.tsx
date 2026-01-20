@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { authStore } from "../stores";
 import { Button, Input } from "@/features/ui";
-import { PasskeyPrompt } from "../domain";
+import { PasskeyPrompt } from "../comps";
 import { cn } from "@/shared/utils";
 
 /**

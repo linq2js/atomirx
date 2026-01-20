@@ -25,7 +25,7 @@ import { syncStore } from "@/features/sync";
 import { networkStore } from "@/features/network";
 import { todosStore } from "../stores";
 import type { TodoFilterType } from "../stores";
-import { TodoItem, TodoInput } from "../domain";
+import { TodoItem, TodoInput } from "../comps";
 import { Button, StatusBadge, SkeletonTodoList } from "@/features/ui";
 import { cn } from "@/shared/utils";
 

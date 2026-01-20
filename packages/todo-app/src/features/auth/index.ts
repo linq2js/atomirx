@@ -20,9 +20,9 @@
  * ```
  */
 
-// Domain components
-export { PasskeyPrompt, PasskeyError } from "./domain";
-export type { PasskeyErrorProps } from "./domain";
+// Components with business rules
+export { PasskeyPrompt, PasskeyError } from "./comps";
+export type { PasskeyErrorProps } from "./comps";
 
 // Services
 export { authService, cryptoService, CryptoError } from "./services";

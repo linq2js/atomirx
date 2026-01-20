@@ -1,5 +1,5 @@
 /**
- * Backup domain components.
+ * Backup components with business rules.
  */
 
 export { BackupDialog } from "./BackupDialog";

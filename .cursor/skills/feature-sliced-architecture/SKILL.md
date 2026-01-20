@@ -27,7 +27,7 @@ src/
 │   ├── {domain}/                # Feature module (e.g., auth, todos, settings)
 │   │   ├── README.md            # Feature overview + business rules summary
 │   │   ├── ui/                  # Private generic components (this feature only)
-│   │   ├── domain/              # Components WITH business rules
+│   │   ├── comps/               # Components WITH business rules
 │   │   ├── services/            # Business logic, API calls
 │   │   ├── stores/              # State management (atomirx)
 │   │   ├── pages/               # Full page compositions
@@ -49,13 +49,38 @@ src/
     └── types/                   # Shared types
 ```
 
+## Critical Rules
+
+### Index Files (STRICT)
+
+**AI MUST NOT write code in `index.ts` or `index.tsx` files.**
+
+Index files are **ONLY** for barrel exporting:
+
+```typescript
+// ✅ CORRECT - index.ts for barrel exports only
+export { Button } from "./Button";
+export { Input } from "./Input";
+export type { ButtonProps, InputProps } from "./types";
+
+// ❌ FORBIDDEN - No logic, no components, no hooks in index files
+export const useAuth = () => { ... };  // WRONG - move to separate file
+export function Button() { ... }        // WRONG - move to Button.tsx
+```
+
+**Why:**
+
+- Keeps imports clean and predictable
+- Avoids circular dependency issues
+- Makes code easier to find and maintain
+
 ## Path-Based Detection Rules
 
 | Path Pattern                   | Contains          | Business Rules | AI Action                      |
 | ------------------------------ | ----------------- | -------------- | ------------------------------ |
 | `features/ui/*`                | Shared generic    | **NO**         | Implement without domain logic |
 | `features/{domain}/ui/*`       | Private generic   | **NO**         | Implement without domain logic |
-| `features/{domain}/domain/*`   | Domain components | **YES**        | Check JSDoc `@businessRules`   |
+| `features/{domain}/comps/*`    | Domain components | **YES**        | Check JSDoc `@businessRules`   |
 | `features/{domain}/services/*` | Business logic    | **YES**        | Check JSDoc for rules          |
 | `features/{domain}/stores/*`   | State + rules     | **YES**        | Check JSDoc for rules          |
 | `features/{domain}/pages/*`    | Compositions      | **MAYBE**      | Check if complex logic exists  |
@@ -95,7 +120,7 @@ export const Button = ({ variant = "primary", ...props }: ButtonProps) => {
 
 ### Domain Components (HAS business rules)
 
-Located in: `features/{domain}/domain/`
+Located in: `features/{domain}/comps/`
 
 Characteristics:
 
@@ -106,7 +131,7 @@ Characteristics:
 - Handles domain-specific edge cases
 
 ```typescript
-// features/todos/domain/TodoItem/TodoItem.tsx
+// features/todos/comps/TodoItem/TodoItem.tsx
 /**
  * Displays a single todo item with completion toggle and actions.
  *
@@ -489,7 +514,7 @@ Creating a generic (dumb) component?
 2. If creating new, ensure NO domain logic
 3. Document props with JSDoc (no `@businessRules` needed)
 
-### For Domain Components (`domain/`)
+### For Domain Components (`comps/`)
 
 1. **READ existing JSDoc** for `@businessRules` tag
 2. **CHECK for companion file** `ComponentName.spec.md`
@@ -554,7 +579,7 @@ Each feature should have a README.md:
 ## Folder Structure
 
 - `ui/` - Private presentational components (no business logic)
-- `domain/` - Components with business rules (see JSDoc)
+- `comps/` - Components with business rules (see JSDoc)
 - `services/` - Business logic and API calls
 - `stores/` - State management with atomirx
 - `pages/` - Full page compositions
@@ -562,7 +587,7 @@ Each feature should have a README.md:
 
 ## Key Files
 
-- `domain/ComponentName.tsx` - [brief description]
+- `comps/ComponentName.tsx` - [brief description]
 - `services/feature.service.ts` - [brief description]
 - `stores/feature.store.ts` - [brief description]
 
@@ -578,7 +603,7 @@ Each feature should have a README.md:
 Is it a React component?
 ├── YES
 │   ├── Does it have business logic / domain rules?
-│   │   ├── YES → features/{domain}/domain/
+│   │   ├── YES → features/{domain}/comps/
 │   │   └── NO
 │   │       ├── Used by multiple features?
 │   │       │   ├── YES → features/ui/
@@ -621,7 +646,7 @@ Is it a React component?
 import { TodoItem } from "@/features/todos";
 
 // BAD - import from internal path
-import { TodoItem } from "@/features/todos/domain/TodoItem";
+import { TodoItem } from "@/features/todos/comps/TodoItem";
 ```
 
 ## Checklist Before Implementation

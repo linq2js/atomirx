@@ -19,12 +19,17 @@
  * ```
  */
 
-// Domain components
-export { TodoItem, TodoInput } from "./domain";
-export type { TodoItemProps, TodoInputProps } from "./domain";
+// Components with business rules
+export { TodoItem, TodoInput } from "./comps";
+export type { TodoItemProps, TodoInputProps } from "./comps";
 
 // Services
-export { storageService, getDatabase, resetDatabase, TodoDatabase } from "./services";
+export {
+  storageService,
+  getDatabase,
+  resetDatabase,
+  TodoDatabase,
+} from "./services";
 export type {
   EncryptedTodo,
   DBStoredCredential,

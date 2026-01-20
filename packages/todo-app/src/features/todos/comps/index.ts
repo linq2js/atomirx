@@ -1,5 +1,5 @@
 /**
- * Todos domain components.
+ * Todos components with business rules.
  */
 
 export { TodoItem } from "./TodoItem";
