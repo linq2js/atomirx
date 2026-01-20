@@ -2,6 +2,33 @@
 
 Guide for working with feature-sliced architecture in this project. Use when implementing components, pages, services, or stores within the `features/` directory structure.
 
+## Table of Contents
+
+- [Trigger Conditions](#trigger-conditions)
+- [Directory Structure](#directory-structure)
+- [Critical Rules](#critical-rules)
+  - [Feature Changes: README First](#feature-changes-readme-first-strict)
+  - [No Barrel Exports for Top-Level Feature Dirs](#no-barrel-exports-for-top-level-feature-dirs-strict)
+  - [File Naming: camelCase](#file-naming-camelcase-strict)
+  - [Index Files](#index-files-strict)
+  - [One Component Per File](#one-component-per-file-strict)
+  - [UI Component Location](#ui-component-location-strict)
+- [Path-Based Detection Rules](#path-based-detection-rules)
+- [Component Classification](#component-classification)
+- [Component Splitting Rules by Type](#component-splitting-rules-by-type)
+  - [Domain Components](#domain-component-splitting-rules-mandatory)
+  - [Generic UI Components](#generic-ui-component-splitting-rules-mandatory)
+  - [Exceptions: When .pure.tsx is NOT Required](#exceptions-when-puretsx-is-not-required)
+- [Component Pattern](#component-pattern-mandatory)
+- [Hook Code Organization](#hook-code-organization-strict)
+- [Cross-Feature Dependencies](#cross-feature-dependencies)
+  - [Dependency Rules](#allowed)
+  - [Cross-Feature Communication](#cross-feature-communication-patterns)
+- [Feature Boundaries](#feature-boundary-guidelines)
+- [Troubleshooting](#troubleshooting)
+- [Migration Guide](#migration-from-legacy-code)
+- [Checklists](#checklist-before-implementation)
+
 ## Trigger Conditions
 
 Use this skill when:
@@ -28,8 +55,8 @@ src/
 │   │   ├── stores/              # State management (atomirx)
 │   │   ├── pages/               # Full page compositions
 │   │   ├── utils/               # Feature-specific utilities
-│   │   ├── types/               # Feature-specific types
-│   │   └── index.ts             # Public API exports
+│   │   └── types/               # Feature-specific types
+│   │   # NOTE: NO index.ts at feature root — see "No Barrel Exports" rule
 │   │
 │   └── {another-domain}/
 │       └── ...
@@ -610,7 +637,6 @@ ui/composed/
 **❌ FORBIDDEN:**
 
 - Single file components (`avatar.tsx` at comps/ level)
-- Components without `.pure.tsx` presentation file
 - Components without `index.ts` barrel export
 
 **✅ REQUIRED for every component:**
@@ -621,6 +647,70 @@ ui/composed/
 | `xxx.tsx`        | YES      | Logic hook + Container         |
 | `xxx.pure.tsx`   | YES      | Presentation (Storybook-ready) |
 | `xxx.styles.css` | Optional | Styles                         |
+
+### Exceptions: When `.pure.tsx` is NOT Required
+
+The `.pure.tsx` requirement has specific exceptions for simplicity:
+
+**1. Compound Component Parts (simple sub-components)**
+
+```
+ui/composed/card/
+├── card.tsx
+├── card.pure.tsx          # ✅ Main component needs .pure
+├── cardHeader.tsx         # ✅ OK - simple compound part, no .pure needed
+├── cardContent.tsx        # ✅ OK - simple compound part
+└── cardFooter.tsx         # ✅ OK - simple compound part
+```
+
+Compound parts are exempt when:
+
+- They are < 15 JSX lines
+- They have no hooks or state
+- They are only used within their parent compound component
+
+**2. Page-Private View States (simple conditional renders)**
+
+```
+pages/authPage/
+├── authPage.tsx
+├── authPage.pure.tsx      # ✅ Main page needs .pure
+├── authLoadingState.tsx   # ✅ OK - simple view state, no .pure needed
+└── authUnsupportedState.tsx  # ✅ OK - simple view state
+```
+
+Page-private view states are exempt when:
+
+- They are < 20 JSX lines
+- They have no props or only 1-2 simple props
+- They are only used by their parent page
+- They are NOT exported from the page's index.ts
+
+**3. UI Primitives (optional simplified pattern)**
+
+Primitives in `ui/primitives/` MAY use a simplified single-file pattern when:
+
+- They have no state (0 useState)
+- They have ≤ 5 props
+- They are ≤ 20 JSX lines
+- They only wrap a single HTML element
+
+```
+ui/primitives/label/
+├── index.ts
+└── label.tsx              # ✅ OK - single file for stateless primitive
+```
+
+However, if a primitive has any logic or state, full pattern is required:
+
+```
+ui/primitives/checkbox/
+├── index.ts
+├── checkbox.tsx           # Has controlled/uncontrolled logic
+└── checkbox.pure.tsx      # Required when logic exists
+```
+
+**Rule of thumb:** If you can test all states by just passing different props (no mocking needed), `.pure.tsx` is optional.
 
 **File structure inside folder (STRICT):**
 
@@ -650,14 +740,29 @@ componentName/
 
 ### Component Pattern (MANDATORY)
 
-**This pattern applies to ALL components: pages, business comps, and generic UI.**
+**This pattern applies to domain components (pages, comps) and stateful generic UI.**
+
+For exceptions (simple primitives, compound parts, page-private states), see [Exceptions: When .pure.tsx is NOT Required](#exceptions-when-puretsx-is-not-required).
 
 ```
 componentName/
 ├── index.ts
-├── componentName.tsx      # Hook + Container
-└── componentName.pure.tsx   # Presentation (Storybook-ready)
+├── componentName.tsx      # Hook + Container (or just component for simple cases)
+└── componentName.pure.tsx   # Presentation (Storybook-ready) — see exceptions
 ```
+
+**Pattern Requirements by Component Type:**
+
+| Type               | Folder Required  | `.pure.tsx` Required | `useXxxLogic` Required |
+| ------------------ | ---------------- | -------------------- | ---------------------- |
+| Domain Page        | YES              | YES                  | YES                    |
+| Domain Comp        | YES              | YES                  | YES                    |
+| Composed UI        | YES              | YES                  | YES (if stateful)      |
+| Primitive UI       | YES              | Optional\*           | Optional\*             |
+| Compound Part      | In parent folder | NO                   | NO                     |
+| Page-Private State | In parent folder | NO                   | NO                     |
+
+\*Primitives with 0 state, ≤5 props, ≤20 JSX lines may use single-file pattern.
 
 **File: `componentName.pure.tsx` — Presentation Component**
 
@@ -945,6 +1050,14 @@ export function useXxxLogic(props: XxxProps): XxxPureProps {
   const filteredItems = useMemo(() => /* ... */, [items, filter]);
 
   // 6. Callbacks/handlers (useStable — NOT useCallback)
+  // NOTE: useStable is a custom hook that memoizes callbacks with stable references.
+  // If unavailable, use useCallback with empty deps [] for stable refs,
+  // or implement: const useStable = <T extends Record<string, Function>>(fns: T): T => {
+  //   const ref = useRef(fns); ref.current = fns;
+  //   return useMemo(() => Object.fromEntries(
+  //     Object.keys(fns).map(k => [k, (...args) => ref.current[k](...args)])
+  //   ) as T, []);
+  // };
   const stable = useStable({
     onSubmit: () => { /* ... */ },
     onChange: () => { /* ... */ },
@@ -1648,6 +1761,384 @@ import { todoStore } from "@/features/todos/stores/todo.store";
 // ❌ BAD - barrel import (feature index.ts is forbidden)
 import { TodoItem } from "@/features/todos";
 ```
+
+### Cross-Feature Import Rules for Services/Stores (STRICT)
+
+**Allowed cross-feature imports:**
+
+| From Feature | Can Import From Other Features                  |
+| ------------ | ----------------------------------------------- |
+| `pages/`     | Other features' `comps/`, `stores/` (read-only) |
+| `comps/`     | Other features' `stores/` (read-only)           |
+| `stores/`    | ❌ FORBIDDEN — stores must be independent       |
+| `services/`  | Other features' `services/` (carefully)         |
+
+**Rules:**
+
+1. **Stores are isolated** — A feature's store MUST NOT import another feature's store directly
+2. **Services can compose** — Services may call other features' services for orchestration
+3. **Components can read** — Components may read (not write) other features' stores
+4. **Pages orchestrate** — Pages can import from multiple features to compose views
+
+**When cross-feature dependency grows:**
+
+```
+Feature A imports many things from Feature B?
+│
+├── > 3 imports from Feature B
+│   └── Consider: Are A and B actually one feature?
+│       ├── YES → Merge into single feature
+│       └── NO → Extract shared logic to `shared/`
+│
+└── Circular dependency detected?
+    └── MUST extract shared logic to `shared/` or use events
+```
+
+### Cross-Feature Communication Patterns
+
+When features need to communicate without direct imports, use these patterns:
+
+**1. Event-Based Communication (loosely coupled)**
+
+```typescript
+// shared/events/featureEvents.ts
+import { createEventBus } from "@/shared/utils/eventBus";
+
+export const featureEvents = createEventBus<{
+  "auth:logout": void;
+  "auth:sessionExpired": { reason: string };
+  "todos:created": { id: string; title: string };
+  "sync:completed": { feature: string; count: number };
+}>();
+
+// Usage in features/auth/stores/auth.store.ts
+import { featureEvents } from "@/shared/events/featureEvents";
+
+// Emit event when logging out
+featureEvents.emit("auth:logout");
+
+// Usage in features/todos/stores/todo.store.ts
+import { featureEvents } from "@/shared/events/featureEvents";
+
+// Listen for auth events
+featureEvents.on("auth:logout", () => {
+  // Clear todos when user logs out
+  clearLocalTodos();
+});
+```
+
+**2. Shared State in `shared/` (common data)**
+
+```typescript
+// shared/stores/user.store.ts
+// For data needed by multiple features (current user, preferences, etc.)
+import { define, atom } from "atomirx";
+
+export const userStore = define(() => {
+  const currentUser$ = atom<User | null>(null);
+  const preferences$ = atom<Preferences>(defaultPreferences);
+
+  return { currentUser$, preferences$ };
+});
+
+// Any feature can import and use
+import { userStore } from "@/shared/stores/user.store";
+```
+
+**3. Callback Props (parent orchestrates)**
+
+```typescript
+// features/auth/comps/loginForm/loginForm.tsx
+interface LoginFormProps {
+  onLoginSuccess: (user: User) => void;  // Parent handles cross-feature logic
+}
+
+// features/auth/pages/authPage/authPage.tsx
+const AuthPage = () => {
+  const navigate = useNavigate();
+
+  return (
+    <LoginForm
+      onLoginSuccess={(user) => {
+        // Orchestration happens at page level
+        syncStore().startSync(user.id);
+        navigate("/dashboard");
+      }}
+    />
+  );
+};
+```
+
+**When to use each pattern:**
+
+| Pattern        | Use When                                               |
+| -------------- | ------------------------------------------------------ |
+| Events         | Fire-and-forget notifications, multiple listeners      |
+| Shared State   | Data needed by 3+ features                             |
+| Callback Props | Parent knows about both features, simple orchestration |
+
+## Feature Boundary Guidelines
+
+### When to Create a New Feature
+
+Create a new feature folder when ALL of these apply:
+
+- [ ] **Distinct business domain** — Has its own vocabulary (auth, payments, notifications)
+- [ ] **Separate ownership** — Could be developed/maintained by a different team
+- [ ] **Independent business rules** — Has its own invariants and constraints
+- [ ] **Deployable scope** — Could theoretically be released independently
+
+### When NOT to Create a New Feature
+
+Keep code in existing feature when:
+
+- It's just a sub-page of an existing feature (use `pages/subPage/` instead)
+- It's a variation of existing business logic (extend existing service)
+- It would create tight coupling back to the original feature
+- It's purely for code organization (use folders within feature instead)
+
+### Feature Size Limits
+
+| Metric                 | Soft Limit | Hard Limit | Action if exceeded          |
+| ---------------------- | ---------- | ---------- | --------------------------- |
+| Components in `comps/` | 10         | 15         | Consider splitting feature  |
+| Services               | 5          | 7          | Extract shared to `shared/` |
+| Stores                 | 3          | 5          | Merge related stores        |
+| Pages                  | 5          | 8          | Consider sub-features       |
+
+### Splitting Large Features
+
+When a feature grows too large:
+
+```
+features/ecommerce/          # TOO BIG
+├── comps/                   # 20+ components
+├── pages/                   # 10+ pages
+└── stores/                  # 6+ stores
+
+↓ Split into sub-features ↓
+
+features/
+├── cart/                    # Cart management
+│   ├── comps/
+│   ├── pages/
+│   └── stores/
+├── checkout/                # Checkout flow
+│   ├── comps/
+│   ├── pages/
+│   └── stores/
+├── products/                # Product catalog
+│   ├── comps/
+│   ├── pages/
+│   └── stores/
+└── orders/                  # Order history
+    ├── comps/
+    ├── pages/
+    └── stores/
+```
+
+## Troubleshooting
+
+### Issue: Circular Dependencies
+
+**Symptoms:** Import errors, runtime failures, "Cannot access X before initialization"
+
+**Common causes:**
+
+- Feature A imports from Feature B, and B imports from A
+- Service imports store that imports same service
+- Component imports hook that imports same component
+
+**Solutions:**
+
+1. **Extract shared logic to `shared/`**
+
+   ```
+   // Before: auth.store.ts ↔ user.service.ts circular
+   // After:
+   shared/stores/currentUser.store.ts  # Shared state
+   features/auth/stores/auth.store.ts  # Auth-specific
+   features/auth/services/user.service.ts  # Uses shared store
+   ```
+
+2. **Use event-based communication**
+
+   ```typescript
+   // Instead of: featureA imports featureB.store
+   // Use: featureA emits event, featureB listens
+   featureEvents.emit("auth:logout");
+   ```
+
+3. **Dependency injection via props/callbacks**
+   ```typescript
+   // Instead of: component imports store directly
+   // Pass data/callbacks from parent that orchestrates
+   ```
+
+### Issue: Component Too Large (>150 lines)
+
+**Symptoms:** Hard to read, test, or modify; multiple responsibilities
+
+**Solutions:**
+
+1. **Extract sub-components**
+
+   ```typescript
+   // Before: 200-line component with inline forms
+   // After: Main component + FormSection + ResultsSection
+   ```
+
+2. **Extract logic to hook**
+
+   ```typescript
+   // Before: 50 lines of logic in component
+   // After: useXxxLogic hook, component just renders
+   ```
+
+3. **Split into page + comps**
+   ```typescript
+   // Before: Page doing everything
+   // After: Page orchestrates, comps handle sections
+   ```
+
+### Issue: Feature Coupling (Feature A heavily imports from Feature B)
+
+**Symptoms:** > 5 imports from another feature, changes to B break A
+
+**Solutions:**
+
+1. **Merge features** — If tightly coupled, they might be one feature
+
+   ```
+   features/auth/ + features/profile/ → features/user/
+   ```
+
+2. **Extract shared logic** — Common code goes to `shared/`
+
+   ```
+   features/auth/utils/validation.ts → shared/utils/validation.ts
+   ```
+
+3. **Use events** — Replace direct imports with event communication
+
+### Issue: Unclear Where Code Belongs
+
+**Decision process:**
+
+```
+Is it a React component?
+├── Generic (no business rules)? → ui/
+├── Has business rules? → features/{domain}/comps/
+└── Full page? → features/{domain}/pages/
+
+Is it state management?
+├── Used by one feature? → features/{domain}/stores/
+└── Used by 3+ features? → shared/stores/
+
+Is it a utility?
+├── Pure function, generic? → shared/utils/
+├── Feature-specific? → features/{domain}/utils/
+└── Has side effects? → Probably a service
+```
+
+### Issue: Store Growing Too Large
+
+**Symptoms:** Store file > 200 lines, hard to understand state shape
+
+**Solutions:**
+
+1. **Split by concern**
+
+   ```typescript
+   // Before: auth.store.ts (300 lines)
+   // After:
+   auth.store.ts        # Main auth state
+   authUI.store.ts      # UI state (modals, forms)
+   authCache.store.ts   # Cached data
+   ```
+
+2. **Extract derived state to selectors**
+   ```typescript
+   // Move complex computations out of store definition
+   // features/auth/selectors/auth.selectors.ts
+   ```
+
+## Migration from Legacy Code
+
+### Phase 1: Structure Migration (Non-Breaking)
+
+**Goal:** Move files to FSA structure without changing behavior.
+
+1. **Create feature folders**
+
+   ```
+   mkdir -p features/{domain}/{comps,pages,services,stores,utils,types}
+   ```
+
+2. **Move files following conventions**
+
+   ```
+   src/components/Auth/ → features/auth/comps/
+   src/pages/AuthPage.tsx → features/auth/pages/authPage/
+   src/services/authService.ts → features/auth/services/auth.service.ts
+   ```
+
+3. **Update imports to absolute paths**
+
+   ```typescript
+   // Before
+   import { AuthForm } from "../../components/Auth/AuthForm";
+   // After
+   import { AuthForm } from "@/features/auth/comps/authForm";
+   ```
+
+4. **Add feature README.md**
+   - Document current business rules
+   - List key files and responsibilities
+
+### Phase 2: Component Splitting (Incremental)
+
+**Goal:** Split large components into FSA pattern.
+
+1. **Identify candidates** — Components > 100 lines
+2. **For each component:**
+
+   ```
+   a. Create folder: comps/myComponent/
+   b. Extract presentation: myComponent.pure.tsx
+   c. Extract logic: useMyComponentLogic in myComponent.tsx
+   d. Add barrel: index.ts
+   e. Update imports
+   f. Run tests
+   ```
+
+3. **Prioritize by:**
+   - Frequency of changes (volatile code benefits most)
+   - Test coverage needs
+   - Team pain points
+
+### Phase 3: Business Rules Documentation
+
+**Goal:** Make business rules explicit and testable.
+
+1. **Add `@businessRules` JSDoc** to domain components
+2. **Create feature README** with rules summary
+3. **Add tests** covering documented rules
+4. **Review with domain experts**
+
+### Migration Checklist
+
+For each legacy component/feature:
+
+- [ ] Created folder structure
+- [ ] Moved files with correct naming (camelCase)
+- [ ] Updated all imports to absolute paths
+- [ ] Split into .tsx + .pure.tsx (if needed)
+- [ ] Added index.ts barrel exports
+- [ ] Added JSDoc with @businessRules (if domain component)
+- [ ] Updated/created feature README.md
+- [ ] All tests pass
+- [ ] No circular dependencies introduced
 
 ## Checklist Before Implementation
 
