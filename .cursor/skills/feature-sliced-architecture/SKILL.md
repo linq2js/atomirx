@@ -48,6 +48,38 @@ src/
 
 ## Critical Rules
 
+### File Naming: camelCase (STRICT)
+
+**AI MUST use camelCase for all code file names.**
+
+```
+✅ CORRECT (camelCase):
+   authPage.tsx
+   authPage.logic.ts
+   registerForm.tsx
+   loginForm.tsx
+   todoItem.styles.css
+   auth.service.ts
+   auth.store.ts
+
+❌ FORBIDDEN (PascalCase):
+   AuthPage.tsx
+   RegisterForm.tsx
+   TodoItem.styles.css
+```
+
+**Exceptions:**
+
+- `index.ts` / `index.tsx` — barrel exports only
+- `README.md` — documentation
+- Config files (`tsconfig.json`, `vite.config.ts`, etc.)
+
+**Why:**
+
+- Consistent with common JS/TS conventions
+- Avoids case-sensitivity issues across OS
+- Distinguishes files from exported components/classes
+
 ### Index Files (STRICT)
 
 **AI MUST NOT write code in `index.ts` or `index.tsx` files.**
@@ -80,33 +112,33 @@ Each React component MUST have its own file:
 ```
 ✅ CORRECT:
    features/auth/pages/
-   ├── AuthPage.tsx          # Only AuthPage
-   ├── RegisterForm.tsx      # Only RegisterForm
-   ├── LoginForm.tsx         # Only LoginForm
+   ├── authPage.tsx          # Only AuthPage
+   ├── registerForm.tsx      # Only RegisterForm
+   ├── loginForm.tsx         # Only LoginForm
    └── index.ts              # Barrel export
 
 ❌ FORBIDDEN:
    features/auth/pages/
-   └── AuthPage.tsx          # Contains AuthPage + RegisterForm + LoginForm
+   └── authPage.tsx          # Contains AuthPage + RegisterForm + LoginForm
 ```
 
 ```typescript
 // ❌ FORBIDDEN - Multiple components in one file
-// AuthPage.tsx
+// authPage.tsx
 export function AuthPage() { ... }
-function RegisterForm() { ... }  // WRONG - extract to RegisterForm.tsx
-function LoginForm() { ... }     // WRONG - extract to LoginForm.tsx
+function RegisterForm() { ... }  // WRONG - extract to registerForm.tsx
+function LoginForm() { ... }     // WRONG - extract to loginForm.tsx
 
 // ✅ CORRECT - One component per file
-// AuthPage.tsx
-import { RegisterForm } from "./RegisterForm";
-import { LoginForm } from "./LoginForm";
+// authPage.tsx
+import { RegisterForm } from "./registerForm";
+import { LoginForm } from "./loginForm";
 export function AuthPage() { ... }
 
-// RegisterForm.tsx
+// registerForm.tsx
 export function RegisterForm() { ... }
 
-// LoginForm.tsx
+// loginForm.tsx
 export function LoginForm() { ... }
 ```
 
@@ -128,10 +160,10 @@ export function LoginForm() { ... }
 
 ```
 ✅ ALLOWED:
-   ui/primitives/Button/
-   ui/primitives/Input/
-   ui/composed/InputField/
-   ui/composed/Card/
+   ui/primitives/button/
+   ui/primitives/input/
+   ui/composed/inputField/
+   ui/composed/card/
 
 ❌ FORBIDDEN:
    features/{domain}/ui/          # NO ui/ folder in features
@@ -180,7 +212,7 @@ Characteristics:
 - No conditional logic based on business state
 
 ```typescript
-// ui/primitives/Button/Button.tsx
+// ui/primitives/button/button.tsx
 // NO @businessRules tag needed
 interface ButtonProps {
   variant?: "primary" | "secondary" | "danger";
@@ -208,7 +240,7 @@ Characteristics:
 - Handles domain-specific edge cases
 
 ```typescript
-// features/todos/comps/TodoItem/TodoItem.tsx
+// features/todos/comps/todoItem/todoItem.tsx
 /**
  * Displays a single todo item with completion toggle and actions.
  *
@@ -250,9 +282,9 @@ This section applies to components in `features/{domain}/pages/` and `features/{
 
 | Indicator                                   | Example                     | Action                                   |
 | ------------------------------------------- | --------------------------- | ---------------------------------------- |
-| **Conditional render block > 10 JSX lines** | `if (loading) return <...>` | Extract to `LoadingState.tsx`            |
-| **Error/empty state > 5 JSX lines**         | `if (error) return <...>`   | Extract to `ErrorState.tsx` or use `ui/` |
-| **Form section > 20 JSX lines**             | Large form in page          | Extract to `{Name}Form.tsx` in comps/    |
+| **Conditional render block > 10 JSX lines** | `if (loading) return <...>` | Extract to `loadingState.tsx`            |
+| **Error/empty state > 5 JSX lines**         | `if (error) return <...>`   | Extract to `errorState.tsx` or use `ui/` |
+| **Form section > 20 JSX lines**             | Large form in page          | Extract to `{name}Form.tsx` in comps/    |
 | **Repeated UI pattern**                     | Alert box used 2+ times     | Extract to `ui/` or local component      |
 | **View-specific JSX**                       | Register vs Login views     | Extract each view to separate component  |
 
@@ -310,25 +342,44 @@ export function AuthPage() {
 }
 ```
 
-### File Structure After Splitting
+### Page File Structure: Simple vs Complex
+
+**Simple page (no hook, minimal parts) → Single file**
 
 ```
-features/auth/
-├── pages/
-│   ├── AuthPage.tsx              # Thin orchestrator (< 50 lines)
-│   ├── AuthLoadingState.tsx      # Loading view
-│   ├── AuthUnsupportedState.tsx  # Unsupported browser view
-│   ├── AuthLayout.tsx            # Shared layout wrapper
-│   └── index.ts
+pages/
+├── settingsPage.tsx              # Simple page, single file
+├── profilePage.tsx               # Simple page, single file
+└── index.ts
+```
+
+**Complex page (has hook, multiple parts) → Folder**
+
+```
+pages/
+├── authPage/
+│   ├── index.ts                  # export { AuthPage } from "./authPage"
+│   ├── authPage.tsx              # Main page component
+│   ├── authPage.logic.ts         # useAuthPageLogic hook
+│   ├── authLoadingState.tsx      # Page-private view state
+│   ├── authUnsupportedState.tsx  # Page-private view state
+│   └── authLayout.tsx            # Page-private layout
 │
-├── comps/
-│   ├── RegisterForm.tsx          # Registration form with business rules
-│   ├── LoginForm.tsx             # Login form with business rules
-│   ├── PasskeyPrompt.tsx         # Passkey UI overlay
-│   └── index.ts
+├── settingsPage.tsx              # Simple page stays as file
+└── index.ts                      # export * from "./authPage"; export * from "./settingsPage"
 ```
 
-### Decision Tree: Where to Extract?
+**Rules:**
+
+1. **Simple page** → `pages/myPage.tsx` (single file, < 100 lines, no hook)
+2. **Complex page** → `pages/myPage/` folder when:
+   - Page has a logic hook (`MyPage.logic.ts`)
+   - Page has multiple private parts (loading states, layouts, sub-views)
+   - Page would exceed 100 lines as single file
+3. **Page parts are PRIVATE** — only used by that page, not exported from `pages/index.ts`
+4. **If page part becomes reusable** → Move to `comps/`
+
+### Decision Tree: Where to Put Extracted Code?
 
 ```
 Is the extracted component...
@@ -337,16 +388,41 @@ Is the extracted component...
 │   └── YES → ui/primitives/ or ui/composed/
 │       └── Examples: LoadingSpinner, ErrorAlert, EmptyState
 │
-├── View state of current page?
-│   └── YES → Same folder as page (pages/)
-│       └── Examples: AuthLoadingState, AuthUnsupportedState
+├── Page-private (only used by one page)?
+│   └── YES → Same folder as page (pages/myPage/)
+│       └── Examples: authLoadingState, authLayout (if auth-specific)
+│       └── MUST NOT be exported from pages/index.ts
 │
-├── Reusable within this feature?
+├── Reusable within this feature (used by multiple pages/comps)?
 │   └── YES → features/{domain}/comps/
-│       └── Examples: RegisterForm, LoginForm
+│       └── Examples: RegisterForm, LoginForm, UserAvatar
 │
-└── Shared layout/wrapper?
-    └── YES → pages/ or layouts/ depending on scope
+└── Reusable across features?
+    └── YES → Consider if it's generic (ui/) or business (shared feature)
+```
+
+### Example: Feature Structure
+
+```
+features/auth/
+├── pages/
+│   ├── authPage/                     # Complex page (has parts + hook)
+│   │   ├── index.ts
+│   │   ├── authPage.tsx
+│   │   ├── authPage.logic.ts
+│   │   ├── authLoadingState.tsx      # Private to AuthPage
+│   │   └── authUnsupportedState.tsx  # Private to AuthPage
+│   │
+│   ├── resetPasswordPage.tsx         # Simple page (single file)
+│   └── index.ts                      # Only exports: AuthPage, ResetPasswordPage
+│
+├── comps/
+│   ├── registerForm.tsx              # Reusable within auth feature
+│   ├── loginForm.tsx                 # Reusable within auth feature
+│   ├── passkeyPrompt.tsx
+│   └── index.ts
+│
+└── index.ts                          # Feature public API
 ```
 
 ### Component File Structure (Headless Pattern)
@@ -355,26 +431,26 @@ Is the extracted component...
 
 ```
 features/articles/comps/
-├── ArticleList/
+├── articleList/
 │   ├── index.ts                    # Barrel export
-│   ├── ArticleList.tsx             # UI only (renders from hook data)
-│   ├── ArticleList.logic.ts        # useArticleListLogic hook
-│   └── ArticleList.styles.css      # Optional: styles if needed
+│   ├── articleList.tsx             # UI only (renders from hook data)
+│   ├── articleList.logic.ts        # useArticleListLogic hook
+│   └── articleList.styles.css      # Optional: styles if needed
 │
-├── ArticleCard/
+├── articleCard/
 │   ├── index.ts
-│   ├── ArticleCard.tsx
-│   └── ArticleCard.logic.ts        # useArticleCardLogic hook
+│   ├── articleCard.tsx
+│   └── articleCard.logic.ts        # useArticleCardLogic hook
 ```
 
 **Naming convention:**
 
 | File             | Contains                                  | Naming           |
 | ---------------- | ----------------------------------------- | ---------------- |
-| `XXX.tsx`        | React component (UI only)                 | `function XXX()` |
-| `XXX.logic.ts`   | Component hook (state, handlers, effects) | `useXXXLogic()`  |
-| `XXX.styles.css` | CSS/SCSS styles (optional)                | -                |
-| `XXX.styles.ts`  | CSS-in-JS styles (optional)               | -                |
+| `xxx.tsx`        | React component (UI only)                 | `function Xxx()` |
+| `xxx.logic.ts`   | Component hook (state, handlers, effects) | `useXxxLogic()`  |
+| `xxx.styles.css` | CSS/SCSS styles (optional)                | -                |
+| `xxx.styles.ts`  | CSS-in-JS styles (optional)               | -                |
 
 **Rules:**
 
@@ -385,7 +461,7 @@ features/articles/comps/
 
 ```typescript
 // ❌ BAD: Logic mixed in component
-// ArticleList.tsx
+// articleList.tsx
 export function ArticleList() {
   const [articles, setArticles] = useState([]);
   const [filter, setFilter] = useState("all");
@@ -405,7 +481,7 @@ export function ArticleList() {
 }
 
 // ✅ GOOD: Logic extracted to hook
-// ArticleList.logic.ts
+// articleList.logic.ts
 export function useArticleListLogic() {
   const [articles, setArticles] = useState([]);
   const [filter, setFilter] = useState("all");
@@ -426,8 +502,8 @@ export function useArticleListLogic() {
   };
 }
 
-// ArticleList.tsx
-import { useArticleListLogic } from "./ArticleList.logic";
+// articleList.tsx
+import { useArticleListLogic } from "./articleList.logic";
 
 export function ArticleList() {
   const { articles, isLoading, filter, onFilterChange, onDelete } = useArticleListLogic();
@@ -714,33 +790,33 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 ```
 ui/
 ├── primitives/
-│   ├── Button/
+│   ├── button/
 │   │   ├── index.ts
-│   │   └── Button.tsx           # ≤ 20 lines JSX
-│   ├── Input/
+│   │   └── button.tsx           # ≤ 20 lines JSX
+│   ├── input/
 │   │   ├── index.ts
-│   │   └── Input.tsx
-│   ├── Label/
-│   ├── Badge/
-│   ├── Icon/
-│   ├── Spinner/
-│   ├── FormMessage/
+│   │   └── input.tsx
+│   ├── label/
+│   ├── badge/
+│   ├── icon/
+│   ├── spinner/
+│   ├── formMessage/
 │   └── index.ts                  # Re-export all primitives
 │
 ├── composed/
-│   ├── InputField/
+│   ├── inputField/
 │   │   ├── index.ts
-│   │   └── InputField.tsx       # Composes Label + Input + FormMessage
-│   ├── SearchBox/
-│   ├── Card/
+│   │   └── inputField.tsx       # Composes Label + Input + FormMessage
+│   ├── searchBox/
+│   ├── card/
 │   │   ├── index.ts              # Export all compound parts
-│   │   ├── Card.tsx              # Root
-│   │   ├── CardHeader.tsx
-│   │   ├── CardTitle.tsx
-│   │   ├── CardContent.tsx
-│   │   └── CardFooter.tsx
-│   ├── Dialog/
-│   ├── Dropdown/
+│   │   ├── card.tsx              # Root
+│   │   ├── cardHeader.tsx
+│   │   ├── cardTitle.tsx
+│   │   ├── cardContent.tsx
+│   │   └── cardFooter.tsx
+│   ├── dialog/
+│   ├── dropdown/
 │   └── index.ts
 │
 └── index.ts                      # Re-export all
@@ -894,7 +970,7 @@ Each feature should have a README.md:
 
 ## Key Files
 
-- `comps/ComponentName.tsx` - [brief description]
+- `comps/componentName.tsx` - [brief description]
 - `services/feature.service.ts` - [brief description]
 - `stores/feature.store.ts` - [brief description]
 
