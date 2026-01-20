@@ -1,15 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  createCryptoService,
-  type CryptoServiceImpl,
-} from "./crypto.service";
-import type { EncryptedField } from "./crypto.types";
+import { cryptoService } from "./crypto.service";
+import type { CryptoService, EncryptedField } from "./crypto.types";
 
 describe("CryptoService", () => {
-  let crypto: CryptoServiceImpl;
+  let crypto: CryptoService;
 
   beforeEach(() => {
-    crypto = createCryptoService();
+    // Reset and get fresh instance
+    cryptoService.reset();
+    crypto = cryptoService();
   });
 
   describe("generateSalt", () => {

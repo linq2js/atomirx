@@ -3,14 +3,12 @@ import { define } from "./define";
 import { onCreateHook } from "./onCreateHook";
 
 describe("define", () => {
-  const originalOnCreateHook = onCreateHook.current;
-
   beforeEach(() => {
-    onCreateHook.current = undefined;
+    onCreateHook.reset();
   });
 
   afterEach(() => {
-    onCreateHook.current = originalOnCreateHook;
+    onCreateHook.reset();
   });
 
   describe("basic functionality", () => {
@@ -238,7 +236,7 @@ describe("define", () => {
   describe("onCreateHook", () => {
     it("should call onCreateHook when module is created", () => {
       const hookFn = vi.fn();
-      onCreateHook.current = hookFn;
+      onCreateHook.override(() => hookFn);
 
       const store = define(() => ({ value: 42 }), { key: "testModule" });
       const instance = store();
@@ -247,13 +245,14 @@ describe("define", () => {
       expect(hookFn).toHaveBeenCalledWith({
         type: "module",
         key: "testModule",
-        module: instance,
+        meta: undefined,
+        instance,
       });
     });
 
     it("should call onCreateHook with undefined key when not provided", () => {
       const hookFn = vi.fn();
-      onCreateHook.current = hookFn;
+      onCreateHook.override(() => hookFn);
 
       const store = define(() => ({ value: 42 }));
       store();
@@ -261,12 +260,13 @@ describe("define", () => {
       expect(hookFn).toHaveBeenCalledWith({
         type: "module",
         key: undefined,
-        module: expect.any(Object),
+        meta: undefined,
+        instance: expect.any(Object),
       });
     });
 
     it("should not throw when onCreateHook is undefined", () => {
-      onCreateHook.current = undefined;
+      onCreateHook.reset();
 
       const store = define(() => ({ value: 42 }));
       expect(() => store()).not.toThrow();
@@ -274,7 +274,7 @@ describe("define", () => {
 
     it("should call onCreateHook for overridden module", () => {
       const hookFn = vi.fn();
-      onCreateHook.current = hookFn;
+      onCreateHook.override(() => hookFn);
 
       const store = define(() => ({ value: "original" }));
       store.override(() => ({ value: "overridden" }));
@@ -283,7 +283,8 @@ describe("define", () => {
       expect(hookFn).toHaveBeenCalledWith({
         type: "module",
         key: undefined,
-        module: instance,
+        meta: undefined,
+        instance,
       });
     });
   });

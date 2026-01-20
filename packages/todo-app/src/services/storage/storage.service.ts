@@ -10,8 +10,25 @@
  * - Operation logging for offline sync
  * - Credential storage for passkey management
  * - Sync metadata tracking
+ *
+ * @example
+ * ```ts
+ * import { storageService } from "@/services/storage";
+ * import { cryptoService } from "@/services/crypto";
+ *
+ * // Initialize with encryption key
+ * const crypto = cryptoService();
+ * const key = await crypto.generateKey();
+ *
+ * const storage = storageService();
+ * storage.initialize(key);
+ *
+ * // Create encrypted todo
+ * const todo = await storage.createTodo({ content: "Buy groceries" });
+ * ```
  */
 
+import { define } from "atomirx";
 import type {
   StorageService,
   Todo,
@@ -28,10 +45,8 @@ import {
   type EncryptedTodo,
   type StoredCredential as DBStoredCredential,
 } from "./db";
-import { getCryptoService, type EncryptedField } from "../crypto";
+import { cryptoService, type EncryptedField } from "../crypto";
 import { generateId, now } from "@/lib/utils";
-
-export type StorageServiceImpl = StorageService;
 
 /**
  * Error thrown when storage service is not initialized.
@@ -44,21 +59,22 @@ class StorageNotInitializedError extends Error {
 }
 
 /**
- * Create a new storage service instance.
+ * Storage service module.
  *
- * @returns StorageService implementation
+ * Provides encrypted storage for todos using IndexedDB.
+ * Use `storageService()` to get the singleton instance.
  *
  * @example
  * ```ts
- * const storage = createStorageService();
+ * const storage = storageService();
  * storage.initialize(encryptionKey);
  *
  * const todo = await storage.createTodo({ content: "Buy groceries" });
  * ```
  */
-export function createStorageService(): StorageServiceImpl {
+export const storageService = define((): StorageService => {
   const db = getDatabase();
-  const crypto = getCryptoService();
+  const crypto = cryptoService();
   let encryptionKey: CryptoKey | null = null;
   const instanceId = Math.random().toString(36).slice(2, 8);
   console.log(`[Storage] Created storage service instance: ${instanceId}`);
@@ -401,22 +417,4 @@ export function createStorageService(): StorageServiceImpl {
     updateSyncMeta,
     clearAllData,
   };
-}
-
-// Export singleton instance for convenience
-let _instance: StorageServiceImpl | null = null;
-
-/**
- * Get the singleton storage service instance.
- *
- * @returns Shared StorageService instance
- */
-export function getStorageService(): StorageServiceImpl {
-  if (!_instance) {
-    console.log("[Storage] Creating singleton instance");
-    _instance = createStorageService();
-  } else {
-    console.log("[Storage] Returning existing singleton instance");
-  }
-  return _instance;
-}
+});

@@ -6,7 +6,7 @@
  * Exports encrypted data that can only be decrypted by the same passkey.
  */
 
-import { getStorageService } from "../storage";
+import { storageService } from "../storage";
 
 /**
  * Backup file format version.
@@ -125,7 +125,7 @@ export interface BackupService {
  * Create a new backup service instance.
  */
 export function createBackupService(): BackupService {
-  const storage = getStorageService();
+  const storage = storageService();
 
   /**
    * Export all data to a backup file.
@@ -147,7 +147,7 @@ export function createBackupService(): BackupService {
       // Note: We need to get the raw encrypted content from DB
       // For now, we'll re-encrypt the content
       // In a real implementation, we'd access the raw encrypted data
-      const backupTodos: BackupTodo[] = todos.map((todo) => ({
+      const backupTodos: BackupTodo[] = todos.map((todo: { id: string; content: string; completed: boolean; createdAt: number; updatedAt: number; syncStatus: string; serverId?: number; deleted?: boolean }) => ({
         id: todo.id,
         encryptedContent: todo.content, // This is already the encrypted content from storage
         completed: todo.completed,
@@ -158,7 +158,7 @@ export function createBackupService(): BackupService {
         deleted: todo.deleted,
       }));
 
-      const backupOperations: BackupOperation[] = operations.map((op) => ({
+      const backupOperations: BackupOperation[] = operations.map((op: { id: string; type: string; todoId: string; timestamp: number; payload: string }) => ({
         id: op.id,
         type: op.type,
         todoId: op.todoId,

@@ -213,7 +213,7 @@ export function define<T>(
         type: "module",
         key: options?.key,
         meta: options?.meta,
-        module: instance,
+        instance,
       });
     }
     return instance;

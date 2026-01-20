@@ -15,7 +15,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import { authModule } from "@/state";
+import { authStore } from "@/state";
 import { Button, Input } from "@/components/ui";
 import { PasskeyPrompt } from "@/components/auth/PasskeyPrompt";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,7 @@ type AuthView = "checking" | "register" | "login" | "unsupported";
  * ```
  */
 export function AuthPage() {
-  const auth = authModule();
+  const auth = authStore();
   // Group multiple atom reads into single useSelector
   const { authSupport, authError, isLoading } = useSelector(({ read }) => ({
     authSupport: read(auth.authSupport$),

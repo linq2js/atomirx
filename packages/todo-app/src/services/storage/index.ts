@@ -6,14 +6,14 @@
  *
  * @example
  * ```ts
- * import { getStorageService } from "@/services/storage";
- * import { getCryptoService } from "@/services/crypto";
+ * import { storageService } from "@/services/storage";
+ * import { cryptoService } from "@/services/crypto";
  *
  * // Initialize with encryption key
- * const crypto = getCryptoService();
+ * const crypto = cryptoService();
  * const key = await crypto.generateKey();
  *
- * const storage = getStorageService();
+ * const storage = storageService();
  * storage.initialize(key);
  *
  * // Create encrypted todo
@@ -21,8 +21,7 @@
  * ```
  */
 
-export { createStorageService, getStorageService } from "./storage.service";
-export type { StorageServiceImpl } from "./storage.service";
+export { storageService } from "./storage.service";
 export { getDatabase, resetDatabase, TodoDatabase } from "./db";
 export type {
   EncryptedTodo,

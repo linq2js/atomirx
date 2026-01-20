@@ -1,4 +1,4 @@
-import { CreateInfo, DerivedCreateInfo, onCreateHook } from "./onCreateHook";
+import { CreateInfo, DerivedInfo, onCreateHook } from "./onCreateHook";
 import { emitter } from "./emitter";
 import { resolveEquality } from "./equality";
 import { onErrorHook } from "./onErrorHook";
@@ -199,7 +199,7 @@ export function derived<T>(
 
   // CreateInfo for this derived - stored for onErrorHook
   // Will be set after derivedAtom is created
-  let createInfo: DerivedCreateInfo;
+  let createInfo: DerivedInfo;
 
   /**
    * Handles errors by calling both the user's onError callback and the global onErrorHook.
@@ -440,7 +440,7 @@ export function derived<T>(
     type: "derived",
     key: options.meta?.key,
     meta: options.meta,
-    atom: derivedAtom,
+    instance: derivedAtom,
   };
 
   // Notify devtools/plugins of derived atom creation

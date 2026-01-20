@@ -1,5 +1,5 @@
 /**
- * @module syncModule
+ * @module syncStore
  *
  * @description Manages sync state between local storage and remote server.
  * Tracks pending operations, sync status, and provides sync actions.
@@ -21,12 +21,12 @@
  *
  * @reactive-flow
  * sync() → [pending ops] → [jsonplaceholder API] → lastSyncAt$ + pendingCount$ updated
- * networkModule.isOnline$ change → auto-sync if online
+ * networkStore.isOnline$ change → auto-sync if online
  */
 
 import { atom, derived, define, effect, batch, readonly } from "atomirx";
-import { getStorageService } from "@/services/storage";
-import { networkModule } from "./network.module";
+import { storageService } from "@/services/storage";
+import { networkStore } from "./network.store";
 
 /**
  * Sync status type.
@@ -55,7 +55,7 @@ const API_BASE_URL = "https://jsonplaceholder.typicode.com";
  *
  * @example
  * ```ts
- * const sync = syncModule();
+ * const sync = syncStore();
  *
  * // Load sync metadata on app start
  * await sync.loadSyncMeta();
@@ -68,7 +68,7 @@ const API_BASE_URL = "https://jsonplaceholder.typicode.com";
  * const pendingCount = useSelector(sync.pendingCount$);
  * ```
  */
-export const syncModule = define(() => {
+export const syncStore = define(() => {
   // ┌─────────────────────────────────────────────────────────────┐
   // │ Dependency Graph:                                          │
   // │                                                            │
@@ -81,16 +81,16 @@ export const syncModule = define(() => {
   // │         └──────────────┴──────────────┴──────────────┘     │
   // │                        │                                   │
   // │                        ▼                                   │
-  // │  networkModule.isOnline$ ────► syncStatus$                 │
+  // │  networkStore.isOnline$ ────► syncStatus$                  │
   // │                        │                                   │
   // │                        ▼                                   │
   // │               hasPendingChanges$                           │
   // │                                                            │
-  // │  [auto-sync effect] ◄── networkModule.isOnline$ (true)     │
+  // │  [auto-sync effect] ◄── networkStore.isOnline$ (true)      │
   // └─────────────────────────────────────────────────────────────┘
 
-  const storageService = getStorageService();
-  const network = networkModule();
+  const storage = storageService();
+  const network = networkStore();
 
   // ─────────────────────────────────────────────────────────────
   // Atoms
@@ -133,25 +133,31 @@ export const syncModule = define(() => {
   /**
    * Whether there are pending changes to sync.
    */
-  const hasPendingChanges$ = derived(({ read }) => {
-    return read(pendingCount$) > 0;
-  });
+  const hasPendingChanges$ = derived(
+    ({ read }) => {
+      return read(pendingCount$) > 0;
+    },
+    { meta: { key: "sync.hasPendingChanges" } }
+  );
 
   /**
    * Combined sync status for UI display.
    */
-  const syncStatus$ = derived(({ read }): SyncStatusType => {
-    const isOnline = read(network.isOnline$);
-    const isSyncing = read(isSyncing$);
-    const hasPending = read(hasPendingChanges$);
-    const error = read(syncError$);
+  const syncStatus$ = derived(
+    ({ read }): SyncStatusType => {
+      const isOnline = read(network.isOnline$);
+      const isSyncing = read(isSyncing$);
+      const hasPending = read(hasPendingChanges$);
+      const error = read(syncError$);
 
-    if (!isOnline) return "offline";
-    if (isSyncing) return "syncing";
-    if (error) return "error";
-    if (hasPending) return "pending";
-    return "synced";
-  });
+      if (!isOnline) return "offline";
+      if (isSyncing) return "syncing";
+      if (error) return "error";
+      if (hasPending) return "pending";
+      return "synced";
+    },
+    { meta: { key: "sync.syncStatus" } }
+  );
 
   // ─────────────────────────────────────────────────────────────
   // Effects
@@ -160,21 +166,24 @@ export const syncModule = define(() => {
   /**
    * Auto-sync when coming back online.
    */
-  effect(({ read }) => {
-    const isOnline = read(network.isOnline$);
-    const hasPending = read(hasPendingChanges$);
-    const isSyncing = isSyncing$.get(); // Non-reactive read to avoid loop
+  effect(
+    ({ read }) => {
+      const isOnline = read(network.isOnline$);
+      const hasPending = read(hasPendingChanges$);
+      const isSyncing = isSyncing$.get(); // Non-reactive read to avoid loop
 
-    // Only sync if online, has pending changes, and not already syncing
-    if (isOnline && hasPending && !isSyncing) {
-      // Delay slightly to avoid rapid re-syncs
-      const timeoutId = setTimeout(() => {
-        void sync();
-      }, 1000);
+      // Only sync if online, has pending changes, and not already syncing
+      if (isOnline && hasPending && !isSyncing) {
+        // Delay slightly to avoid rapid re-syncs
+        const timeoutId = setTimeout(() => {
+          void sync();
+        }, 1000);
 
-      return () => clearTimeout(timeoutId);
-    }
-  });
+        return () => clearTimeout(timeoutId);
+      }
+    },
+    { meta: { key: "sync.autoSync" } }
+  );
 
   // ─────────────────────────────────────────────────────────────
   // Actions
@@ -186,7 +195,7 @@ export const syncModule = define(() => {
    */
   async function loadSyncMeta(): Promise<void> {
     try {
-      const meta = await storageService.getSyncMeta();
+      const meta = await storage.getSyncMeta();
       if (meta) {
         // Batch to trigger single notification
         batch(() => {
@@ -215,13 +224,13 @@ export const syncModule = define(() => {
     isSyncing$.set(true);
 
     try {
-      const operations = await storageService.getPendingOperations();
+      const operations = await storage.getPendingOperations();
 
       if (operations.length === 0) {
         // Nothing to sync
         const timestamp = Date.now();
         lastSyncAt$.set(timestamp);
-        await storageService.updateSyncMeta({ lastSyncAt: timestamp });
+        await storage.updateSyncMeta({ lastSyncAt: timestamp });
         return true;
       }
 
@@ -252,7 +261,7 @@ export const syncModule = define(() => {
               const created = await response.json();
 
               // Update local todo with server ID
-              await storageService.updateTodo(op.todoId, {
+              await storage.updateTodo(op.todoId, {
                 serverId: created.id,
                 syncStatus: "synced",
               });
@@ -261,7 +270,7 @@ export const syncModule = define(() => {
 
             case "update": {
               // Get current todo to find server ID
-              const todo = await storageService.getTodo(op.todoId);
+              const todo = await storage.getTodo(op.todoId);
               if (!todo?.serverId) {
                 // No server ID, skip (or handle as create)
                 break;
@@ -276,14 +285,14 @@ export const syncModule = define(() => {
                 }),
               });
 
-              await storageService.updateTodo(op.todoId, {
+              await storage.updateTodo(op.todoId, {
                 syncStatus: "synced",
               });
               break;
             }
 
             case "delete": {
-              const todo = await storageService.getTodo(op.todoId);
+              const todo = await storage.getTodo(op.todoId);
               if (todo?.serverId) {
                 await fetch(`${API_BASE_URL}/todos/${todo.serverId}`, {
                   method: "DELETE",
@@ -291,7 +300,7 @@ export const syncModule = define(() => {
               }
 
               // Hard delete after sync
-              await storageService.hardDeleteTodo(op.todoId);
+              await storage.hardDeleteTodo(op.todoId);
               break;
             }
           }
@@ -307,7 +316,7 @@ export const syncModule = define(() => {
         .map((op) => op.id);
 
       if (successfulOps.length > 0) {
-        await storageService.clearOperations(successfulOps);
+        await storage.clearOperations(successfulOps);
       }
 
       // Update sync metadata (batch to trigger single notification)
@@ -318,7 +327,7 @@ export const syncModule = define(() => {
         lastSyncAt$.set(timestamp);
         pendingCount$.set(remainingCount);
       });
-      await storageService.updateSyncMeta({
+      await storage.updateSyncMeta({
         lastSyncAt: timestamp,
         pendingCount: remainingCount,
       });

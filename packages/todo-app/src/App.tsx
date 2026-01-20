@@ -2,7 +2,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSelector } from "atomirx/react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider, ToastContainer } from "./components/ui";
-import { authModule } from "./state";
+import { authStore } from "./state";
 import { AuthPage, TodosPage } from "./pages";
 import { Loader2 } from "lucide-react";
 
@@ -15,7 +15,7 @@ import { Loader2 } from "lucide-react";
  * 1. Unauthenticated: Shows AuthPage for passkey registration/login
  * 2. Authenticated: Shows TodosPage with encrypted todos
  *
- * Authentication state is managed by authModule (atomirx).
+ * Authentication state is managed by authStore (atomirx).
  * Crypto key is derived from passkey PRF extension.
  * Session is persisted in sessionStorage for same-tab refresh persistence.
  */
@@ -38,7 +38,7 @@ export function App() {
  * Attempts to restore session from sessionStorage on mount.
  */
 function AppContent() {
-  const auth = authModule();
+  const auth = authStore();
   const isAuthenticated = useSelector(auth.isAuthenticated$);
   const [isRestoring, setIsRestoring] = useState(true);
 

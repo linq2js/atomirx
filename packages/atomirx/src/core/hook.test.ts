@@ -176,20 +176,20 @@ describe("hook", () => {
       const hookA = hook<string | undefined>();
       const hookB = hook<string | undefined>();
 
-      // Create custom setups that track release order
+      // Create custom setups that track release order using override/reset
       const setupA = () => {
-        hookA.current = "A";
+        hookA.override(() => "A");
         return () => {
           order.push("release A");
-          hookA.current = undefined;
+          hookA.reset();
         };
       };
 
       const setupB = () => {
-        hookB.current = "B";
+        hookB.override(() => "B");
         return () => {
           order.push("release B");
-          hookB.current = undefined;
+          hookB.reset();
         };
       };
 

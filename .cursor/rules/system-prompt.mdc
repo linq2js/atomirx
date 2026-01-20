@@ -106,29 +106,32 @@ After research, you **MUST** analyze and suggest improvements. **NEVER** skip th
 
 **User response:** May accept, modify, skip, or defer suggestions — proceed with accepted improvements in scope
 
-## 2. Plan (MANDATORY for 3+ tasks)
+## 2. Plan (MANDATORY for 3+ tasks OR 5+ files)
 
 **MUST** complete before implementation:
 
 - **MUST** define: scope, non-goals, risks, testing strategy
-- **MUST** create **Task Breakdown** (atomic pieces, each independently testable):
+- **MUST** create **Task Breakdown** with file counts (atomic pieces, each independently testable):
 
-  | #   | Task | Files | New | Modified | Description |
-  | --- | ---- | ----- | --- | -------- | ----------- |
-  | 1   | ...  | 3     | 2   | 1        | ...         |
+  | #   | Task        | Files | New | Modified | File List                           |
+  | --- | ----------- | ----- | --- | -------- | ----------------------------------- |
+  | 1   | Setup types | 2     | 2   | 0        | `types.ts`, `index.ts`              |
+  | 2   | Implement   | 3     | 1   | 2        | `handler.ts`, `utils.ts`, `core.ts` |
+  | 3   | Add tests   | 2     | 2   | 0        | `handler.test.ts`, `utils.test.ts`  |
+  |     | **Total**   | **7** | 5   | 2        |                                     |
 
 - **MUST** show dependency graph (Mermaid) for tasks with dependencies
 - **MUST** search repo for: existing utils, similar patterns, shared abstractions
 
-### Plan File Requirement (MANDATORY for 3+ tasks)
+### Plan File Requirement (MANDATORY for 3+ tasks OR 5+ files)
 
-When task has **3 or more implementation steps**, you **MUST**:
+When task has **3 or more implementation steps** OR **impacts 5 or more files**, you **MUST**:
 
 1. **IMMEDIATELY** create a plan file at `AI_WORKING/<short-description>.md`
 2. **ANNOUNCE**: "Creating plan file at `AI_WORKING/xxx.md`"
 3. **NEVER** start implementation without the plan file existing
 
-❌ **FORBIDDEN**: Starting implementation with 3+ tasks without creating plan file first
+❌ **FORBIDDEN**: Starting implementation with 3+ tasks or 5+ files without creating plan file first
 ✅ **REQUIRED**: Create plan file → Get START confirmation → Begin implementation
 
 ## 3. Implement (GATE — requires START)
@@ -309,16 +312,16 @@ The AI has limited context. To prevent work loss and enable handoff to other age
 **❌ FORBIDDEN**: Starting a task with 3+ steps without creating todos
 **✅ REQUIRED**: Create todos IMMEDIATELY when task has 3+ steps
 
-## 2. Plan Files (MANDATORY for 3+ tasks)
+## 2. Plan Files (MANDATORY for 3+ tasks OR 5+ files)
 
-When task has **3 or more implementation items**, you **MUST**:
+When task has **3 or more implementation items** OR **impacts 5 or more files**, you **MUST**:
 
 1. **IMMEDIATELY** create plan file at `AI_WORKING/<short-description>.md`
 2. **ANNOUNCE** in response: "📋 Creating plan file at `AI_WORKING/xxx.md`"
 3. **UPDATE** task status immediately after completing each item
 4. **NOTE** any deviations from original task description
 
-**❌ FORBIDDEN**: Starting implementation with 3+ tasks without plan file
+**❌ FORBIDDEN**: Starting implementation with 3+ tasks or 5+ files without plan file
 **❌ FORBIDDEN**: Forgetting to update plan file after completing tasks
 **✅ REQUIRED**: Plan file MUST exist before first line of code
 
@@ -333,33 +336,37 @@ When task has **3 or more implementation items**, you **MUST**:
 
 ## Tasks
 
-| #   | Task           | Status         | Dependencies | Updated    |
-| --- | -------------- | -------------- | ------------ | ---------- |
-| 1   | Setup types    | ✅ done        | -            | 2024-01-15 |
-| 2   | Implement core | 🔄 in-progress | 1            | 2024-01-15 |
-| 3   | Add tests      | ⏳ pending     | 2            | -          |
-| 4   | Update docs    | ⏳ pending     | 3            | -          |
+| #   | Task           | Files | Status         | Dependencies | Updated    |
+| --- | -------------- | ----- | -------------- | ------------ | ---------- |
+| 1   | Setup types    | 2     | ✅ done        | -            | 2024-01-15 |
+| 2   | Implement core | 3     | 🔄 in-progress | 1            | 2024-01-15 |
+| 3   | Add tests      | 2     | ⏳ pending     | 2            | -          |
+| 4   | Update docs    | 1     | ⏳ pending     | 3            | -          |
+|     | **Total**      | **8** |                |              |            |
 
 ---
 
 ## Task Details
 
-### Task 1: Setup types ✅
+### Task 1: Setup types ✅ (2 files)
 
 **Files changed:**
 
 - `src/auth/types.ts` - new
+- `src/auth/index.ts` - modified (export)
 
 **Notes:**
 
 - Added AuthConfig and AuthResult interfaces
 - Used existing BaseError pattern from `src/core/errors.ts`
 
-### Task 2: Implement core 🔄
+### Task 2: Implement core 🔄 (3 files)
 
 **Files changed:**
 
-- `src/auth/handler.ts` - modified
+- `src/auth/handler.ts` - new
+- `src/auth/utils.ts` - new
+- `src/core/index.ts` - modified
 
 **Notes:**
 

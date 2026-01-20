@@ -220,6 +220,180 @@ describe("withReady", () => {
     });
   });
 
+  describe("ready() with function", () => {
+    it("should return value when function returns non-null value", () => {
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => 42);
+      });
+
+      expect(result.value).toBe(42);
+      expect(result.error).toBeUndefined();
+      expect(result.promise).toBeUndefined();
+    });
+
+    it("should return zero from function", () => {
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => 0);
+      });
+
+      expect(result.value).toBe(0);
+    });
+
+    it("should return false from function", () => {
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => false);
+      });
+
+      expect(result.value).toBe(false);
+    });
+
+    it("should return empty string from function", () => {
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => "");
+      });
+
+      expect(result.value).toBe("");
+    });
+
+    it("should return object from function", () => {
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => ({ name: "test" }));
+      });
+
+      expect(result.value).toEqual({ name: "test" });
+    });
+
+    it("should throw never-resolve promise when function returns null", () => {
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => null);
+      });
+
+      expect(result.value).toBeUndefined();
+      expect(result.error).toBeUndefined();
+      expect(result.promise).toBeInstanceOf(Promise);
+    });
+
+    it("should throw never-resolve promise when function returns undefined", () => {
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => undefined);
+      });
+
+      expect(result.value).toBeUndefined();
+      expect(result.error).toBeUndefined();
+      expect(result.promise).toBeInstanceOf(Promise);
+    });
+
+    it("should throw error when function returns a pending promise", () => {
+      const pendingPromise = new Promise<string>(() => {
+        // Never resolves - stays pending
+      });
+
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => pendingPromise);
+      });
+
+      expect(result.value).toBeUndefined();
+      expect(result.error).toBeInstanceOf(Error);
+      expect((result.error as Error).message).toBe(
+        "ready(callback) overload does not support async callbacks. Use ready(atom, selector?) instead."
+      );
+    });
+
+    it("should throw error when function returns a resolved promise", () => {
+      const resolvedPromise = Promise.resolve("async result");
+
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => resolvedPromise);
+      });
+
+      expect(result.value).toBeUndefined();
+      expect(result.error).toBeInstanceOf(Error);
+      expect((result.error as Error).message).toBe(
+        "ready(callback) overload does not support async callbacks. Use ready(atom, selector?) instead."
+      );
+    });
+
+    it("should throw error when function returns a rejected promise", () => {
+      const testError = new Error("async error");
+      const rejectedPromise = Promise.reject(testError);
+
+      // Prevent unhandled rejection warning
+      rejectedPromise.catch(() => {});
+
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => rejectedPromise);
+      });
+
+      // Should throw the "async not supported" error, not the rejection error
+      expect(result.value).toBeUndefined();
+      expect(result.error).toBeInstanceOf(Error);
+      expect((result.error as Error).message).toBe(
+        "ready(callback) overload does not support async callbacks. Use ready(atom, selector?) instead."
+      );
+    });
+
+    it("should throw error when function returns a promise-like object", () => {
+      // Custom thenable (promise-like)
+      const thenable = {
+        then(resolve: (value: string) => void) {
+          resolve("thenable result");
+        },
+      };
+
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => thenable);
+      });
+
+      expect(result.value).toBeUndefined();
+      expect(result.error).toBeInstanceOf(Error);
+      expect((result.error as Error).message).toBe(
+        "ready(callback) overload does not support async callbacks. Use ready(atom, selector?) instead."
+      );
+    });
+
+    it("should propagate error when function throws synchronously", () => {
+      const testError = new Error("sync error");
+
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => {
+          throw testError;
+        });
+      });
+
+      expect(result.value).toBeUndefined();
+      expect(result.error).toBe(testError);
+      expect(result.promise).toBeUndefined();
+    });
+
+    it("should work with function that reads atoms", () => {
+      const count$ = atom(10);
+      const multiplier$ = atom(2);
+
+      const result = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready(() => {
+          const count = ctx.read(count$);
+          const mult = ctx.read(multiplier$);
+          return count * mult;
+        });
+      });
+
+      expect(result.value).toBe(20);
+    });
+  });
+
   describe("ready() with async selector", () => {
     it("should suspend when selector returns a pending promise", () => {
       const data$ = atom({ id: 1 });

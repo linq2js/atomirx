@@ -20,7 +20,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
-import { authModule, todosModule, syncModule, networkModule } from "@/state";
+import { authStore, todosStore, syncStore, networkStore } from "@/state";
 import type { TodoFilterType } from "@/state";
 import { TodoItem, TodoInput } from "@/components/todos";
 import { Button, StatusBadge, SkeletonTodoList } from "@/components/ui";
@@ -38,10 +38,10 @@ import { cn } from "@/lib/utils";
  * ```
  */
 export function TodosPage() {
-  const auth = authModule();
-  const todos = todosModule();
-  const sync = syncModule();
-  const network = networkModule();
+  const auth = authStore();
+  const todos = todosStore();
+  const sync = syncStore();
+  const network = networkStore();
 
   // Group multiple atom reads into single useSelector (reduces subscriptions)
   const { user, isOnline, todosError } = useSelector(({ read }) => ({
@@ -209,7 +209,7 @@ export function TodosPage() {
  * Sync button component.
  */
 function SyncButton({ onSync }: { onSync: () => Promise<void> }) {
-  const sync = syncModule();
+  const sync = syncStore();
   // Group multiple atom reads into single useSelector
   const { syncStatus, isSyncing } = useSelector(({ read }) => ({
     syncStatus: read(sync.syncStatus$),
@@ -235,7 +235,7 @@ function SyncButton({ onSync }: { onSync: () => Promise<void> }) {
  * Add todo input wrapper.
  */
 function AddTodoInput() {
-  const todos = todosModule();
+  const todos = todosStore();
 
   const handleAddTodo = useCallback(
     async (content: string) => {
@@ -257,7 +257,7 @@ function AddTodoInput() {
  * Filter bar component.
  */
 function FilterBar() {
-  const todos = todosModule();
+  const todos = todosStore();
   const filter = useSelector(todos.filter$);
 
   const filters: {
@@ -295,7 +295,7 @@ function FilterBar() {
  * Todo list component.
  */
 function TodoList() {
-  const todos = todosModule();
+  const todos = todosStore();
   // Group multiple atom reads into single useSelector
   const { filteredTodos, isLoading, filter } = useSelector(({ read }) => ({
     filteredTodos: read(todos.filteredTodos$),
@@ -375,8 +375,8 @@ function TodoList() {
  * Todo stats footer.
  */
 function TodoStats() {
-  const todos = todosModule();
-  const sync = syncModule();
+  const todos = todosStore();
+  const sync = syncStore();
 
   // Group multiple atom reads into single useSelector
   const { activeCount, completedCount, pendingCount, hasTodos } = useSelector(
@@ -415,7 +415,7 @@ function TodoStats() {
  * Clear completed button.
  */
 function ClearCompletedButton({ completedCount }: { completedCount: number }) {
-  const todos = todosModule();
+  const todos = todosStore();
   const [isClearing, setIsClearing] = useState(false);
 
   const handleClear = useCallback(async () => {

@@ -10,8 +10,21 @@
  * - Passkey authentication with biometric verification
  * - PRF extension for key derivation (when supported)
  * - Graceful fallback for older browsers
+ *
+ * @example
+ * ```ts
+ * import { authService } from "@/services/auth";
+ *
+ * const auth = authService();
+ * const support = await auth.checkSupport();
+ *
+ * if (support.webauthn) {
+ *   const result = await auth.register({ username: "user@example.com" });
+ * }
+ * ```
  */
 
+import { define } from "atomirx";
 import type {
   AuthService,
   AuthSupport,
@@ -27,15 +40,14 @@ import { arrayBufferToBase64Url, base64UrlToArrayBuffer } from "@/lib/utils";
 
 /** Relying Party configuration */
 const RP_NAME = "Secure Todo";
-const RP_ID = typeof window !== "undefined" ? window.location.hostname : "localhost";
+const RP_ID =
+  typeof window !== "undefined" ? window.location.hostname : "localhost";
 
 /** PRF salt for key derivation */
 const PRF_SALT_PREFIX = "secure-todo-prf-v1";
 
 /** Timeout for WebAuthn ceremonies (5 minutes) */
 const CEREMONY_TIMEOUT = 300_000;
-
-export type AuthServiceImpl = AuthService;
 
 /**
  * Map DOMException to AuthErrorCode.
@@ -61,24 +73,22 @@ function mapErrorCode(error: unknown): AuthErrorCode {
 }
 
 /**
- * Create a new auth service instance.
+ * Authentication service module.
  *
- * @returns AuthService implementation
+ * Provides passkey-based authentication with PRF extension support.
+ * Use `authService()` to get the singleton instance.
  *
  * @example
  * ```ts
- * const auth = createAuthService();
+ * const auth = authService();
  * const support = await auth.checkSupport();
  *
  * if (support.webauthn) {
  *   const result = await auth.register({ username: "user@example.com" });
- *   if (result.success) {
- *     // Use result.prfOutput for key derivation
- *   }
  * }
  * ```
  */
-export function createAuthService(): AuthServiceImpl {
+export const authService = define((): AuthService => {
   /**
    * Check what WebAuthn features are supported.
    */
@@ -106,10 +116,11 @@ export function createAuthService(): AuthServiceImpl {
     let conditionalMediation = false;
     try {
       if ("isConditionalMediationAvailable" in PublicKeyCredential) {
-        conditionalMediation =
-          await (PublicKeyCredential as typeof PublicKeyCredential & {
+        conditionalMediation = await (
+          PublicKeyCredential as typeof PublicKeyCredential & {
             isConditionalMediationAvailable: () => Promise<boolean>;
-          }).isConditionalMediationAvailable();
+          }
+        ).isConditionalMediationAvailable();
       }
     } catch {
       // Not supported
@@ -240,8 +251,7 @@ export function createAuthService(): AuthServiceImpl {
       return {
         success: false,
         code,
-        message:
-          error instanceof Error ? error.message : "Registration failed",
+        message: error instanceof Error ? error.message : "Registration failed",
       };
     }
   }
@@ -347,19 +357,4 @@ export function createAuthService(): AuthServiceImpl {
     authenticate,
     hasCredentials,
   };
-}
-
-// Export singleton instance for convenience
-let _instance: AuthServiceImpl | null = null;
-
-/**
- * Get the singleton auth service instance.
- *
- * @returns Shared AuthService instance
- */
-export function getAuthService(): AuthServiceImpl {
-  if (!_instance) {
-    _instance = createAuthService();
-  }
-  return _instance;
-}
+});

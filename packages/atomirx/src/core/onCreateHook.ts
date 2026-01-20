@@ -12,7 +12,7 @@ import {
 /**
  * Information provided when a mutable atom is created.
  */
-export interface MutableCreateInfo {
+export interface MutableInfo {
   /** Discriminator for mutable atoms */
   type: "mutable";
   /** Optional key from atom options (for debugging/devtools) */
@@ -20,13 +20,13 @@ export interface MutableCreateInfo {
   /** Optional metadata from atom options */
   meta: MutableAtomMeta | undefined;
   /** The created mutable atom instance */
-  atom: MutableAtom<unknown>;
+  instance: MutableAtom<unknown>;
 }
 
 /**
  * Information provided when a derived atom is created.
  */
-export interface DerivedCreateInfo {
+export interface DerivedInfo {
   /** Discriminator for derived atoms */
   type: "derived";
   /** Optional key from derived options (for debugging/devtools) */
@@ -34,13 +34,13 @@ export interface DerivedCreateInfo {
   /** Optional metadata from derived options */
   meta: DerivedAtomMeta | undefined;
   /** The created derived atom instance */
-  atom: DerivedAtom<unknown, boolean>;
+  instance: DerivedAtom<unknown, boolean>;
 }
 
 /**
  * Information provided when an effect is created.
  */
-export interface EffectCreateInfo {
+export interface EffectInfo {
   /** Discriminator for effects */
   type: "effect";
   /** Optional key from effect options (for debugging/devtools) */
@@ -48,21 +48,18 @@ export interface EffectCreateInfo {
   /** Optional metadata from effect options */
   meta: EffectMeta | undefined;
   /** The created effect instance */
-  effect: Effect;
+  instance: Effect;
 }
 
 /**
- * Union type for atom creation info (mutable or derived).
+ * Union type for atom/derived/effect creation info.
  */
-export type CreateInfo =
-  | MutableCreateInfo
-  | DerivedCreateInfo
-  | EffectCreateInfo;
+export type CreateInfo = MutableInfo | DerivedInfo | EffectInfo;
 
 /**
  * Information provided when a module (via define()) is created.
  */
-export interface ModuleCreateInfo {
+export interface ModuleInfo {
   /** Discriminator for modules */
   type: "module";
   /** Optional key from define options (for debugging/devtools) */
@@ -70,7 +67,7 @@ export interface ModuleCreateInfo {
   /** Optional metadata from define options */
   meta: ModuleMeta | undefined;
   /** The created module instance */
-  module: unknown;
+  instance: unknown;
 }
 
 /**
@@ -94,16 +91,11 @@ export interface ModuleCreateInfo {
  *
  * @example DevTools integration
  * ```ts
- * const atoms = new Map();
- * const modules = new Map();
+ * const registry = new Map();
  *
  * onCreateHook.override((prev) => (info) => {
  *   prev?.(info); // preserve chain
- *   if (info.type === "module") {
- *     modules.set(info.key, info.module);
- *   } else {
- *     atoms.set(info.key, info.atom);
- *   }
+ *   registry.set(info.key, info.instance);
  * });
  * ```
  *
@@ -112,5 +104,4 @@ export interface ModuleCreateInfo {
  * onCreateHook.reset();
  * ```
  */
-export const onCreateHook =
-  hook<(info: CreateInfo | ModuleCreateInfo) => void>();
+export const onCreateHook = hook<(info: CreateInfo | ModuleInfo) => void>();

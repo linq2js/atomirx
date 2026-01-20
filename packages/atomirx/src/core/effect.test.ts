@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { atom } from "./atom";
-import { derived } from "./derived";
 import { effect, Effect } from "./effect";
 import { onCreateHook } from "./onCreateHook";
 
@@ -450,19 +449,17 @@ describe("effect", () => {
   });
 
   describe("onCreateHook", () => {
-    const originalOnCreateHook = onCreateHook.current;
-
     beforeEach(() => {
-      onCreateHook.current = undefined;
+      onCreateHook.reset();
     });
 
     afterEach(() => {
-      onCreateHook.current = originalOnCreateHook;
+      onCreateHook.reset();
     });
 
     it("should call onCreateHook when effect is created", () => {
       const hookFn = vi.fn();
-      onCreateHook.current = hookFn;
+      onCreateHook.override(() => hookFn);
 
       const e = effect(() => {}, { meta: { key: "testEffect" } });
 
@@ -477,13 +474,13 @@ describe("effect", () => {
         type: "effect",
         key: "testEffect",
         meta: { key: "testEffect" },
-        effect: e,
+        instance: e,
       });
     });
 
     it("should call onCreateHook with undefined key when not provided", () => {
       const hookFn = vi.fn();
-      onCreateHook.current = hookFn;
+      onCreateHook.override(() => hookFn);
 
       const e = effect(() => {});
 
@@ -495,19 +492,19 @@ describe("effect", () => {
         type: "effect",
         key: undefined,
         meta: undefined,
-        effect: e,
+        instance: e,
       });
     });
 
     it("should not throw when onCreateHook is undefined", () => {
-      onCreateHook.current = undefined;
+      onCreateHook.reset();
 
       expect(() => effect(() => {})).not.toThrow();
     });
 
     it("should call onCreateHook with effect instance that has working dispose", async () => {
       const hookFn = vi.fn();
-      onCreateHook.current = hookFn;
+      onCreateHook.override(() => hookFn);
 
       const cleanupFn = vi.fn();
       const count$ = atom(0);
@@ -524,7 +521,7 @@ describe("effect", () => {
         (call) => call[0].type === "effect"
       );
       expect(effectCall).toBeDefined();
-      const capturedEffect = effectCall![0].effect as Effect;
+      const capturedEffect = effectCall![0].instance as Effect;
 
       // Dispose should work
       capturedEffect.dispose();
@@ -533,7 +530,7 @@ describe("effect", () => {
 
     it("should pass correct type discriminator for effects", () => {
       const hookFn = vi.fn();
-      onCreateHook.current = hookFn;
+      onCreateHook.override(() => hookFn);
 
       effect(() => {});
 
@@ -547,11 +544,11 @@ describe("effect", () => {
 
     it("should allow tracking effects in devtools-like scenario", () => {
       const effects = new Map<string, Effect>();
-      onCreateHook.current = (info) => {
+      onCreateHook.override(() => (info) => {
         if (info.type === "effect" && info.key) {
-          effects.set(info.key, info.effect);
+          effects.set(info.key, info.instance);
         }
-      };
+      });
 
       const e1 = effect(() => {}, { meta: { key: "effect1" } });
       const e2 = effect(() => {}, { meta: { key: "effect2" } });
@@ -564,11 +561,11 @@ describe("effect", () => {
 
     it("should support disposing all tracked effects", async () => {
       const effects: Effect[] = [];
-      onCreateHook.current = (info) => {
+      onCreateHook.override(() => (info) => {
         if (info.type === "effect") {
-          effects.push(info.effect);
+          effects.push(info.instance);
         }
-      };
+      });
 
       const cleanupFns = [vi.fn(), vi.fn(), vi.fn()];
       const count$ = atom(0);

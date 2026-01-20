@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createAuthService, type AuthServiceImpl } from "./auth.service";
-import type { AuthSupport } from "./auth.types";
+import { authService } from "./auth.service";
+import type { AuthSupport, AuthService } from "./auth.types";
 
 // Get mocks from setup file - cast through unknown to satisfy TypeScript
 const mockCredentials = globalThis.navigator.credentials as unknown as {
@@ -14,7 +14,7 @@ const mockPublicKeyCredential = globalThis.PublicKeyCredential as unknown as {
 };
 
 describe("AuthService", () => {
-  let auth: AuthServiceImpl;
+  let auth: AuthService;
   let originalPublicKeyCredential: typeof PublicKeyCredential | undefined;
 
   beforeEach(() => {
@@ -27,7 +27,9 @@ describe("AuthService", () => {
     mockPublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable.mockResolvedValue(true);
     mockPublicKeyCredential.isConditionalMediationAvailable.mockResolvedValue(true);
 
-    auth = createAuthService();
+    // Reset and get fresh instance
+    authService.reset();
+    auth = authService();
   });
 
   afterEach(() => {

@@ -1,7 +1,7 @@
 import { batch } from "./batch";
 import { derived } from "./derived";
 import { emitter } from "./emitter";
-import { EffectCreateInfo, onCreateHook } from "./onCreateHook";
+import { EffectInfo, onCreateHook } from "./onCreateHook";
 import { ReactiveSelector, SelectContext } from "./select";
 import { EffectMeta, EffectOptions } from "./types";
 import { WithReadySelectContext } from "./withReady";
@@ -131,7 +131,7 @@ export function effect(
   let disposed = false;
   const cleanupEmitter = emitter();
 
-  // Create the Effect object early so we can build EffectCreateInfo
+  // Create the Effect object early so we can build EffectInfo
   const e: Effect = {
     meta: options?.meta,
     dispose: () => {
@@ -145,12 +145,12 @@ export function effect(
     },
   };
 
-  // Create EffectCreateInfo to pass to derived for error attribution
-  const effectCreateInfo: EffectCreateInfo = {
+  // Create EffectInfo to pass to derived for error attribution
+  const effectInfo: EffectInfo = {
     type: "effect",
     key: options?.meta?.key,
     meta: options?.meta,
-    effect: e,
+    instance: e,
   };
 
   // Create a derived atom that runs the effect on each recomputation.
@@ -173,7 +173,7 @@ export function effect(
     },
     {
       onError: options?.onError,
-      _errorSource: effectCreateInfo,
+      _errorSource: effectInfo,
     }
   );
 
@@ -182,7 +182,7 @@ export function effect(
   derivedAtom.get();
 
   // Notify devtools/plugins of effect creation
-  onCreateHook.current?.(effectCreateInfo);
+  onCreateHook.current?.(effectInfo);
 
   return e;
 }

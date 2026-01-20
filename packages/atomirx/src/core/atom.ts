@@ -240,7 +240,7 @@ export function atom<T>(
     type: "mutable",
     key: options.meta?.key,
     meta: options.meta,
-    atom: a as MutableAtom<unknown>,
+    instance: a as MutableAtom<unknown>,
   });
 
   return a;

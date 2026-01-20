@@ -12,8 +12,18 @@
  * - Fresh IV generated for each encryption
  * - Keys are 256-bit for strong security
  * - No secrets stored in memory longer than necessary
+ *
+ * @example
+ * ```ts
+ * import { cryptoService } from "@/services/crypto";
+ *
+ * const crypto = cryptoService();
+ * const key = await crypto.generateKey();
+ * const encrypted = await crypto.encrypt(key, "secret data");
+ * ```
  */
 
+import { define } from "atomirx";
 import type {
   CryptoService,
   EncryptedField,
@@ -37,8 +47,6 @@ const DEFAULT_SALT_LENGTH = 16;
 /** HKDF info strings for domain separation */
 const HKDF_INFO_ENCRYPTION = "todo-app-encryption-key-v1";
 
-export type CryptoServiceImpl = CryptoService;
-
 /**
  * Custom error for crypto operations.
  */
@@ -58,18 +66,19 @@ function toBufferSource(data: Uint8Array): BufferSource {
 }
 
 /**
- * Create a new crypto service instance.
+ * Cryptography service module.
  *
- * @returns CryptoService implementation
+ * Provides encryption/decryption operations using AES-256-GCM.
+ * Use `cryptoService()` to get the singleton instance.
  *
  * @example
  * ```ts
- * const crypto = createCryptoService();
+ * const crypto = cryptoService();
  * const key = await crypto.generateKey();
  * const encrypted = await crypto.encrypt(key, "secret data");
  * ```
  */
-export function createCryptoService(): CryptoServiceImpl {
+export const cryptoService = define((): CryptoService => {
   const subtle = globalThis.crypto.subtle;
 
   /**
@@ -318,19 +327,4 @@ export function createCryptoService(): CryptoServiceImpl {
     wrapKey,
     unwrapKey,
   };
-}
-
-// Export singleton instance for convenience
-let _instance: CryptoServiceImpl | null = null;
-
-/**
- * Get the singleton crypto service instance.
- *
- * @returns Shared CryptoService instance
- */
-export function getCryptoService(): CryptoServiceImpl {
-  if (!_instance) {
-    _instance = createCryptoService();
-  }
-  return _instance;
-}
+});

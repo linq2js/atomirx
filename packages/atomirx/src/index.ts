@@ -43,8 +43,11 @@ export type {
 
 export { onCreateHook } from "./core/onCreateHook";
 export type {
-  CreateInfo as CreateInfo,
-  ModuleCreateInfo,
+  CreateInfo,
+  MutableInfo,
+  DerivedInfo,
+  EffectInfo,
+  ModuleInfo,
 } from "./core/onCreateHook";
 
 export { onErrorHook } from "./core/onErrorHook";

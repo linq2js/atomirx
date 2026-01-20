@@ -1,5 +1,5 @@
 /**
- * @module todosModule
+ * @module todosStore
  *
  * @description Manages todo list state with encrypted storage.
  * Provides CRUD operations, filtering, and optimistic updates.
@@ -31,7 +31,7 @@
  */
 
 import { atom, derived, define, batch, readonly } from "atomirx";
-import { getStorageService } from "@/services/storage";
+import { storageService } from "@/services/storage";
 import type { Todo, CreateTodoInput } from "@/services/storage/storage.types";
 
 /**
@@ -52,7 +52,7 @@ export interface TodoError {
  *
  * @example
  * ```ts
- * const todos = todosModule();
+ * const todos = todosStore();
  *
  * // Load todos on auth
  * await todos.loadTodos();
@@ -67,7 +67,7 @@ export interface TodoError {
  * const filteredTodos = useSelector(todos.filteredTodos$);
  * ```
  */
-export const todosModule = define(() => {
+export const todosStore = define(() => {
   // ┌─────────────────────────────────────────────────────────────┐
   // │ Dependency Graph:                                          │
   // │                                                            │
@@ -86,7 +86,7 @@ export const todosModule = define(() => {
   // │      filter$ → filteredTodos$ → (subscribers)              │
   // └─────────────────────────────────────────────────────────────┘
 
-  const storageService = getStorageService();
+  const storage = storageService();
 
   // ─────────────────────────────────────────────────────────────
   // Atoms
@@ -127,43 +127,55 @@ export const todosModule = define(() => {
   /**
    * Todos filtered by current filter setting.
    */
-  const filteredTodos$ = derived(({ read }) => {
-    const todos = read(todos$);
-    const filter = read(filter$);
+  const filteredTodos$ = derived(
+    ({ read }) => {
+      const todos = read(todos$);
+      const filter = read(filter$);
 
-    switch (filter) {
-      case "active":
-        return todos.filter((t) => !t.completed);
-      case "completed":
-        return todos.filter((t) => t.completed);
-      default:
-        return todos;
-    }
-  });
+      switch (filter) {
+        case "active":
+          return todos.filter((t) => !t.completed);
+        case "completed":
+          return todos.filter((t) => t.completed);
+        default:
+          return todos;
+      }
+    },
+    { meta: { key: "todos.filteredTodos" } }
+  );
 
   /**
    * Number of active (incomplete) todos.
    */
-  const activeTodoCount$ = derived(({ read }) => {
-    const todos = read(todos$);
-    return todos.filter((t) => !t.completed).length;
-  });
+  const activeTodoCount$ = derived(
+    ({ read }) => {
+      const todos = read(todos$);
+      return todos.filter((t) => !t.completed).length;
+    },
+    { meta: { key: "todos.activeTodoCount" } }
+  );
 
   /**
    * Number of completed todos.
    */
-  const completedTodoCount$ = derived(({ read }) => {
-    const todos = read(todos$);
-    return todos.filter((t) => t.completed).length;
-  });
+  const completedTodoCount$ = derived(
+    ({ read }) => {
+      const todos = read(todos$);
+      return todos.filter((t) => t.completed).length;
+    },
+    { meta: { key: "todos.completedTodoCount" } }
+  );
 
   /**
    * Whether there are any todos.
    */
-  const hasTodos$ = derived(({ read }) => {
-    const todos = read(todos$);
-    return todos.length > 0;
-  });
+  const hasTodos$ = derived(
+    ({ read }) => {
+      const todos = read(todos$);
+      return todos.length > 0;
+    },
+    { meta: { key: "todos.hasTodos" } }
+  );
 
   // ─────────────────────────────────────────────────────────────
   // Actions
@@ -181,9 +193,9 @@ export const todosModule = define(() => {
       console.log("[Todos] Loading todos from storage...");
       console.log(
         "[Todos] Storage initialized:",
-        storageService.isInitialized()
+        storage.isInitialized()
       );
-      const todos = await storageService.getTodos();
+      const todos = await storage.getTodos();
       console.log("[Todos] Loaded", todos.length, "todos");
       // Sort by createdAt descending (newest first)
       todos.sort((a, b) => b.createdAt - a.createdAt);
@@ -219,7 +231,7 @@ export const todosModule = define(() => {
 
     try {
       const input: CreateTodoInput = { content: trimmedContent };
-      const newTodo = await storageService.createTodo(input);
+      const newTodo = await storage.createTodo(input);
 
       // Optimistic update: add to beginning of list
       todos$.set((prev) => [newTodo, ...prev]);
@@ -261,7 +273,7 @@ export const todosModule = define(() => {
     );
 
     try {
-      const updated = await storageService.updateTodo(id, {
+      const updated = await storage.updateTodo(id, {
         completed: newCompleted,
       });
 
@@ -335,7 +347,7 @@ export const todosModule = define(() => {
     );
 
     try {
-      const updated = await storageService.updateTodo(id, {
+      const updated = await storage.updateTodo(id, {
         content: trimmedContent,
       });
 
@@ -393,7 +405,7 @@ export const todosModule = define(() => {
     todos$.set((prev) => prev.filter((t) => t.id !== id));
 
     try {
-      const success = await storageService.deleteTodo(id);
+      const success = await storage.deleteTodo(id);
 
       if (!success) {
         // Rollback: insert back at original position
@@ -456,7 +468,7 @@ export const todosModule = define(() => {
     try {
       // Delete all completed todos
       const results = await Promise.allSettled(
-        completedTodos.map((t) => storageService.deleteTodo(t.id))
+        completedTodos.map((t) => storage.deleteTodo(t.id))
       );
 
       // Check for failures

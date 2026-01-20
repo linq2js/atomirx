@@ -193,7 +193,7 @@ export const authStore = define(() => {
    */
   async function saveSession(user: User, key: CryptoKey): Promise<void> {
     try {
-      const keyJwk = await globalThis.crypto.subtle.exportKey("jwk", key);
+      const keyJwk = await crypto.subtle.exportKey("jwk", key);
       const session: StoredSession = { user, keyJwk };
       sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
     } catch (error) {
@@ -242,7 +242,7 @@ export const authStore = define(() => {
       }
 
       // Import the key from JWK
-      const key = await globalThis.crypto.subtle.importKey(
+      const key = await crypto.subtle.importKey(
         "jwk",
         session.keyJwk,
         { name: "AES-GCM", length: 256 },

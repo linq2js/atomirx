@@ -1,19 +1,19 @@
 /**
- * State modules for the Todo App.
+ * State stores for the Todo App.
  *
  * @description
- * Exports all atomirx-based state modules for managing application state.
- * Each module is a lazy singleton created with define().
+ * Exports all atomirx-based state stores for managing application state.
+ * Each store is a lazy singleton created with define().
  *
  * @example
  * ```ts
- * import { authModule, todosModule, syncModule, networkModule } from '@/state';
+ * import { authStore, todosStore, syncStore, networkStore } from '@/state';
  *
- * // Get module instances
- * const auth = authModule();
- * const todos = todosModule();
- * const sync = syncModule();
- * const network = networkModule();
+ * // Get store instances
+ * const auth = authStore();
+ * const todos = todosStore();
+ * const sync = syncStore();
+ * const network = networkStore();
  *
  * // Use in React
  * const user = useSelector(auth.user$);
@@ -21,13 +21,13 @@
  * ```
  */
 
-export { authModule } from "./auth.module";
-export type { User, AuthSupportInfo, AuthError } from "./auth.module";
+export { authStore } from "./auth.store";
+export type { User, AuthSupportInfo, AuthError } from "./auth.store";
 
-export { todosModule } from "./todos.module";
-export type { TodoFilterType, TodoError } from "./todos.module";
+export { todosStore } from "./todos.store";
+export type { TodoFilterType, TodoError } from "./todos.store";
 
-export { syncModule } from "./sync.module";
-export type { SyncStatusType, SyncError } from "./sync.module";
+export { syncStore } from "./sync.store";
+export type { SyncStatusType, SyncError } from "./sync.store";
 
-export { networkModule } from "./network.module";
+export { networkStore } from "./network.store";

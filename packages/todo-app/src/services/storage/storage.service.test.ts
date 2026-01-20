@@ -1,25 +1,27 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  createStorageService,
-  type StorageServiceImpl,
-} from "./storage.service";
-import { createCryptoService } from "../crypto/crypto.service";
+import { storageService } from "./storage.service";
+import { cryptoService } from "../crypto/crypto.service";
 import { resetDatabase } from "./db";
+import type { StorageService } from "./storage.types";
 
 describe("StorageService", () => {
-  let storage: StorageServiceImpl;
+  let storage: StorageService;
   let key: CryptoKey;
 
   beforeEach(async () => {
     // Reset database before each test
     await resetDatabase();
 
+    // Reset services and get fresh instances
+    cryptoService.reset();
+    storageService.reset();
+
     // Create a test encryption key
-    const crypto = createCryptoService();
+    const crypto = cryptoService();
     key = await crypto.generateKey();
 
     // Create storage service
-    storage = createStorageService();
+    storage = storageService();
   });
 
   afterEach(async () => {
@@ -271,7 +273,7 @@ describe("StorageService", () => {
       const operations = await storage.getPendingOperations();
       expect(operations).toHaveLength(2);
       // Find the delete operation (order may vary due to timing)
-      const deleteOp = operations.find((op) => op.type === "delete");
+      const deleteOp = operations.find((op: { type: string }) => op.type === "delete");
       expect(deleteOp).toBeDefined();
       expect(deleteOp!.todoId).toBe(todo.id);
     });
@@ -283,7 +285,7 @@ describe("StorageService", () => {
       const operations = await storage.getPendingOperations();
       expect(operations).toHaveLength(2);
 
-      await storage.clearOperations(operations.map((op) => op.id));
+      await storage.clearOperations(operations.map((op: { id: string }) => op.id));
 
       const remaining = await storage.getPendingOperations();
       expect(remaining).toHaveLength(0);

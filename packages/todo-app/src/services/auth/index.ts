@@ -6,9 +6,9 @@
  *
  * @example
  * ```ts
- * import { getAuthService } from "@/services/auth";
+ * import { authService } from "@/services/auth";
  *
- * const auth = getAuthService();
+ * const auth = authService();
  * const support = await auth.checkSupport();
  *
  * if (support.webauthn && support.platformAuthenticator) {
@@ -20,8 +20,7 @@
  * ```
  */
 
-export { createAuthService, getAuthService } from "./auth.service";
-export type { AuthServiceImpl } from "./auth.service";
+export { authService } from "./auth.service";
 export type {
   AuthService,
   AuthSupport,

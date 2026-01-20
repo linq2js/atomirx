@@ -81,7 +81,7 @@ describe("onErrorHook", () => {
       const info: ErrorInfo = hookFn.mock.calls[0][0];
       expect(info.source.type).toBe("derived");
       if (info.source.type === "derived") {
-        expect(info.source.atom).toBe(derived$);
+        expect(info.source.instance).toBe(derived$);
       }
     });
 
@@ -159,7 +159,7 @@ describe("onErrorHook", () => {
       const info: ErrorInfo = hookFn.mock.calls[0][0];
       expect(info.source.type).toBe("effect");
       if (info.source.type === "effect") {
-        expect(info.source.effect).toBe(e);
+        expect(info.source.instance).toBe(e);
       }
     });
 
