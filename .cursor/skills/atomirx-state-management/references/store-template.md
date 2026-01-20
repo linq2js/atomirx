@@ -1,39 +1,57 @@
-# Module Documentation Template
+# Store Documentation Template
 
-Use this JSDoc template when documenting atomirx modules to help both humans and AI understand the reactive structure.
+Use this JSDoc template when documenting atomirx stores to help both humans and AI understand the reactive structure.
+
+## When to Use Store
+
+A **Store** is for **stateful** reactive containers that manage atoms.
+
+| Criteria                       | Store               | Service |
+| ------------------------------ | ------------------- | ------- |
+| Contains atoms/derived/effects | ✅ Yes              | ❌ No   |
+| Manages reactive state         | ✅ Yes              | ❌ No   |
+| Wraps external I/O             | ❌ No (use service) | ✅ Yes  |
+
+## Naming Convention
+
+| Element  | Pattern               | Example                           |
+| -------- | --------------------- | --------------------------------- |
+| Variable | `*Store`              | `authStore`, `todosStore`         |
+| File     | `*.store.ts`          | `auth.store.ts`, `todos.store.ts` |
+| Location | `stores/` or `state/` | `src/stores/auth.store.ts`        |
 
 ## Full Template
 
 ```typescript
 /**
- * @module moduleName
+ * @store storeName
  *
- * @description Brief description of what this module manages
+ * @description Brief description of what this store manages
  *
  * @atoms
  * - atomName$ - Description of what this atom stores
  * - anotherAtom$ - Description
  *
  * @derived
- * - derivedName$ - What it computes and from what
+ * - derivedName$ - What it computes (depends on: atom1$, atom2$)
  *
- * @effects
- * - Brief description of each side effect
+ * @effects (single effect = single workflow)
+ * - effectName - What it does (watches: atom1$, atom2$) (writes: atom3$)
  *
  * @actions
- * - actionName(args) - What it does
- * - anotherAction() - What it does
+ * - actionName(args) - What it does (writes: atom1$, atom2$)
+ * - anotherAction() - What it does (reads: atom1$, writes: atom2$)
  *
  * @reactive-flow
  * trigger → atom$ → [derived$] + [effect] → result
  *
  * @example
  * // Usage example
- * const { action, state$ } = myModule;
+ * const { action, state$ } = myStore();
  * action(args);
  * const value = useSelector(state$);
  */
-const moduleName = define(() => {
+const storeName = define(() => {
   // Implementation
 });
 ```
@@ -66,10 +84,10 @@ navigateTo(id) → currentId$ → [currentEntity$ suspends] + [effect fetches]
 
 ## Dependency Graph Comment
 
-For complex modules, include ASCII graph at top:
+For complex stores, include ASCII graph at top:
 
 ```typescript
-const articleModule = define(() => {
+const articleStore = define(() => {
   // ┌─────────────────────────────────────────────────────────┐
   // │ Dependency Graph:                                       │
   // │                                                         │
@@ -124,18 +142,18 @@ return {
 };
 ```
 
-## Minimal Template (Small Modules)
+## Minimal Template (Small Stores)
 
-For simple modules, use condensed format:
+For simple stores, use condensed format:
 
 ```typescript
 /**
- * @module counterModule
+ * @store counterStore
  * @atoms count$ - Current count value
  * @actions increment(), decrement(), reset()
  */
-const counterModule = define(() => {
-  const count$ = atom(0);
+const counterStore = define(() => {
+  const count$ = atom(0, { meta: { key: "counter.count" } });
   return {
     ...readonly({ count$ }),
     increment: () => count$.set((c) => c + 1),
@@ -144,3 +162,34 @@ const counterModule = define(() => {
   };
 });
 ```
+
+## Key Naming Convention
+
+**MUST define `meta.key` for all atoms, derived, and effects.**
+
+```typescript
+// Atoms
+const user$ = atom<User | null>(null, {
+  meta: { key: "auth.user" },
+});
+
+// Derived
+const isAuthenticated$ = derived(({ read }) => read(user$) !== null, {
+  meta: { key: "auth.isAuthenticated" },
+});
+
+// Effects
+effect(
+  ({ read }) => {
+    const id = read(currentId$);
+    if (id) fetchEntity(id);
+  },
+  { meta: { key: "article.autoFetch" } }
+);
+```
+
+| Pattern                 | Example                    |
+| ----------------------- | -------------------------- |
+| `storeName.atomName`    | `auth.user`, `todos.items` |
+| `storeName.derivedName` | `auth.isAuthenticated`     |
+| `storeName.effectName`  | `sync.autoSave`            |

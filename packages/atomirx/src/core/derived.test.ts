@@ -1033,4 +1033,183 @@ describe("derived", () => {
       });
     });
   });
+
+  describe("onError callback", () => {
+    it("should call onError when computation throws synchronously", async () => {
+      const onError = vi.fn();
+      const source$ = atom(0);
+
+      const derived$ = derived(
+        ({ read }) => {
+          const val = read(source$);
+          if (val > 0) {
+            throw new Error("Value too high");
+          }
+          return val;
+        },
+        { onError }
+      );
+
+      // Initial value - no error
+      await derived$.get();
+      expect(onError).not.toHaveBeenCalled();
+
+      // Trigger error - catch the rejection to avoid unhandled rejection warning
+      source$.set(5);
+      derived$.get().catch(() => {}); // Catch expected rejection
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(expect.any(Error));
+      expect((onError.mock.calls[0][0] as Error).message).toBe("Value too high");
+    });
+
+    it("should call onError when async atom dependency rejects", async () => {
+      const onError = vi.fn();
+
+      // Create an atom with a rejecting Promise
+      const asyncSource$ = atom(Promise.reject(new Error("Async error")));
+
+      const derived$ = derived(
+        ({ read }) => {
+          return read(asyncSource$);
+        },
+        { onError }
+      );
+
+      // Access to trigger computation
+      derived$.get().catch(() => {}); // Catch to avoid unhandled rejection
+
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect((onError.mock.calls[0][0] as Error).message).toBe("Async error");
+    });
+
+    it("should call onError on each recomputation that throws", async () => {
+      const onError = vi.fn();
+      const source$ = atom(0);
+
+      const derived$ = derived(
+        ({ read }) => {
+          const val = read(source$);
+          if (val > 0) {
+            throw new Error(`Error for ${val}`);
+          }
+          return val;
+        },
+        { onError }
+      );
+
+      await derived$.get();
+      expect(onError).not.toHaveBeenCalled();
+
+      // First error - catch to avoid unhandled rejection
+      source$.set(1);
+      derived$.get().catch(() => {});
+      await new Promise((r) => setTimeout(r, 0));
+      expect(onError).toHaveBeenCalledTimes(1);
+
+      // Second error - catch to avoid unhandled rejection
+      source$.set(2);
+      derived$.get().catch(() => {});
+      await new Promise((r) => setTimeout(r, 0));
+      expect(onError).toHaveBeenCalledTimes(2);
+      expect((onError.mock.calls[1][0] as Error).message).toBe("Error for 2");
+    });
+
+    it("should not call onError when computation succeeds", async () => {
+      const onError = vi.fn();
+      const source$ = atom(5);
+
+      const derived$ = derived(({ read }) => read(source$) * 2, { onError });
+
+      await derived$.get();
+      source$.set(10);
+      await derived$.get();
+      source$.set(15);
+      await derived$.get();
+
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("should not call onError for Promise throws (Suspense)", async () => {
+      const onError = vi.fn();
+      let resolvePromise: (value: number) => void;
+      const asyncSource$ = atom(
+        new Promise<number>((resolve) => {
+          resolvePromise = resolve;
+        })
+      );
+
+      const derived$ = derived(({ read }) => read(asyncSource$) * 2, {
+        onError,
+      });
+
+      // Still loading - onError should NOT be called
+      await new Promise((r) => setTimeout(r, 10));
+      expect(onError).not.toHaveBeenCalled();
+
+      // Resolve successfully
+      resolvePromise!(5);
+      expect(await derived$.get()).toBe(10);
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("should work without onError callback", async () => {
+      const source$ = atom(0);
+
+      const derived$ = derived(({ read }) => {
+        const val = read(source$);
+        if (val > 0) {
+          throw new Error("Error");
+        }
+        return val;
+      });
+
+      // Should not throw even without onError
+      await derived$.get();
+      source$.set(5);
+      derived$.get().catch(() => {}); // Catch expected rejection
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(derived$.state().status).toBe("error");
+    });
+
+    it("should allow error recovery and call onError again on subsequent errors", async () => {
+      const onError = vi.fn();
+      const source$ = atom(0);
+
+      const derived$ = derived(
+        ({ read }) => {
+          const val = read(source$);
+          if (val === 1) {
+            throw new Error("First error");
+          }
+          if (val === 3) {
+            throw new Error("Second error");
+          }
+          return val * 2;
+        },
+        { onError }
+      );
+
+      await derived$.get(); // 0 -> success
+      expect(onError).not.toHaveBeenCalled();
+
+      source$.set(1); // error
+      derived$.get().catch(() => {}); // Catch expected rejection
+      await new Promise((r) => setTimeout(r, 0));
+      expect(onError).toHaveBeenCalledTimes(1);
+
+      source$.set(2); // recover
+      expect(await derived$.get()).toBe(4);
+      expect(onError).toHaveBeenCalledTimes(1); // still 1
+
+      source$.set(3); // error again
+      derived$.get().catch(() => {}); // Catch expected rejection
+      await new Promise((r) => setTimeout(r, 0));
+      expect(onError).toHaveBeenCalledTimes(2);
+    });
+  });
 });

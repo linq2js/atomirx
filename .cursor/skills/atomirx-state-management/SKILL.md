@@ -1,6 +1,6 @@
 ---
 name: atomirx-state-management
-description: Guide for working with atomirx reactive state management library. Use when working with atomirx primitives (atom, derived, effect, select), implementing module patterns with define(), using ready() for deferred loading, debugging reactive data flows, handling async operations, or integrating with React (useSelector, rx, useAction). Triggers on atomirx imports, atom$ naming conventions, or reactive state patterns.
+description: Guide for working with atomirx reactive state management library. Use when working with atomirx primitives (atom, derived, effect, select), implementing store patterns with define(), using ready() for deferred loading, debugging reactive data flows, handling async operations, or integrating with React (useSelector, rx, useAction). Triggers on atomirx imports, atom$ naming conventions, or reactive state patterns.
 ---
 
 # atomirx State Management
@@ -14,7 +14,9 @@ description: Guide for working with atomirx reactive state management library. U
 | `effect(fn)`       | Side effects on state changes      | Yes (eager)          |
 | `select(fn)`       | One-time read without subscription | No                   |
 | `batch(fn)`        | Group updates into single notify   | No                   |
-| `define(fn)`       | Lazy singleton module factory      | No                   |
+| `define(fn)`       | Lazy singleton factory             | No                   |
+| `onCreateHook`     | Track atom/effect/module creation  | No                   |
+| `onErrorHook`      | Global error handling              | No                   |
 
 ## SelectContext Methods
 
@@ -44,9 +46,28 @@ description: Guide for working with atomirx reactive state management library. U
 3. **Group multiple useSelector calls** - Each call creates a subscription. Group reads into single selector.
 4. **useAction deps: pass atoms, not values** - For `lazy: false` auto re-dispatch, pass atoms to `deps` and use `.get()` inside.
 5. **Never use try/catch with read()** - breaks Suspense. Use `safe()` instead.
-6. **Co-locate mutations in module** - all `.set()` calls for an atom belong in its module.
+6. **Co-locate mutations in store** - all `.set()` calls for an atom belong in its store.
 7. **Export readonly atoms** - Use `readonly({ atom$ })` to prevent external mutations.
 8. **SelectContext is synchronous only** - can't use `read()` in setTimeout/Promise.then.
+9. **Service vs Store naming** - Services are stateless (`*Service`), Stores contain atoms (`*Store`). See Naming Conventions.
+10. **NEVER import service factories** - Use `define()` for services, consume via invocation. See FORBIDDEN Patterns.
+11. **Single effect, single workflow** - Each effect handles ONE workflow. Split multiple workflows into separate effects.
+12. **MUST define meta.key for atoms/derived/effects** - Use `{ meta: { key: "store.name" } }` for debugging.
+13. **MUST use .override() for hooks** - Never assign directly to `.current`. Use `.override()` to preserve hook chain.
+
+### meta.key for Debugging (CRITICAL)
+
+```tsx
+// ✅ DO: Define meta.key for all reactive primitives
+const user$ = atom<User | null>(null, { meta: { key: "auth.user" } });
+const isAuth$ = derived(({ read }) => !!read(user$), { meta: { key: "auth.isAuthenticated" } });
+effect(({ read }) => { ... }, { meta: { key: "auth.persistSession" } });
+
+// ❌ DON'T: Skip meta.key (hard to debug)
+const user$ = atom<User | null>(null);
+const isAuth$ = derived(({ read }) => !!read(user$));
+effect(({ read }) => { ... });
+```
 
 ### useSelector Grouping (IMPORTANT)
 
@@ -68,17 +89,18 @@ const settings = useSelector(settings$);
 
 ```tsx
 // ✅ DO: Pass atoms to deps, use .get() inside
-const [load] = useAction(async () => atom1$.get() + (await atom2$.get()), {
+const load = useAction(async () => atom1$.get() + (await atom2$.get()), {
   deps: [atom1$, atom2$],
   lazy: false,
 });
+// load() to call, load.loading, load.result, load.error for state
 
 // ❌ DON'T: useSelector values in deps (causes Suspense, stale closures)
 const { v1, v2 } = useSelector(({ read }) => ({
   v1: read(atom1$),
   v2: read(atom2$),
 }));
-const [load] = useAction(async () => v1 + v2, { deps: [v1, v2], lazy: false });
+const load = useAction(async () => v1 + v2, { deps: [v1, v2], lazy: false });
 ```
 
 ### batch() for Multiple Updates (IMPORTANT)
@@ -97,11 +119,11 @@ settings$.set(newSettings);
 lastUpdated$.set(Date.now());
 ```
 
-### define() Module Isolation (CRITICAL)
+### define() for Services and Stores (CRITICAL)
 
 ```tsx
-// ✅ DO: All state and logic in define()
-export const counterModule = define(() => {
+// ✅ DO: All state in define() - this is a STORE (has atoms)
+export const counterStore = define(() => {
   const count$ = atom(0);
   return {
     ...readonly({ count$ }), // Prevent external mutations
@@ -109,17 +131,81 @@ export const counterModule = define(() => {
   };
 });
 
+// ✅ DO: Services also use define() - this is a SERVICE (stateless)
+export const storageService = define(
+  (): StorageService => ({
+    get: (key) => localStorage.getItem(key),
+    set: (key, val) => localStorage.setItem(key, val),
+  })
+);
+
 // ✅ DO: Override for environment/testing
-const storageModule = define((): StorageModule => {
-  throw new Error("Not implemented");
-});
-storageModule.override(webStorageModule); // or nativeStorageModule
+storageService.override(mockStorageService);
 
 // ❌ DON'T: Global variables outside define()
 const count$ = atom(0); // Not testable, not mockable
 ```
 
+### FORBIDDEN: Service Factory Pattern (CRITICAL)
+
+```tsx
+// ❌ FORBIDDEN: Factory functions for services
+import { getAuthService } from "@/services/auth";
+import { getCryptoService } from "@/services/crypto";
+
+export const authStore = define(() => {
+  const auth = getAuthService(); // WRONG! Factory pattern
+  const crypto = getCryptoService(); // WRONG! Factory pattern
+  // ...
+});
+
+// ✅ REQUIRED: Services as define() modules
+import { authService } from "@/services/auth.service";
+import { cryptoService } from "@/services/crypto.service";
+
+export const authStore = define(() => {
+  const auth = authService(); // Correct! Module invocation
+  const crypto = cryptoService(); // Correct! Module invocation
+  // ...
+});
+```
+
+**Detection Pattern for AI:**
+
+- `get*Service()`, `create*()`, `*Factory()` → STOP, refactor to `define()`
+- `import { get* }` for services → WRONG pattern
+
 See [references/rules.md](references/rules.md) for detailed examples.
+
+### Hooks for Middleware & Error Handling (CRITICAL)
+
+```tsx
+// ❌ FORBIDDEN: Direct assignment breaks hook chain
+onCreateHook.current = (info) => { ... };
+onErrorHook.current = (info) => { ... };
+
+// ✅ REQUIRED: Use .override() to preserve chain
+onCreateHook.override((prev) => (info) => {
+  prev?.(info); // call existing handlers first
+  console.log(`Created ${info.type}: ${info.key}`);
+});
+
+onErrorHook.override((prev) => (info) => {
+  prev?.(info); // call existing handlers first
+  Sentry.captureException(info.error);
+});
+
+// Reset all handlers
+onCreateHook.reset();
+onErrorHook.reset();
+```
+
+| Hook           | Use Case                          | Info Type                          |
+| -------------- | --------------------------------- | ---------------------------------- |
+| `onCreateHook` | DevTools, persistence, validation | `{ type, key, meta, atom/effect }` |
+| `onErrorHook`  | Monitoring, logging, toast alerts | `{ source: CreateInfo, error }`    |
+
+See [references/hooks.md](references/hooks.md) for complete patterns.
 
 ## Finding Things in Codebase
 
@@ -128,9 +214,11 @@ See [references/rules.md](references/rules.md) for detailed examples.
 | Atom definitions | `atom<` or `atom(`                                                   |
 | Derived atoms    | `derived((`                                                          |
 | Effects          | `effect((`                                                           |
-| Modules          | `define(() =>`                                                       |
+| Stores           | `define(() =>` in `*.store.ts` files                                 |
+| Services         | `define(() =>` in `*.service.ts` files                               |
 | Atom usages      | `read(`, `ready(`, `all([`, `any({`, `race({`, `settled([`, `state(` |
-| Mutations        | Find the module that owns the atom, look at its return statement     |
+| Mutations        | Find the store that owns the atom, look at its return statement      |
+| Hook setup       | `onCreateHook.override`, `onErrorHook.override`                      |
 
 ## Tracing "Why doesn't X update?"
 
@@ -148,12 +236,36 @@ See [references/rules.md](references/rules.md) for detailed examples.
 | ready() never resolves | Value never becomes non-null | Check data flow                 |
 | Stale closure          | Reading atom in callback     | Use `.get()` in callbacks       |
 | Suspense not working   | try/catch around read()      | Use `safe()` instead            |
+| Hook not firing        | Direct `.current` assignment | Use `.override()` instead       |
+| Missing hook calls     | Hook chain broken            | Always call `prev?.(info)`      |
 
 ## Naming Conventions
 
+| Type        | Purpose              | Variable Name | File Name         | Contains                |
+| ----------- | -------------------- | ------------- | ----------------- | ----------------------- |
+| **Service** | Stateless logic, I/O | `authService` | `auth.service.ts` | Pure functions only     |
+| **Store**   | Reactive state       | `authStore`   | `auth.store.ts`   | Atoms, derived, effects |
+
 - **Atoms**: `$` suffix → `count$`, `user$`
-- **Modules**: camelCase, `Module` suffix → `authModule`, `articleModule`
+- **Services**: camelCase, `Service` suffix → `authService`, `cryptoService` (NO atoms)
+- **Stores**: camelCase, `Store` suffix → `authStore`, `todosStore` (HAS atoms)
 - **Actions**: verb-led → `navigateTo`, `invalidate`, `refresh`
+
+### File Structure
+
+```
+src/
+├── services/           # Stateless (no atoms)
+│   ├── auth/
+│   │   └── auth.service.ts      # authService
+│   └── crypto/
+│       └── crypto.service.ts    # cryptoService
+│
+└── stores/             # Stateful (has atoms)
+    ├── auth.store.ts            # authStore
+    ├── todos.store.ts           # todosStore
+    └── sync.store.ts            # syncStore
+```
 
 ## References
 
@@ -162,4 +274,6 @@ See [references/rules.md](references/rules.md) for detailed examples.
 - [React Integration](references/react-integration.md) - useSelector, rx, useAction
 - [Error Handling](references/error-handling.md) - safe() vs try/catch details
 - [Async Patterns](references/async-patterns.md) - all, any, race, settled
-- [Module Template](references/module-template.md) - JSDoc documentation templates
+- [Hooks](references/hooks.md) - onCreateHook, onErrorHook, middleware patterns
+- [Store Template](references/store-template.md) - JSDoc template for stores (stateful)
+- [Service Template](references/service-template.md) - JSDoc template for services (stateless)

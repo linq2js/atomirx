@@ -42,7 +42,13 @@ export type {
 } from "./core/types";
 
 export { onCreateHook } from "./core/onCreateHook";
-export type { AtomCreateInfo, ModuleCreateInfo } from "./core/onCreateHook";
+export type {
+  CreateInfo as CreateInfo,
+  ModuleCreateInfo,
+} from "./core/onCreateHook";
+
+export { onErrorHook } from "./core/onErrorHook";
+export type { ErrorInfo } from "./core/onErrorHook";
 
 export type {
   SelectContext,

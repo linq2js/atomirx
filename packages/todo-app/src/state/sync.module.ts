@@ -24,14 +24,19 @@
  * networkModule.isOnline$ change → auto-sync if online
  */
 
-import { atom, derived, define, effect } from "atomirx";
+import { atom, derived, define, effect, batch, readonly } from "atomirx";
 import { getStorageService } from "@/services/storage";
 import { networkModule } from "./network.module";
 
 /**
  * Sync status type.
  */
-export type SyncStatusType = "synced" | "pending" | "syncing" | "error" | "offline";
+export type SyncStatusType =
+  | "synced"
+  | "pending"
+  | "syncing"
+  | "error"
+  | "offline";
 
 /**
  * Sync error with details.
@@ -183,8 +188,11 @@ export const syncModule = define(() => {
     try {
       const meta = await storageService.getSyncMeta();
       if (meta) {
-        lastSyncAt$.set(meta.lastSyncAt);
-        pendingCount$.set(meta.pendingCount);
+        // Batch to trigger single notification
+        batch(() => {
+          lastSyncAt$.set(meta.lastSyncAt);
+          pendingCount$.set(meta.pendingCount);
+        });
       }
     } catch (err) {
       console.error("Failed to load sync meta:", err);
@@ -302,12 +310,14 @@ export const syncModule = define(() => {
         await storageService.clearOperations(successfulOps);
       }
 
-      // Update sync metadata
+      // Update sync metadata (batch to trigger single notification)
       const timestamp = Date.now();
       const remainingCount = failedOperations.length;
 
-      lastSyncAt$.set(timestamp);
-      pendingCount$.set(remainingCount);
+      batch(() => {
+        lastSyncAt$.set(timestamp);
+        pendingCount$.set(remainingCount);
+      });
       await storageService.updateSyncMeta({
         lastSyncAt: timestamp,
         pendingCount: remainingCount,
@@ -352,20 +362,24 @@ export const syncModule = define(() => {
    * Reset sync state (for logout).
    */
   function reset(): void {
-    isSyncing$.set(false);
-    lastSyncAt$.set(0);
-    pendingCount$.set(0);
-    syncError$.set(null);
+    batch(() => {
+      isSyncing$.set(false);
+      lastSyncAt$.set(0);
+      pendingCount$.set(0);
+      syncError$.set(null);
+    });
   }
 
   return {
-    // Read-only state
-    isSyncing$,
-    lastSyncAt$,
-    pendingCount$,
-    syncError$,
+    // Read-only state (prevents external mutations)
+    ...readonly({
+      isSyncing$,
+      lastSyncAt$,
+      pendingCount$,
+      syncError$,
+    }),
 
-    // Derived state
+    // Derived state (already read-only by nature)
     hasPendingChanges$,
     syncStatus$,
 

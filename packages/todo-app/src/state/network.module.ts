@@ -17,7 +17,7 @@
  * window.online/offline → effect → isOnline$ → UI
  */
 
-import { atom, define, effect } from "atomirx";
+import { atom, define, effect, readonly } from "atomirx";
 
 /**
  * Network state module.
@@ -73,15 +73,11 @@ export const networkModule = define(() => {
   });
 
   return {
-    // ─────────────────────────────────────────────────────────────
-    // Read-only state
-    // ─────────────────────────────────────────────────────────────
-    isOnline$,
+    // Read-only state (prevents external mutations)
+    ...readonly({ isOnline$ }),
 
-    // ─────────────────────────────────────────────────────────────
-    // setOnline(value) - Manually set online state
-    // ─────────────────────────────────────────────────────────────
-    // Used for testing or manual override
+    // Actions
+    // setOnline(value) - Manually set online state (for testing or manual override)
     setOnline: (value: boolean) => isOnline$.set(value),
   };
 });

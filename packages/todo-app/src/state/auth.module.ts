@@ -27,7 +27,7 @@
  * logout → user$ = null, encryptionKey$ = null → storage cleared
  */
 
-import { atom, derived, define } from "atomirx";
+import { atom, derived, define, batch, readonly } from "atomirx";
 import { getAuthService } from "@/services/auth";
 import { getCryptoService } from "@/services/crypto";
 import { getStorageService } from "@/services/storage";
@@ -250,9 +250,11 @@ export const authModule = define(() => {
       storageService.initialize(key);
       console.log("[Auth] Storage initialized with restored key");
 
-      // Set state
-      user$.set(session.user);
-      encryptionKey$.set(key);
+      // Set state (batch to trigger single notification)
+      batch(() => {
+        user$.set(session.user);
+        encryptionKey$.set(key);
+      });
       console.log(
         "[Auth] Session restored successfully for user:",
         session.user.username
@@ -331,14 +333,16 @@ export const authModule = define(() => {
         hasPRF: !!result.prfOutput,
       });
 
-      // Set user state
+      // Set user state (batch to trigger single notification)
       const user: User = {
         username,
         credentialId: result.credentialId,
         hasPRF: !!result.prfOutput,
       };
-      user$.set(user);
-      encryptionKey$.set(key);
+      batch(() => {
+        user$.set(user);
+        encryptionKey$.set(key);
+      });
 
       // Save session for persistence across refresh
       await saveSession(user, key);
@@ -420,14 +424,16 @@ export const authModule = define(() => {
       // Update last used timestamp
       await storageService.updateCredentialLastUsed(result.credentialId);
 
-      // Set user state
+      // Set user state (batch to trigger single notification)
       const user: User = {
         username: usedCredential.displayName,
         credentialId: result.credentialId,
         hasPRF: !!result.prfOutput,
       };
-      user$.set(user);
-      encryptionKey$.set(key);
+      batch(() => {
+        user$.set(user);
+        encryptionKey$.set(key);
+      });
 
       // Save session for persistence across refresh
       await saveSession(user, key);
@@ -452,9 +458,11 @@ export const authModule = define(() => {
    * Does NOT clear stored data.
    */
   function logout(): void {
-    user$.set(null);
-    encryptionKey$.set(null);
-    authError$.set(null);
+    batch(() => {
+      user$.set(null);
+      encryptionKey$.set(null);
+      authError$.set(null);
+    });
     clearSession();
   }
 
@@ -479,14 +487,16 @@ export const authModule = define(() => {
   }
 
   return {
-    // Read-only state
-    user$,
-    authSupport$,
-    encryptionKey$,
-    authError$,
-    isLoading$,
+    // Read-only state (prevents external mutations)
+    ...readonly({
+      user$,
+      authSupport$,
+      encryptionKey$,
+      authError$,
+      isLoading$,
+    }),
 
-    // Derived state
+    // Derived state (already read-only by nature)
     isAuthenticated$,
     canUsePRF$,
 

@@ -1,3 +1,4 @@
+import { Effect } from "./effect";
 import { hook } from "./hook";
 import {
   MutableAtomMeta,
@@ -5,12 +6,13 @@ import {
   MutableAtom,
   DerivedAtom,
   ModuleMeta,
+  EffectMeta,
 } from "./types";
 
 /**
  * Information provided when a mutable atom is created.
  */
-export interface MutableAtomCreateInfo {
+export interface MutableCreateInfo {
   /** Discriminator for mutable atoms */
   type: "mutable";
   /** Optional key from atom options (for debugging/devtools) */
@@ -24,7 +26,7 @@ export interface MutableAtomCreateInfo {
 /**
  * Information provided when a derived atom is created.
  */
-export interface DerivedAtomCreateInfo {
+export interface DerivedCreateInfo {
   /** Discriminator for derived atoms */
   type: "derived";
   /** Optional key from derived options (for debugging/devtools) */
@@ -36,9 +38,26 @@ export interface DerivedAtomCreateInfo {
 }
 
 /**
+ * Information provided when an effect is created.
+ */
+export interface EffectCreateInfo {
+  /** Discriminator for effects */
+  type: "effect";
+  /** Optional key from effect options (for debugging/devtools) */
+  key: string | undefined;
+  /** Optional metadata from effect options */
+  meta: EffectMeta | undefined;
+  /** The created effect instance */
+  effect: Effect;
+}
+
+/**
  * Union type for atom creation info (mutable or derived).
  */
-export type AtomCreateInfo = MutableAtomCreateInfo | DerivedAtomCreateInfo;
+export type CreateInfo =
+  | MutableCreateInfo
+  | DerivedCreateInfo
+  | EffectCreateInfo;
 
 /**
  * Information provided when a module (via define()) is created.
@@ -62,11 +81,15 @@ export interface ModuleCreateInfo {
  * - **Debugging** - log atom creation for troubleshooting
  * - **Testing** - verify expected atoms are created
  *
+ * **IMPORTANT**: Always use `.override()` to preserve the hook chain.
+ * Direct assignment to `.current` will break existing handlers.
+ *
  * @example Basic logging
  * ```ts
- * onCreateHook.current = (info) => {
+ * onCreateHook.override((prev) => (info) => {
+ *   prev?.(info); // call existing handlers first
  *   console.log(`Created ${info.type}: ${info.key ?? "anonymous"}`);
- * };
+ * });
  * ```
  *
  * @example DevTools integration
@@ -74,19 +97,20 @@ export interface ModuleCreateInfo {
  * const atoms = new Map();
  * const modules = new Map();
  *
- * onCreateHook.current = (info) => {
+ * onCreateHook.override((prev) => (info) => {
+ *   prev?.(info); // preserve chain
  *   if (info.type === "module") {
  *     modules.set(info.key, info.module);
  *   } else {
  *     atoms.set(info.key, info.atom);
  *   }
- * };
+ * });
  * ```
  *
- * @example Cleanup (disable hook)
+ * @example Reset to default (disable all handlers)
  * ```ts
- * onCreateHook.current = undefined;
+ * onCreateHook.reset();
  * ```
  */
 export const onCreateHook =
-  hook<(info: AtomCreateInfo | ModuleCreateInfo) => void>();
+  hook<(info: CreateInfo | ModuleCreateInfo) => void>();

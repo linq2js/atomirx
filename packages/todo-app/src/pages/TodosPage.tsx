@@ -43,9 +43,12 @@ export function TodosPage() {
   const sync = syncModule();
   const network = networkModule();
 
-  const user = useSelector(auth.user$);
-  const isOnline = useSelector(network.isOnline$);
-  const todosError = useSelector(todos.error$);
+  // Group multiple atom reads into single useSelector (reduces subscriptions)
+  const { user, isOnline, todosError } = useSelector(({ read }) => ({
+    user: read(auth.user$),
+    isOnline: read(network.isOnline$),
+    todosError: read(todos.error$),
+  }));
 
   // Load todos and sync meta on mount
   useEffect(() => {
@@ -207,8 +210,11 @@ export function TodosPage() {
  */
 function SyncButton({ onSync }: { onSync: () => Promise<void> }) {
   const sync = syncModule();
-  const syncStatus = useSelector(sync.syncStatus$);
-  const isSyncing = useSelector(sync.isSyncing$);
+  // Group multiple atom reads into single useSelector
+  const { syncStatus, isSyncing } = useSelector(({ read }) => ({
+    syncStatus: read(sync.syncStatus$),
+    isSyncing: read(sync.isSyncing$),
+  }));
 
   return (
     <Button
@@ -290,9 +296,12 @@ function FilterBar() {
  */
 function TodoList() {
   const todos = todosModule();
-  const filteredTodos = useSelector(todos.filteredTodos$);
-  const isLoading = useSelector(todos.isLoading$);
-  const filter = useSelector(todos.filter$);
+  // Group multiple atom reads into single useSelector
+  const { filteredTodos, isLoading, filter } = useSelector(({ read }) => ({
+    filteredTodos: read(todos.filteredTodos$),
+    isLoading: read(todos.isLoading$),
+    filter: read(todos.filter$),
+  }));
 
   const handleToggle = useCallback(
     async (id: string) => {
@@ -369,10 +378,15 @@ function TodoStats() {
   const todos = todosModule();
   const sync = syncModule();
 
-  const activeCount = useSelector(todos.activeTodoCount$);
-  const completedCount = useSelector(todos.completedTodoCount$);
-  const pendingCount = useSelector(sync.pendingCount$);
-  const hasTodos = useSelector(todos.hasTodos$);
+  // Group multiple atom reads into single useSelector
+  const { activeCount, completedCount, pendingCount, hasTodos } = useSelector(
+    ({ read }) => ({
+      activeCount: read(todos.activeTodoCount$),
+      completedCount: read(todos.completedTodoCount$),
+      pendingCount: read(sync.pendingCount$),
+      hasTodos: read(todos.hasTodos$),
+    })
+  );
 
   if (!hasTodos) return null;
 

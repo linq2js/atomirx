@@ -47,9 +47,8 @@ export interface Pipeable {
 /**
  * Optional metadata for atoms.
  */
-export interface AtomMeta {
+export interface AtomMeta extends AtomirxMeta {
   key?: string;
-  [key: string]: unknown;
 }
 
 /**
@@ -278,13 +277,64 @@ export interface DerivedOptions<T> {
   meta?: DerivedAtomMeta;
   /** Equality strategy for change detection (default: "strict") */
   equals?: Equality<T>;
+  /**
+   * Callback invoked when the derived computation throws an error.
+   * This is called for actual errors, NOT for Promise throws (Suspense).
+   *
+   * @param error - The error thrown during computation
+   *
+   * @example
+   * ```ts
+   * const data$ = derived(
+   *   ({ read }) => {
+   *     const raw = read(source$);
+   *     return JSON.parse(raw); // May throw SyntaxError
+   *   },
+   *   {
+   *     onError: (error) => {
+   *       console.error('Derived computation failed:', error);
+   *       reportToSentry(error);
+   *     }
+   *   }
+   * );
+   * ```
+   */
+  onError?: (error: unknown) => void;
 }
 
 /**
  * Configuration options for effects.
  */
 export interface EffectOptions {
-  /** Optional key for debugging */
+  meta?: EffectMeta;
+  /**
+   * Callback invoked when the effect computation throws an error.
+   * This is called for actual errors, NOT for Promise throws (Suspense).
+   *
+   * @param error - The error thrown during effect execution
+   *
+   * @example
+   * ```ts
+   * effect(
+   *   ({ read }) => {
+   *     const data = read(source$);
+   *     riskyOperation(data); // May throw
+   *   },
+   *   {
+   *     onError: (error) => {
+   *       console.error('Effect failed:', error);
+   *       showErrorNotification(error);
+   *     }
+   *   }
+   * );
+   * ```
+   */
+  onError?: (error: unknown) => void;
+}
+
+export interface AtomirxMeta {}
+
+export interface EffectMeta extends AtomirxMeta {
   key?: string;
 }
 

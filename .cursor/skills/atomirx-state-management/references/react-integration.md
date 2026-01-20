@@ -128,31 +128,49 @@ function Stats() {
 
 ## useAction Hook
 
-Handle async operations with loading/error states:
+Handle async operations with loading/error states. Returns a callable action with state properties attached.
 
 ```tsx
 import { useAction } from "atomirx/react";
 
 function SaveButton() {
-  const [save, { loading, error }] = useAction(async () => {
+  const save = useAction(async () => {
     await saveData(data$.get());
   });
 
   return (
-    <button onClick={save} disabled={loading}>
-      {loading ? "Saving..." : "Save"}
+    <button onClick={save} disabled={save.loading}>
+      {save.loading ? "Saving..." : "Save"}
     </button>
   );
 }
 ```
 
-### Eager Execution
+### Action Properties
 
 ```tsx
-// Execute immediately on mount
-const [_, { loading, data }] = useAction(async () => fetchInitialData(), {
-  eager: true,
+const action = useAction(async () => fetchData());
+
+// Call like a function
+await action();
+
+// Access state via properties
+action.status; // "idle" | "loading" | "success" | "error"
+action.loading; // boolean (shorthand for status === "loading")
+action.result; // TResult | undefined
+action.error; // unknown
+action.abort(); // cancel current request
+action.reset(); // reset to idle state
+```
+
+### Auto-execute on Mount
+
+```tsx
+// Execute immediately on mount with lazy: false
+const fetchData = useAction(async () => api.getData(), {
+  lazy: false,
 });
+// fetchData.loading is true immediately
 ```
 
 ### Auto Re-dispatch with Atom Dependencies
@@ -161,7 +179,7 @@ When using `lazy: false` and you want the action to re-dispatch when atoms chang
 
 ```tsx
 // ✅ DO: Pass atoms to deps, use .get() inside action
-const [loadData, { loading, data }] = useAction(
+const loadData = useAction(
   async () => {
     const filter = filterAtom$.get();
     const config = await configAtom$.get(); // await if atom contains Promise
@@ -170,16 +188,17 @@ const [loadData, { loading, data }] = useAction(
   { deps: [filterAtom$, configAtom$], lazy: false }
 );
 // Action auto re-dispatches when filterAtom$ or configAtom$ changes
+// Access: loadData.loading, loadData.result, loadData.error
 
 // ❌ DON'T: Use useSelector + pass values to deps
 const { filter, config } = useSelector(({ read }) => ({
   filter: read(filterAtom$),
   config: read(configAtom$), // If async, component suspends HERE before useAction runs
 }));
-const [loadData, { loading, data }] = useAction(
-  async () => fetchData(filter, config),
-  { deps: [filter, config], lazy: false }
-);
+const loadData = useAction(async () => fetchData(filter, config), {
+  deps: [filter, config],
+  lazy: false,
+});
 ```
 
 **Why pass atoms to deps:**

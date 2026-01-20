@@ -8,7 +8,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSelector } from "atomirx/react";
-import { Fingerprint, KeyRound, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
+import {
+  Fingerprint,
+  KeyRound,
+  ShieldCheck,
+  AlertCircle,
+  Loader2,
+} from "lucide-react";
 import { authModule } from "@/state";
 import { Button, Input } from "@/components/ui";
 import { PasskeyPrompt } from "@/components/auth/PasskeyPrompt";
@@ -32,9 +38,12 @@ type AuthView = "checking" | "register" | "login" | "unsupported";
  */
 export function AuthPage() {
   const auth = authModule();
-  const authSupport = useSelector(auth.authSupport$);
-  const authError = useSelector(auth.authError$);
-  const isLoading = useSelector(auth.isLoading$);
+  // Group multiple atom reads into single useSelector
+  const { authSupport, authError, isLoading } = useSelector(({ read }) => ({
+    authSupport: read(auth.authSupport$),
+    authError: read(auth.authError$),
+    isLoading: read(auth.isLoading$),
+  }));
 
   const [view, setView] = useState<AuthView>("checking");
   const [username, setUsername] = useState("");
@@ -128,8 +137,8 @@ export function AuthPage() {
           </h1>
           <p className="text-gray-600 mb-6">
             This app requires passkey authentication, which is not supported in
-            your current browser. Please use a modern browser like Chrome, Safari,
-            or Edge.
+            your current browser. Please use a modern browser like Chrome,
+            Safari, or Edge.
           </p>
           <div className="text-sm text-gray-500">
             <p>Requirements:</p>

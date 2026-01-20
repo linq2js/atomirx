@@ -18,7 +18,9 @@
     "types": ["vitest/globals", "@testing-library/jest-dom"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "atomirx": ["../atomirx/src/index.ts"],
+      "atomirx/react": ["../atomirx/src/react/index.ts"]
     }
   },
   "include": ["src", "vitest.setup.ts"],

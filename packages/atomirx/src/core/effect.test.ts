@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { atom } from "./atom";
-import { effect } from "./effect";
+import { derived } from "./derived";
+import { effect, Effect } from "./effect";
+import { onCreateHook } from "./onCreateHook";
 
 describe("effect", () => {
   describe("basic functionality", () => {
@@ -81,7 +83,7 @@ describe("effect", () => {
       const cleanupFn = vi.fn();
       const count$ = atom(0);
 
-      const dispose = effect(({ read, onCleanup }) => {
+      const e = effect(({ read, onCleanup }) => {
         read(count$);
         onCleanup(cleanupFn);
       });
@@ -89,7 +91,7 @@ describe("effect", () => {
       await new Promise((r) => setTimeout(r, 0));
       expect(cleanupFn).not.toHaveBeenCalled();
 
-      dispose();
+      e.dispose();
       expect(cleanupFn).toHaveBeenCalledTimes(1);
     });
   });
@@ -99,14 +101,14 @@ describe("effect", () => {
       const effectFn = vi.fn();
       const count$ = atom(0);
 
-      const dispose = effect(({ read }) => {
+      const e = effect(({ read }) => {
         effectFn(read(count$));
       });
 
       await new Promise((r) => setTimeout(r, 0));
       expect(effectFn).toHaveBeenCalledTimes(1);
 
-      dispose();
+      e.dispose();
 
       count$.set(5);
       await new Promise((r) => setTimeout(r, 10));
@@ -118,17 +120,17 @@ describe("effect", () => {
       const cleanupFn = vi.fn();
       const count$ = atom(0);
 
-      const dispose = effect(({ read, onCleanup }) => {
+      const e = effect(({ read, onCleanup }) => {
         read(count$);
         onCleanup(cleanupFn);
       });
 
       await new Promise((r) => setTimeout(r, 0));
 
-      dispose();
+      e.dispose();
       expect(cleanupFn).toHaveBeenCalledTimes(1);
 
-      dispose(); // Second call should be no-op
+      e.dispose(); // Second call should be no-op
       expect(cleanupFn).toHaveBeenCalledTimes(1);
     });
   });
@@ -411,6 +413,393 @@ describe("effect", () => {
       currentUser$.set(null);
       await new Promise((r) => setTimeout(r, 10));
       expect(mockStorage["prefs:u1"]).toBeUndefined();
+    });
+  });
+
+  describe("Effect return type", () => {
+    it("should return Effect object with dispose function", () => {
+      const e = effect(() => {});
+
+      expect(e).toHaveProperty("dispose");
+      expect(typeof e.dispose).toBe("function");
+    });
+
+    it("should return Effect object with meta when provided", () => {
+      const e = effect(() => {}, {
+        meta: { key: "myEffect" },
+      });
+
+      expect(e.meta).toEqual({ key: "myEffect" });
+    });
+
+    it("should return Effect object with undefined meta when not provided", () => {
+      const e = effect(() => {});
+
+      expect(e.meta).toBeUndefined();
+    });
+
+    it("should return Effect object that satisfies Effect interface", () => {
+      const e: Effect = effect(() => {}, {
+        meta: { key: "typedEffect" },
+      });
+
+      // Type check - this should compile
+      const dispose: VoidFunction = e.dispose;
+      expect(dispose).toBeDefined();
+    });
+  });
+
+  describe("onCreateHook", () => {
+    const originalOnCreateHook = onCreateHook.current;
+
+    beforeEach(() => {
+      onCreateHook.current = undefined;
+    });
+
+    afterEach(() => {
+      onCreateHook.current = originalOnCreateHook;
+    });
+
+    it("should call onCreateHook when effect is created", () => {
+      const hookFn = vi.fn();
+      onCreateHook.current = hookFn;
+
+      const e = effect(() => {}, { meta: { key: "testEffect" } });
+
+      // effect() internally creates a derived atom, so hook is called twice:
+      // 1. for the internal derived atom
+      // 2. for the effect itself
+      const effectCall = hookFn.mock.calls.find(
+        (call) => call[0].type === "effect"
+      );
+      expect(effectCall).toBeDefined();
+      expect(effectCall![0]).toEqual({
+        type: "effect",
+        key: "testEffect",
+        meta: { key: "testEffect" },
+        effect: e,
+      });
+    });
+
+    it("should call onCreateHook with undefined key when not provided", () => {
+      const hookFn = vi.fn();
+      onCreateHook.current = hookFn;
+
+      const e = effect(() => {});
+
+      const effectCall = hookFn.mock.calls.find(
+        (call) => call[0].type === "effect"
+      );
+      expect(effectCall).toBeDefined();
+      expect(effectCall![0]).toEqual({
+        type: "effect",
+        key: undefined,
+        meta: undefined,
+        effect: e,
+      });
+    });
+
+    it("should not throw when onCreateHook is undefined", () => {
+      onCreateHook.current = undefined;
+
+      expect(() => effect(() => {})).not.toThrow();
+    });
+
+    it("should call onCreateHook with effect instance that has working dispose", async () => {
+      const hookFn = vi.fn();
+      onCreateHook.current = hookFn;
+
+      const cleanupFn = vi.fn();
+      const count$ = atom(0);
+
+      effect(({ read, onCleanup }) => {
+        read(count$);
+        onCleanup(cleanupFn);
+      });
+
+      await new Promise((r) => setTimeout(r, 0));
+
+      // Get the effect from the hook call (filter out the internal derived atom call)
+      const effectCall = hookFn.mock.calls.find(
+        (call) => call[0].type === "effect"
+      );
+      expect(effectCall).toBeDefined();
+      const capturedEffect = effectCall![0].effect as Effect;
+
+      // Dispose should work
+      capturedEffect.dispose();
+      expect(cleanupFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should pass correct type discriminator for effects", () => {
+      const hookFn = vi.fn();
+      onCreateHook.current = hookFn;
+
+      effect(() => {});
+
+      // Find the effect call (not the internal derived call)
+      const effectCall = hookFn.mock.calls.find(
+        (call) => call[0].type === "effect"
+      );
+      expect(effectCall).toBeDefined();
+      expect(effectCall![0].type).toBe("effect");
+    });
+
+    it("should allow tracking effects in devtools-like scenario", () => {
+      const effects = new Map<string, Effect>();
+      onCreateHook.current = (info) => {
+        if (info.type === "effect" && info.key) {
+          effects.set(info.key, info.effect);
+        }
+      };
+
+      const e1 = effect(() => {}, { meta: { key: "effect1" } });
+      const e2 = effect(() => {}, { meta: { key: "effect2" } });
+      effect(() => {}); // Anonymous - should not be tracked
+
+      expect(effects.size).toBe(2);
+      expect(effects.get("effect1")).toBe(e1);
+      expect(effects.get("effect2")).toBe(e2);
+    });
+
+    it("should support disposing all tracked effects", async () => {
+      const effects: Effect[] = [];
+      onCreateHook.current = (info) => {
+        if (info.type === "effect") {
+          effects.push(info.effect);
+        }
+      };
+
+      const cleanupFns = [vi.fn(), vi.fn(), vi.fn()];
+      const count$ = atom(0);
+
+      cleanupFns.forEach((cleanup) => {
+        effect(({ read, onCleanup }) => {
+          read(count$);
+          onCleanup(cleanup);
+        });
+      });
+
+      await new Promise((r) => setTimeout(r, 0));
+
+      // Dispose all tracked effects
+      effects.forEach((e) => e.dispose());
+
+      cleanupFns.forEach((cleanup) => {
+        expect(cleanup).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  describe("onError callback", () => {
+    it("should call onError when effect throws synchronously", async () => {
+      const onError = vi.fn();
+      const source$ = atom(0);
+
+      effect(
+        ({ read }) => {
+          const val = read(source$);
+          if (val > 0) {
+            throw new Error("Effect error");
+          }
+        },
+        { onError }
+      );
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(onError).not.toHaveBeenCalled();
+
+      // Trigger error
+      source$.set(5);
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect((onError.mock.calls[0][0] as Error).message).toBe("Effect error");
+    });
+
+    it("should call onError when async atom dependency rejects", async () => {
+      const onError = vi.fn();
+
+      // Create an atom with a rejecting Promise
+      const asyncSource$ = atom(Promise.reject(new Error("Async error")));
+
+      effect(
+        ({ read }) => {
+          read(asyncSource$);
+        },
+        { onError }
+      );
+
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect((onError.mock.calls[0][0] as Error).message).toBe("Async error");
+    });
+
+    it("should call onError on each recomputation that throws", async () => {
+      const onError = vi.fn();
+      const source$ = atom(0);
+
+      effect(
+        ({ read }) => {
+          const val = read(source$);
+          if (val > 0) {
+            throw new Error(`Error for ${val}`);
+          }
+        },
+        { onError }
+      );
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(onError).not.toHaveBeenCalled();
+
+      // First error
+      source$.set(1);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(onError).toHaveBeenCalledTimes(1);
+
+      // Second error
+      source$.set(2);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(onError).toHaveBeenCalledTimes(2);
+      expect((onError.mock.calls[1][0] as Error).message).toBe("Error for 2");
+    });
+
+    it("should not call onError when effect succeeds", async () => {
+      const onError = vi.fn();
+      const effectFn = vi.fn();
+      const source$ = atom(5);
+
+      effect(
+        ({ read }) => {
+          effectFn(read(source$));
+        },
+        { onError }
+      );
+
+      await new Promise((r) => setTimeout(r, 0));
+      source$.set(10);
+      await new Promise((r) => setTimeout(r, 10));
+      source$.set(15);
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(effectFn).toHaveBeenCalledTimes(3);
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("should not call onError for Promise throws (Suspense)", async () => {
+      const onError = vi.fn();
+      const effectFn = vi.fn();
+      let resolvePromise: (value: number) => void;
+      const asyncSource$ = atom(
+        new Promise<number>((resolve) => {
+          resolvePromise = resolve;
+        })
+      );
+
+      effect(
+        ({ read }) => {
+          effectFn(read(asyncSource$));
+        },
+        { onError }
+      );
+
+      // Still loading - onError should NOT be called
+      await new Promise((r) => setTimeout(r, 10));
+      expect(onError).not.toHaveBeenCalled();
+      expect(effectFn).not.toHaveBeenCalled();
+
+      // Resolve successfully
+      resolvePromise!(5);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(effectFn).toHaveBeenCalledWith(5);
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("should work without onError callback", async () => {
+      const source$ = atom(0);
+
+      // Should not throw even without onError
+      effect(({ read }) => {
+        const val = read(source$);
+        if (val > 0) {
+          throw new Error("Error");
+        }
+      });
+
+      await new Promise((r) => setTimeout(r, 0));
+      source$.set(5);
+      await new Promise((r) => setTimeout(r, 10));
+      // No crash - test passes
+    });
+
+    it("should allow combining onError with safe() for different error handling strategies", async () => {
+      const onError = vi.fn();
+      const handledErrors: unknown[] = [];
+      const source$ = atom(0);
+
+      effect(
+        ({ read, safe }) => {
+          const val = read(source$);
+
+          // Use safe() for recoverable errors
+          const [err] = safe(() => {
+            if (val === 1) {
+              throw new Error("Handled error");
+            }
+            return val;
+          });
+
+          if (err) {
+            handledErrors.push(err);
+            return;
+          }
+
+          // Unhandled errors go to onError
+          if (val === 2) {
+            throw new Error("Unhandled error");
+          }
+        },
+        { onError }
+      );
+
+      await new Promise((r) => setTimeout(r, 0));
+
+      // Handled error via safe()
+      source$.set(1);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(handledErrors.length).toBe(1);
+      expect(onError).not.toHaveBeenCalled();
+
+      // Unhandled error goes to onError
+      source$.set(2);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect((onError.mock.calls[0][0] as Error).message).toBe(
+        "Unhandled error"
+      );
+    });
+
+    it("should pass onError to internal derived atom", async () => {
+      // This test verifies the implementation detail that effect passes
+      // onError to the internal derived atom
+      const onError = vi.fn();
+      const source$ = atom(0);
+
+      effect(
+        ({ read }) => {
+          const val = read(source$);
+          if (val > 0) throw new Error("Test");
+        },
+        { onError }
+      );
+
+      await new Promise((r) => setTimeout(r, 0));
+      source$.set(1);
+      await new Promise((r) => setTimeout(r, 10));
+
+      // onError was called, proving it was passed to derived
+      expect(onError).toHaveBeenCalledTimes(1);
     });
   });
 });

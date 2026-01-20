@@ -30,7 +30,7 @@
  * setFilter(f) → filter$ → filteredTodos$ → UI
  */
 
-import { atom, derived, define, batch } from "atomirx";
+import { atom, derived, define, batch, readonly } from "atomirx";
 import { getStorageService } from "@/services/storage";
 import type { Todo, CreateTodoInput } from "@/services/storage/storage.types";
 
@@ -506,13 +506,15 @@ export const todosModule = define(() => {
   }
 
   return {
-    // Read-only state
-    todos$,
-    filter$,
-    isLoading$,
-    error$,
+    // Read-only state (prevents external mutations)
+    ...readonly({
+      todos$,
+      filter$,
+      isLoading$,
+      error$,
+    }),
 
-    // Derived state
+    // Derived state (already read-only by nature)
     filteredTodos$,
     activeTodoCount$,
     completedTodoCount$,

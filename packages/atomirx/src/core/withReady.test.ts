@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { withReady } from "./withReady";
 import { atom } from "./atom";
-import { select, SelectContext } from "./select";
-
+import { select } from "./select";
 describe("withReady", () => {
   describe("basic functionality", () => {
     it("should add ready method to context", () => {
@@ -251,7 +250,7 @@ describe("withReady", () => {
 
       // Wait for the promise .then() handlers to run and update cache
       await resolvedPromise;
-      await new Promise((r) => queueMicrotask(r));
+      await new Promise<void>((r) => queueMicrotask(() => r()));
 
       // Second call - promise should now be fulfilled in cache
       const result = select((context) => {
@@ -279,8 +278,8 @@ describe("withReady", () => {
       });
 
       // Wait for the promise rejection handlers to run
-      await new Promise((r) => queueMicrotask(r));
-      await new Promise((r) => queueMicrotask(r));
+      await new Promise<void>((r) => queueMicrotask(() => r()));
+      await new Promise<void>((r) => queueMicrotask(() => r()));
 
       // Second call - promise should now be rejected in cache
       const result = select((context) => {
@@ -305,7 +304,7 @@ describe("withReady", () => {
 
       // Wait for the promise to be tracked as fulfilled
       await resolvedToNull;
-      await new Promise((r) => queueMicrotask(r));
+      await new Promise<void>((r) => queueMicrotask(() => r()));
 
       // Second call - promise should now be fulfilled in cache
       const result = select((context) => {
@@ -331,7 +330,7 @@ describe("withReady", () => {
 
       // Wait for the promise to be tracked as fulfilled
       await resolvedToUndefined;
-      await new Promise((r) => queueMicrotask(r));
+      await new Promise<void>((r) => queueMicrotask(() => r()));
 
       // Second call - promise should now be fulfilled in cache
       const result = select((context) => {

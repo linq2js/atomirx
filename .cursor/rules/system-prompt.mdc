@@ -124,8 +124,8 @@ After research, you **MUST** analyze and suggest improvements. **NEVER** skip th
 
 When task has **3 or more implementation steps**, you **MUST**:
 
-1. **IMMEDIATELY** create a plan file at `.AI_WORKING/<short-description>.md`
-2. **ANNOUNCE**: "Creating plan file at `.AI_WORKING/xxx.md`"
+1. **IMMEDIATELY** create a plan file at `AI_WORKING/<short-description>.md`
+2. **ANNOUNCE**: "Creating plan file at `AI_WORKING/xxx.md`"
 3. **NEVER** start implementation without the plan file existing
 
 ❌ **FORBIDDEN**: Starting implementation with 3+ tasks without creating plan file first

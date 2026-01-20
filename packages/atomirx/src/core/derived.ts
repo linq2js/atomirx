@@ -1,6 +1,7 @@
-import { onCreateHook } from "./onCreateHook";
+import { CreateInfo, DerivedCreateInfo, onCreateHook } from "./onCreateHook";
 import { emitter } from "./emitter";
 import { resolveEquality } from "./equality";
+import { onErrorHook } from "./onErrorHook";
 import { scheduleNotifyHook } from "./scheduleNotifyHook";
 import { ReactiveSelector, select, SelectContext } from "./select";
 import {
@@ -13,6 +14,19 @@ import {
   SYMBOL_DERIVED,
 } from "./types";
 import { withReady, WithReadySelectContext } from "./withReady";
+
+/**
+ * Internal options for derived atoms.
+ * These are not part of the public API.
+ * @internal
+ */
+export interface DerivedInternalOptions {
+  /**
+   * Override the error source for onErrorHook.
+   * Used by effect() to attribute errors to the effect instead of the internal derived.
+   */
+  _errorSource?: CreateInfo;
+}
 
 /**
  * Context object passed to derived atom selector functions.
@@ -147,19 +161,19 @@ export interface DerivedContext extends SelectContext, WithReadySelectContext {}
 // Overload: Without fallback - staleValue is T | undefined
 export function derived<T>(
   fn: ReactiveSelector<T, DerivedContext>,
-  options?: DerivedOptions<T>
+  options?: DerivedOptions<T> & DerivedInternalOptions
 ): DerivedAtom<T, false>;
 
 // Overload: With fallback - staleValue is guaranteed T
 export function derived<T>(
   fn: ReactiveSelector<T, DerivedContext>,
-  options: DerivedOptions<T> & { fallback: T }
+  options: DerivedOptions<T> & { fallback: T } & DerivedInternalOptions
 ): DerivedAtom<T, true>;
 
 // Implementation
 export function derived<T>(
   fn: ReactiveSelector<T, DerivedContext>,
-  options: DerivedOptions<T> & { fallback?: T } = {}
+  options: DerivedOptions<T> & { fallback?: T } & DerivedInternalOptions = {}
 ): DerivedAtom<T, boolean> {
   const changeEmitter = emitter();
   const eq = resolveEquality(options.equals as Equality<unknown>);
@@ -182,6 +196,23 @@ export function derived<T>(
 
   // Track current subscriptions (atom -> unsubscribe function)
   const subscriptions = new Map<Atom<unknown>, VoidFunction>();
+
+  // CreateInfo for this derived - stored for onErrorHook
+  // Will be set after derivedAtom is created
+  let createInfo: DerivedCreateInfo;
+
+  /**
+   * Handles errors by calling both the user's onError callback and the global onErrorHook.
+   */
+  const handleError = (error: unknown) => {
+    // Invoke user's error callback if provided
+    options.onError?.(error);
+
+    // Invoke global error hook
+    // Use _errorSource if provided (for effect), otherwise use this derived's createInfo
+    const source = options._errorSource ?? createInfo;
+    onErrorHook.current?.({ source, error });
+  };
 
   /**
    * Schedules notification to all subscribers.
@@ -235,6 +266,11 @@ export function derived<T>(
         resolvePromise = resolve;
         rejectPromise = reject;
       });
+      // Prevent unhandled rejection warnings - errors are accessible via:
+      // 1. onError callback (if provided)
+      // 2. state() returning { status: "error", error }
+      // 3. .get().catch() by consumers
+      currentPromise.catch(() => {});
     }
 
     // Run select to compute value and track dependencies
@@ -267,6 +303,8 @@ export function derived<T>(
             // Clear resolve/reject so next computation creates new promise
             resolvePromise = null;
             rejectPromise = null;
+            // Invoke error handlers
+            handleError(error);
             // Always notify when promise rejects - subscribers need to know
             // state changed from loading to error
             notify();
@@ -280,6 +318,8 @@ export function derived<T>(
         // Clear resolve/reject so next computation creates new promise
         resolvePromise = null;
         rejectPromise = null;
+        // Invoke error handlers
+        handleError(result.error);
         if (!silent) notify();
       } else {
         // Success - update lastResolved and resolve
@@ -395,13 +435,16 @@ export function derived<T>(
     },
   };
 
-  // Notify devtools/plugins of derived atom creation
-  onCreateHook.current?.({
+  // Store createInfo for use in onErrorHook
+  createInfo = {
     type: "derived",
     key: options.meta?.key,
     meta: options.meta,
     atom: derivedAtom,
-  });
+  };
+
+  // Notify devtools/plugins of derived atom creation
+  onCreateHook.current?.(createInfo);
 
   return derivedAtom;
 }

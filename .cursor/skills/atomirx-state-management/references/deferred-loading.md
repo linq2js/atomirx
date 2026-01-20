@@ -32,7 +32,7 @@ interface Article {
 }
 
 /**
- * @module articleModule
+ * @store articleStore
  *
  * @atoms
  * - currentArticleId$ - The ID from route params
@@ -51,7 +51,7 @@ interface Article {
  * navigateTo(id) → currentArticleId$ → [currentArticle$ suspends] + [effect fetches]
  *                                     → articleCache$ updated → currentArticle$ resolves
  */
-const articleModule = define(() => {
+const articleStore = define(() => {
   // Current article ID - set from route
   const currentArticleId$ = atom<string | undefined>(undefined);
 
@@ -145,7 +145,7 @@ const articleModule = define(() => {
 
 ```tsx
 function ArticlePage() {
-  const { navigateTo } = articleModule;
+  const { navigateTo } = articleStore();
   const { id } = useParams();
 
   useEffect(() => {
@@ -160,7 +160,7 @@ function ArticlePage() {
 }
 
 function ArticleContent() {
-  const article = useSelector(articleModule.currentArticle$);
+  const article = useSelector(articleStore().currentArticle$);
   return (
     <article>
       <h1>{article.title}</h1>

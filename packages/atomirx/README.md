@@ -1543,7 +1543,7 @@ The `onCreateHook` receives different info objects based on what's being created
 
 ```typescript
 // Mutable atom
-interface MutableAtomCreateInfo {
+interface MutableCreateInfo {
   type: "mutable";
   key: string | undefined;
   meta: AtomMeta | undefined;
@@ -1551,7 +1551,7 @@ interface MutableAtomCreateInfo {
 }
 
 // Derived atom
-interface DerivedAtomCreateInfo {
+interface DerivedCreateInfo {
   type: "derived";
   key: string | undefined;
   meta: AtomMeta | undefined;
