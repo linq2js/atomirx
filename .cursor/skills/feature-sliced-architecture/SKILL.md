@@ -425,25 +425,60 @@ features/auth/
 └── index.ts                          # Feature public API
 ```
 
-### Component File Structure (Headless Pattern)
+### Component File Structure: Simple vs Complex (Universal Rule)
 
-**When a domain component has significant logic → Extract to co-located hook file.**
+**This rule applies to ALL components: pages, comps, and ui.**
+
+**Simple component → Single file**
 
 ```
-features/articles/comps/
-├── articleList/
-│   ├── index.ts                    # Barrel export
-│   ├── articleList.tsx             # UI only (renders from hook data)
-│   ├── articleList.logic.ts        # useArticleListLogic hook
-│   └── articleList.styles.css      # Optional: styles if needed
+comps/
+├── avatar.tsx                    # Simple, no hook, no styles
+├── statusBadge.tsx               # Simple, just props → UI
+└── index.ts
+
+ui/primitives/
+├── button.tsx                    # Simple primitive
+├── label.tsx                     # Simple primitive
+└── index.ts
+```
+
+**Complex component → Folder**
+
+```
+comps/
+├── articleList/                  # Complex: has hook + styles
+│   ├── index.ts                  # export { ArticleList } from "./articleList"
+│   ├── articleList.tsx           # UI only (renders from hook data)
+│   ├── articleList.logic.ts      # useArticleListLogic hook
+│   └── articleList.styles.css    # Optional: styles
 │
-├── articleCard/
+├── avatar.tsx                    # Simple stays as file
+└── index.ts
+
+ui/composed/
+├── card/                         # Complex: has compound parts
 │   ├── index.ts
-│   ├── articleCard.tsx
-│   └── articleCard.logic.ts        # useArticleCardLogic hook
+│   ├── card.tsx
+│   ├── cardHeader.tsx
+│   ├── cardContent.tsx
+│   └── cardFooter.tsx
+│
+├── inputField.tsx                # Simple composed stays as file
+└── index.ts
 ```
 
-**Naming convention:**
+**When to use folder vs file:**
+
+| Condition                              | Structure               |
+| -------------------------------------- | ----------------------- |
+| Single file, no hook, no custom styles | `componentName.tsx`     |
+| Has logic hook (`.logic.ts`)           | `componentName/` folder |
+| Has custom styles (`.styles.css`)      | `componentName/` folder |
+| Has compound parts (Card + CardHeader) | `componentName/` folder |
+| Has private sub-components             | `componentName/` folder |
+
+**Naming convention (inside folder):**
 
 | File             | Contains                                  | Naming           |
 | ---------------- | ----------------------------------------- | ---------------- |
@@ -451,13 +486,15 @@ features/articles/comps/
 | `xxx.logic.ts`   | Component hook (state, handlers, effects) | `useXxxLogic()`  |
 | `xxx.styles.css` | CSS/SCSS styles (optional)                | -                |
 | `xxx.styles.ts`  | CSS-in-JS styles (optional)               | -                |
+| `xxxSubPart.tsx` | Private sub-component                     | Not exported     |
 
 **Rules:**
 
-1. `useXXXLogic` hook is **ONLY** for its component — **MUST NOT** be reused elsewhere
+1. `useXxxLogic` hook is **ONLY** for its component — **MUST NOT** be reused elsewhere
 2. If logic is reusable → move to `features/{domain}/hooks/` or `shared/hooks/`
 3. Component file should be **UI only** — render what the hook returns
 4. Hook returns everything the component needs: state, handlers, computed values
+5. Sub-components in folder are **PRIVATE** — not exported from `index.ts`
 
 ```typescript
 // ❌ BAD: Logic mixed in component
@@ -790,33 +827,31 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 ```
 ui/
 ├── primitives/
-│   ├── button/
-│   │   ├── index.ts
-│   │   └── button.tsx           # ≤ 20 lines JSX
-│   ├── input/
-│   │   ├── index.ts
-│   │   └── input.tsx
-│   ├── label/
-│   ├── badge/
-│   ├── icon/
-│   ├── spinner/
-│   ├── formMessage/
+│   ├── button.tsx                # Simple → file
+│   ├── input.tsx                 # Simple → file
+│   ├── label.tsx                 # Simple → file
+│   ├── badge.tsx                 # Simple → file
+│   ├── icon.tsx                  # Simple → file
+│   ├── spinner.tsx               # Simple → file
+│   ├── formMessage.tsx           # Simple → file
 │   └── index.ts                  # Re-export all primitives
 │
 ├── composed/
-│   ├── inputField/
-│   │   ├── index.ts
-│   │   └── inputField.tsx       # Composes Label + Input + FormMessage
-│   ├── searchBox/
-│   ├── card/
+│   ├── inputField.tsx            # Simple composed → file
+│   ├── searchBox.tsx             # Simple composed → file
+│   ├── card/                     # Complex (compound parts) → folder
 │   │   ├── index.ts              # Export all compound parts
 │   │   ├── card.tsx              # Root
 │   │   ├── cardHeader.tsx
 │   │   ├── cardTitle.tsx
 │   │   ├── cardContent.tsx
 │   │   └── cardFooter.tsx
-│   ├── dialog/
-│   ├── dropdown/
+│   ├── dialog/                   # Complex → folder
+│   │   ├── index.ts
+│   │   ├── dialog.tsx
+│   │   ├── dialogHeader.tsx
+│   │   └── dialogFooter.tsx
+│   ├── dropdown/                 # Complex → folder
 │   └── index.ts
 │
 └── index.ts                      # Re-export all
