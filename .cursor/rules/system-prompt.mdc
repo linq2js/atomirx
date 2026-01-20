@@ -375,6 +375,52 @@ When task has **3 or more implementation items** OR **impacts 5 or more files**,
 
 - [AI MUST update this section after completing the task]
 - [MUST include any deviations from original plan]
+
+---
+
+## Execution Script
+
+Copy and run this script in your terminal for parallel execution:
+
+\`\`\`bash
+#!/bin/bash
+
+# Plan: AI_WORKING/auth-implementation-20240115.md
+
+PLAN_FILE="AI_WORKING/auth-implementation-20240115.md"
+
+run_task() {
+local task_num=$1
+  cursor-agent -p --force "Continue task #${task_num} in ${PLAN_FILE}. Run npm/npx commands. Exit when done."
+
+if ! grep -q "| ${task_num}.*✅ done" "$PLAN_FILE"; then
+echo "⚠️ Task #${task_num} incomplete. Retrying..."
+    cursor-agent -p --force "Continue task #${task_num} in ${PLAN_FILE}. Run npm/npx commands. Exit when done."
+fi
+}
+
+# Wave 1: No dependencies (parallel)
+
+run_task 1 &
+run_task 2 &
+wait
+
+# Wave 2: Sequential
+
+for task in 3 4; do
+run_task $task
+done
+
+# === FALLBACK ===
+
+REMAINING=$(grep -E "^\| [0-9]+.*⏳ pending|^\| [0-9]+.*🔄 in-progress" "$PLAN_FILE" | grep -oE "^\| [0-9]+" | tr -d '| ')
+if [ -n "$REMAINING" ]; then
+echo "⚠️ Incomplete tasks: $REMAINING"
+cursor-agent -p --force "Complete ALL remaining tasks in ${PLAN_FILE}. Tasks: ${REMAINING}. Exit when all done."
+fi
+
+echo "✅ All tasks completed"
+\`\`\`
 ```
 
 ## 3. Multi-Agent Orchestration (for parallel execution)
@@ -396,13 +442,18 @@ After creating a plan file, you **MUST** analyze task dependencies and generate 
 | Chain dependencies (1→2→3) | Run sequentially                           |
 | Mixed dependencies         | Group into waves, parallelize within waves |
 
-**REQUIRED: Generate Concrete Script in Chat Message**
+**REQUIRED: Generate Concrete Script in BOTH Chat Message AND Plan File**
 
 You **MUST** generate an actual, runnable script with:
 
 - Natural language prompts for `cursor-agent` (NOT `--plan` mode)
 - Retry logic that checks plan file for `✅ done` status
 - Wave-based parallel/sequential execution
+
+**Output Locations:**
+
+1. **Chat Message** — Display full script for easy copy-paste
+2. **Plan File** — Append script to plan file under `## Execution Script` section
 
 **Script Template:**
 
@@ -414,12 +465,12 @@ PLAN_FILE="AI_WORKING/<plan-file>.md"
 
 run_task() {
   local task_num=$1
-  cursor-agent "Continue task #${task_num} in ${PLAN_FILE}. Run npm/npx commands without confirmation. Exit when done."
+  cursor-agent -p --force "Continue task #${task_num} in ${PLAN_FILE}. Run npm/npx commands. Exit when done."
 
   # Retry once if task not marked done
   if ! grep -q "| ${task_num}.*✅ done" "$PLAN_FILE"; then
     echo "⚠️  Task #${task_num} incomplete. Retrying..."
-    cursor-agent "Continue task #${task_num} in ${PLAN_FILE}. Run npm/npx commands without confirmation. Exit when done."
+    cursor-agent -p --force "Continue task #${task_num} in ${PLAN_FILE}. Run npm/npx commands. Exit when done."
   fi
 }
 
@@ -560,7 +611,9 @@ fi
 **❌ FORBIDDEN**: Waiting for additional confirmation after user says START
 **❌ FORBIDDEN**: Asking confirmation for npm/npx/pnpm/yarn commands during execution
 **❌ FORBIDDEN**: Omitting fallback agent section in generated scripts
+**❌ FORBIDDEN**: Only writing script to chat OR plan file — MUST write to BOTH
 **✅ REQUIRED**: Generate copy-paste ready script with actual plan file path
+**✅ REQUIRED**: Write script to BOTH chat message AND plan file `## Execution Script` section
 **✅ REQUIRED**: Begin implementation immediately when user says START
 **✅ REQUIRED**: Include retry logic in generated scripts
 **✅ REQUIRED**: Include fallback agent to handle failed/incomplete tasks
