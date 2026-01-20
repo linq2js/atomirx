@@ -6,15 +6,13 @@
  * Shows appropriate UI based on WebAuthn support and existing credentials.
  */
 
-import { useEffect, useState, useCallback } from "react";
-import { useSelector } from "atomirx/react";
-import { authStore } from "../../stores";
-import { PasskeyPrompt, RegisterForm, LoginForm } from "../../comps";
+import { PasskeyPrompt } from "../../comps/passkeyPrompt";
+import { RegisterForm } from "../../comps/registerForm";
+import { LoginForm } from "../../comps/loginForm";
 import { AuthLoadingState } from "./authLoadingState";
 import { AuthUnsupportedState } from "./authUnsupportedState";
 import { AuthLayout } from "./authLayout";
-
-type AuthView = "checking" | "register" | "login" | "unsupported";
+import { useAuthPageLogic } from "./authPage.logic";
 
 /**
  * Authentication page component.
@@ -28,54 +26,20 @@ type AuthView = "checking" | "register" | "login" | "unsupported";
  * ```
  */
 export function AuthPage() {
-  const auth = authStore();
-  const { authSupport, authError, isLoading } = useSelector(({ read }) => ({
-    authSupport: read(auth.authSupport$),
-    authError: read(auth.authError$),
-    isLoading: read(auth.isLoading$),
-  }));
-
-  const [view, setView] = useState<AuthView>("checking");
-  const [username, setUsername] = useState("");
-  const [hasCredentials, setHasCredentials] = useState(false);
-  const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
-
-  useEffect(() => {
-    async function initialize() {
-      const support = await auth.checkSupport();
-      if (!support.webauthn || !support.platformAuthenticator) {
-        setView("unsupported");
-        return;
-      }
-      const hasExisting = await auth.hasStoredCredentials();
-      setHasCredentials(hasExisting);
-      setView(hasExisting ? "login" : "register");
-    }
-    initialize();
-  }, [auth]);
-
-  const handleRegister = useCallback(async () => {
-    if (!username.trim()) return;
-    setShowPasskeyPrompt(true);
-    await auth.register(username.trim());
-    setShowPasskeyPrompt(false);
-  }, [auth, username]);
-
-  const handleLogin = useCallback(async () => {
-    setShowPasskeyPrompt(true);
-    await auth.login();
-    setShowPasskeyPrompt(false);
-  }, [auth]);
-
-  const switchToRegister = useCallback(() => {
-    auth.clearError();
-    setView("register");
-  }, [auth]);
-
-  const switchToLogin = useCallback(() => {
-    auth.clearError();
-    setView("login");
-  }, [auth]);
+  const {
+    view,
+    username,
+    hasCredentials,
+    showPasskeyPrompt,
+    isLoading,
+    authError,
+    authSupport,
+    setUsername,
+    onRegister,
+    onLogin,
+    onSwitchToRegister,
+    onSwitchToLogin,
+  } = useAuthPageLogic();
 
   if (view === "checking") return <AuthLoadingState />;
   if (view === "unsupported") return <AuthUnsupportedState />;
@@ -87,16 +51,16 @@ export function AuthPage() {
           <RegisterForm
             username={username}
             onUsernameChange={setUsername}
-            onSubmit={handleRegister}
-            onSwitchToLogin={hasCredentials ? switchToLogin : undefined}
+            onSubmit={onRegister}
+            onSwitchToLogin={hasCredentials ? onSwitchToLogin : undefined}
             isLoading={isLoading}
             error={authError}
             prfSupported={authSupport?.prfExtension ?? false}
           />
         ) : (
           <LoginForm
-            onSubmit={handleLogin}
-            onSwitchToRegister={switchToRegister}
+            onSubmit={onLogin}
+            onSwitchToRegister={onSwitchToRegister}
             isLoading={isLoading}
             error={authError}
           />

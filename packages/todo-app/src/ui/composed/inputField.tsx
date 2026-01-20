@@ -6,15 +6,20 @@
  * Composes primitives: Input.
  */
 
-import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+} from "react";
 import { cn } from "@/shared/utils";
-import { Input } from "../primitives/Input";
+import { Input } from "../primitives/input";
 
 /**
  * InputField component props.
  */
-export interface InputFieldProps
-  extends ComponentPropsWithoutRef<typeof Input> {
+export interface InputFieldProps extends ComponentPropsWithoutRef<
+  typeof Input
+> {
   /** Label text */
   label?: string;
   /** Error message to display */
@@ -54,7 +59,9 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
     { className, label, error, helperText, leftIcon, rightIcon, id, ...props },
     ref
   ) {
-    const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined);
+    const inputId =
+      id ||
+      (label ? `input-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined);
     const hasError = !!error;
 
     return (
@@ -77,10 +84,7 @@ export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
             ref={ref}
             id={inputId}
             isInvalid={hasError}
-            className={cn(
-              leftIcon && "pl-10",
-              rightIcon && "pr-10"
-            )}
+            className={cn(leftIcon && "pl-10", rightIcon && "pr-10")}
             {...props}
           />
           {rightIcon && (

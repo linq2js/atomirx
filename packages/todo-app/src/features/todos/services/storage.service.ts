@@ -39,13 +39,13 @@ import type {
   StoredCredential,
   SyncMeta,
   StoredOperation,
-} from "../types";
+} from "../types/storage.types";
 import {
   getDatabase,
   type EncryptedTodo,
   type StoredCredential as DBStoredCredential,
 } from "./db";
-import { cryptoService, type EncryptedField } from "@/features/auth";
+import { cryptoService, type EncryptedField } from "@/features/auth/services/crypto.service";
 import { generateId, now } from "@/shared/utils";
 
 /**

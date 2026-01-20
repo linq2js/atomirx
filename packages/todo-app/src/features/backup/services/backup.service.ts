@@ -4,9 +4,18 @@
  * @description
  * Provides backup and restore capabilities for encrypted todo data.
  * Exports encrypted data that can only be decrypted by the same passkey.
+ *
+ * @example
+ * ```ts
+ * import { backupService } from "@/features/backup/services/backup.service";
+ *
+ * const backup = backupService();
+ * const result = await backup.exportBackup();
+ * ```
  */
 
-import { storageService } from "@/features/todos";
+import { define } from "atomirx";
+import { storageService } from "@/features/todos/services/storage.service";
 
 /**
  * Backup file format version.
@@ -122,9 +131,12 @@ export interface BackupService {
 }
 
 /**
- * Create a new backup service instance.
+ * Backup service module.
+ *
+ * Provides backup and restore capabilities for encrypted todo data.
+ * Use `backupService()` to get the singleton instance.
  */
-export function createBackupService(): BackupService {
+export const backupService = define((): BackupService => {
   const storage = storageService();
 
   /**
@@ -147,24 +159,43 @@ export function createBackupService(): BackupService {
       // Note: We need to get the raw encrypted content from DB
       // For now, we'll re-encrypt the content
       // In a real implementation, we'd access the raw encrypted data
-      const backupTodos: BackupTodo[] = todos.map((todo: { id: string; content: string; completed: boolean; createdAt: number; updatedAt: number; syncStatus: string; serverId?: number; deleted?: boolean }) => ({
-        id: todo.id,
-        encryptedContent: todo.content, // This is already the encrypted content from storage
-        completed: todo.completed,
-        createdAt: todo.createdAt,
-        updatedAt: todo.updatedAt,
-        syncStatus: todo.syncStatus,
-        serverId: todo.serverId,
-        deleted: todo.deleted,
-      }));
+      const backupTodos: BackupTodo[] = todos.map(
+        (todo: {
+          id: string;
+          content: string;
+          completed: boolean;
+          createdAt: number;
+          updatedAt: number;
+          syncStatus: string;
+          serverId?: number;
+          deleted?: boolean;
+        }) => ({
+          id: todo.id,
+          encryptedContent: todo.content, // This is already the encrypted content from storage
+          completed: todo.completed,
+          createdAt: todo.createdAt,
+          updatedAt: todo.updatedAt,
+          syncStatus: todo.syncStatus,
+          serverId: todo.serverId,
+          deleted: todo.deleted,
+        })
+      );
 
-      const backupOperations: BackupOperation[] = operations.map((op: { id: string; type: string; todoId: string; timestamp: number; payload: string }) => ({
-        id: op.id,
-        type: op.type,
-        todoId: op.todoId,
-        timestamp: op.timestamp,
-        payload: op.payload,
-      }));
+      const backupOperations: BackupOperation[] = operations.map(
+        (op: {
+          id: string;
+          type: string;
+          todoId: string;
+          timestamp: number;
+          payload: string;
+        }) => ({
+          id: op.id,
+          type: op.type,
+          todoId: op.todoId,
+          timestamp: op.timestamp,
+          payload: op.payload,
+        })
+      );
 
       const backup: BackupFile = {
         version: BACKUP_VERSION,
@@ -314,20 +345,7 @@ export function createBackupService(): BackupService {
     importBackup,
     validateBackup,
   };
-}
-
-// Singleton instance
-let _instance: BackupService | null = null;
-
-/**
- * Get the singleton backup service instance.
- */
-export function getBackupService(): BackupService {
-  if (!_instance) {
-    _instance = createBackupService();
-  }
-  return _instance;
-}
+});
 
 /**
  * Download a blob as a file.

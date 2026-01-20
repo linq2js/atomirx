@@ -8,7 +8,7 @@
 
 import { forwardRef } from "react";
 import { cn } from "@/shared/utils";
-import { Checkbox, type CheckboxProps } from "../primitives/Checkbox";
+import { Checkbox, type CheckboxProps } from "../primitives/checkbox";
 
 /**
  * CheckboxField component props.

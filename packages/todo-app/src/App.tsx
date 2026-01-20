@@ -1,8 +1,9 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSelector } from "atomirx/react";
 import { ErrorBoundary, ToastProvider, ToastContainer } from "@/ui";
-import { authStore, AuthPage } from "@/features/auth";
-import { TodosPage } from "@/features/todos";
+import { authStore } from "@/features/auth/stores/auth.store";
+import { AuthPage } from "@/features/auth/pages/authPage";
+import { TodosPage } from "@/features/todos/pages/todosPage";
 import { Loader2 } from "lucide-react";
 
 /**

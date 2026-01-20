@@ -31,8 +31,8 @@
  */
 
 import { atom, derived, define, batch, readonly } from "atomirx";
-import { storageService } from "../services";
-import type { Todo, CreateTodoInput } from "../types";
+import { storageService } from "../services/storage.service";
+import type { Todo, CreateTodoInput } from "../types/storage.types";
 
 /**
  * Todo filter type.

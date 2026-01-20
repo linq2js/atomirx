@@ -54,6 +54,7 @@ description: Guide for working with atomirx reactive state management library. U
 11. **Single effect, single workflow** - Each effect handles ONE workflow. Split multiple workflows into separate effects.
 12. **MUST define meta.key for atoms/derived/effects** - Use `{ meta: { key: "store.name" } }` for debugging.
 13. **MUST use .override() for hooks** - Never assign directly to `.current`. Use `.override()` to preserve hook chain.
+14. **MUST use useStable() for callbacks** - NEVER use React's useCallback. Use `useStable({ callback1, callback2 })` instead.
 
 ### meta.key for Debugging (CRITICAL)
 
@@ -118,6 +119,126 @@ user$.set(newUser);
 settings$.set(newSettings);
 lastUpdated$.set(Date.now());
 ```
+
+### useStable() for Callbacks and Values (CRITICAL)
+
+**MUST use `useStable()` instead of React's `useCallback` and `useMemo` for stable references.**
+
+`useStable` works with:
+
+- **Functions/callbacks** — stable identity, always fresh closures
+- **Arrays** — stable reference for dependency arrays
+- **Objects** — stable reference for config objects
+- **Dates** — stable reference for date values
+
+```tsx
+// ❌ FORBIDDEN: React useCallback/useMemo
+const handleSubmit = useCallback(() => {
+  auth.register(username);
+}, [auth, username]);
+
+const config = useMemo(
+  () => ({
+    timeout: 5000,
+    retries: 3,
+  }),
+  []
+);
+
+const columns = useMemo(
+  () => [
+    { key: "name", label: "Name" },
+    { key: "email", label: "Email" },
+  ],
+  []
+);
+
+// ✅ REQUIRED: useStable for callbacks, arrays, objects
+const stable = useStable({
+  // Callbacks
+  onSubmit: () => auth.register(username),
+  onLogin: () => auth.login(),
+  onCancel: () => setView("idle"),
+
+  // Config objects
+  config: {
+    timeout: 5000,
+    retries: 3,
+  },
+
+  // Arrays (e.g., table columns, options)
+  columns: [
+    { key: "name", label: "Name" },
+    { key: "email", label: "Email" },
+  ],
+
+  // Dates
+  startDate: new Date(),
+});
+
+// Usage: stable.onSubmit, stable.config, stable.columns, stable.startDate
+```
+
+**Why useStable over useCallback/useMemo:**
+
+1. **Stable references** — values never change identity, no dependency arrays needed
+2. **Always fresh values** — closures capture current values, no stale closure bugs
+3. **Cleaner code** — group related stable values together
+4. **Better performance** — no re-creation on every render
+5. **Works with any value** — functions, objects, arrays, dates
+
+**Pattern in `.logic.ts` hooks:**
+
+```tsx
+export function useAuthPageLogic() {
+  const auth = authStore();
+  const [view, setView] = useState<AuthView>("checking");
+  const [username, setUsername] = useState("");
+
+  // ✅ Group ALL stable values with useStable
+  const stable = useStable({
+    // Callbacks
+    onRegister: async () => {
+      if (!username.trim()) return;
+      await auth.register(username.trim());
+    },
+    onLogin: async () => {
+      await auth.login();
+    },
+    onSwitchToRegister: () => {
+      auth.clearError();
+      setView("register");
+    },
+    onSwitchToLogin: () => {
+      auth.clearError();
+      setView("login");
+    },
+
+    // Config/options that need stable reference
+    formOptions: {
+      validateOnBlur: true,
+      validateOnChange: false,
+    },
+  });
+
+  return {
+    view,
+    username,
+    setUsername,
+    ...stable, // Spread all stable values
+  };
+}
+```
+
+**When to use useStable vs useMemo:**
+
+| Use Case                                  | Use                                                |
+| ----------------------------------------- | -------------------------------------------------- |
+| Callbacks/handlers                        | `useStable` (ALWAYS)                               |
+| Config objects passed as props            | `useStable`                                        |
+| Arrays passed as props (columns, options) | `useStable`                                        |
+| Expensive computed values                 | `useMemo` (computation cost > reference stability) |
+| Derived data from state                   | `useMemo` or just compute inline                   |
 
 ### define() for Services and Stores (CRITICAL)
 

@@ -13,8 +13,7 @@
 
 import { useSelector } from "atomirx/react";
 import { Filter, Circle, CheckCircle2 } from "lucide-react";
-import { todosStore } from "../stores";
-import type { TodoFilterType } from "../stores";
+import { todosStore, type TodoFilterType } from "../stores/todos.store";
 import { cn } from "@/shared/utils";
 
 /**

@@ -11,9 +11,8 @@
  * - Displays count of completed items to be cleared
  */
 
-import { useState, useCallback } from "react";
 import { Loader2 } from "lucide-react";
-import { todosStore } from "../stores";
+import { useClearCompletedButtonLogic } from "./clearCompletedButton.logic";
 
 /**
  * Clear completed button props.
@@ -36,21 +35,11 @@ export interface ClearCompletedButtonProps {
 export function ClearCompletedButton({
   completedCount,
 }: ClearCompletedButtonProps) {
-  const todos = todosStore();
-  const [isClearing, setIsClearing] = useState(false);
-
-  const handleClear = useCallback(async () => {
-    setIsClearing(true);
-    try {
-      await todos.clearCompleted();
-    } finally {
-      setIsClearing(false);
-    }
-  }, [todos]);
+  const { isClearing, onClear } = useClearCompletedButtonLogic();
 
   return (
     <button
-      onClick={handleClear}
+      onClick={onClear}
       disabled={isClearing}
       className="text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline disabled:opacity-50"
     >

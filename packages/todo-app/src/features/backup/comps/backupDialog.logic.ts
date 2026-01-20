@@ -4,10 +4,21 @@
  * @description
  * Manages state and handlers for the backup dialog.
  * Handles export, import, file validation, and result display.
+ *
+ * @businessRules
+ * - Export creates JSON file with encrypted todo data
+ * - Import validates file format before allowing import
+ * - File must match app ID and backup version
+ * - Dialog state resets when closed
+ *
+ * @stateFlow
+ * closed → open(export tab) → export → success/error
+ * closed → open(import tab) → select file → validate → import → success/error
  */
 
-import { useState, useCallback, useRef } from "react";
-import { getBackupService, downloadBlob } from "../services";
+import { useState, useRef } from "react";
+import { useStable } from "atomirx/react";
+import { backupService, downloadBlob } from "../services/backup.service";
 
 /**
  * Result state for export/import operations.
@@ -72,6 +83,10 @@ export interface UseBackupDialogLogicReturn {
 export function useBackupDialogLogic(
   onOpenChange: (open: boolean) => void
 ): UseBackupDialogLogicReturn {
+  // 1. External services
+  const backup = backupService();
+
+  // 2. Local state
   const [activeTab, setActiveTab] = useState<"export" | "import">("export");
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -85,47 +100,42 @@ export function useBackupDialogLogic(
   const [fileValidation, setFileValidation] = useState<FileValidation | null>(
     null
   );
+
+  // 3. Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const backupService = getBackupService();
+  // 4. Callbacks (useStable)
+  const callbacks = useStable({
+    handleExport: async () => {
+      setIsExporting(true);
+      setExportResult(null);
 
-  /**
-   * Handle export.
-   */
-  const handleExport = useCallback(async () => {
-    setIsExporting(true);
-    setExportResult(null);
+      try {
+        const result = await backup.exportBackup();
 
-    try {
-      const result = await backupService.exportBackup();
-
-      if (result.success) {
-        downloadBlob(result.data, result.filename);
-        setExportResult({
-          success: true,
-          message: `Exported ${result.todoCount} todos to ${result.filename}`,
-        });
-      } else {
+        if (result.success) {
+          downloadBlob(result.data, result.filename);
+          setExportResult({
+            success: true,
+            message: `Exported ${result.todoCount} todos to ${result.filename}`,
+          });
+        } else {
+          setExportResult({
+            success: false,
+            message: result.error,
+          });
+        }
+      } catch (error) {
         setExportResult({
           success: false,
-          message: result.error,
+          message: error instanceof Error ? error.message : "Export failed",
         });
+      } finally {
+        setIsExporting(false);
       }
-    } catch (error) {
-      setExportResult({
-        success: false,
-        message: error instanceof Error ? error.message : "Export failed",
-      });
-    } finally {
-      setIsExporting(false);
-    }
-  }, [backupService]);
+    },
 
-  /**
-   * Handle file selection.
-   */
-  const handleFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleFileSelect: async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
@@ -133,7 +143,7 @@ export function useBackupDialogLogic(
       setFileValidation(null);
       setImportResult(null);
 
-      const validation = await backupService.validateBackup(file);
+      const validation = await backup.validateBackup(file);
       if (validation.valid) {
         setFileValidation({
           valid: true,
@@ -146,53 +156,44 @@ export function useBackupDialogLogic(
         });
       }
     },
-    [backupService]
-  );
 
-  /**
-   * Handle import.
-   */
-  const handleImport = useCallback(async () => {
-    if (!selectedFile || !fileValidation?.valid) return;
+    handleImport: async () => {
+      if (!selectedFile || !fileValidation?.valid) return;
 
-    setIsImporting(true);
-    setImportResult(null);
+      setIsImporting(true);
+      setImportResult(null);
 
-    try {
-      const result = await backupService.importBackup(selectedFile);
+      try {
+        const result = await backup.importBackup(selectedFile);
 
-      if (result.success) {
-        setImportResult({
-          success: true,
-          message: `Imported ${result.todoCount} todos (${result.skippedCount} skipped)`,
-        });
-        // Reset file selection
-        setSelectedFile(null);
-        setFileValidation(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
+        if (result.success) {
+          setImportResult({
+            success: true,
+            message: `Imported ${result.todoCount} todos (${result.skippedCount} skipped)`,
+          });
+          // Reset file selection
+          setSelectedFile(null);
+          setFileValidation(null);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+          }
+        } else {
+          setImportResult({
+            success: false,
+            message: result.error,
+          });
         }
-      } else {
+      } catch (error) {
         setImportResult({
           success: false,
-          message: result.error,
+          message: error instanceof Error ? error.message : "Import failed",
         });
+      } finally {
+        setIsImporting(false);
       }
-    } catch (error) {
-      setImportResult({
-        success: false,
-        message: error instanceof Error ? error.message : "Import failed",
-      });
-    } finally {
-      setIsImporting(false);
-    }
-  }, [selectedFile, fileValidation, backupService]);
+    },
 
-  /**
-   * Reset state when dialog closes.
-   */
-  const handleOpenChange = useCallback(
-    (newOpen: boolean) => {
+    handleOpenChange: (newOpen: boolean) => {
       if (!newOpen) {
         setExportResult(null);
         setImportResult(null);
@@ -201,10 +202,10 @@ export function useBackupDialogLogic(
       }
       onOpenChange(newOpen);
     },
-    [onOpenChange]
-  );
+  });
 
   return {
+    // State
     activeTab,
     setActiveTab,
     isExporting,
@@ -213,10 +214,9 @@ export function useBackupDialogLogic(
     importResult,
     selectedFile,
     fileValidation,
+    // Refs
     fileInputRef,
-    handleExport,
-    handleFileSelect,
-    handleImport,
-    handleOpenChange,
+    // Handlers
+    ...callbacks,
   };
 }

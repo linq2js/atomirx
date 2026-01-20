@@ -8,7 +8,7 @@
 
 import { type HTMLAttributes } from "react";
 import { cn } from "@/shared/utils";
-import { Skeleton } from "../primitives/Skeleton";
+import { Skeleton } from "../primitives/skeleton";
 
 /**
  * SkeletonText component props.

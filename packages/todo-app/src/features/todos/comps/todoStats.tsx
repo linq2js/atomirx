@@ -12,10 +12,10 @@
  */
 
 import { useSelector } from "atomirx/react";
-import { todosStore } from "../stores";
-import { syncStore } from "@/features/sync";
-import { StatusBadge } from "./StatusBadge";
-import { ClearCompletedButton } from "./ClearCompletedButton";
+import { todosStore } from "../stores/todos.store";
+import { syncStore } from "@/features/sync/stores/sync.store";
+import { StatusBadge } from "./statusBadge";
+import { ClearCompletedButton } from "./clearCompletedButton";
 
 /**
  * Todo stats footer component.

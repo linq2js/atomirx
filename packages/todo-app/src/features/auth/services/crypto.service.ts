@@ -29,7 +29,10 @@ import type {
   EncryptedField,
   KeyDerivationConfig,
   WrappedKey,
-} from "../types";
+} from "../types/crypto.types";
+
+// Re-export types that are used by other modules
+export type { EncryptedField } from "../types/crypto.types";
 import { arrayBufferToBase64, base64ToArrayBuffer } from "@/shared/utils";
 
 /** AES-GCM configuration */
@@ -51,7 +54,10 @@ const HKDF_INFO_ENCRYPTION = "todo-app-encryption-key-v1";
  * Custom error for crypto operations.
  */
 export class CryptoError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  constructor(
+    message: string,
+    public readonly cause?: unknown
+  ) {
     super(message);
     this.name = "CryptoError";
   }
@@ -116,19 +122,19 @@ export const cryptoService = define((): CryptoService => {
     prfOutput: ArrayBuffer,
     config: KeyDerivationConfig
   ): Promise<CryptoKey> {
-    const { salt, info = HKDF_INFO_ENCRYPTION, keyLength = AES_KEY_LENGTH } = config;
+    const {
+      salt,
+      info = HKDF_INFO_ENCRYPTION,
+      keyLength = AES_KEY_LENGTH,
+    } = config;
 
     // Ensure we have a proper Uint8Array
     const prfBytes = new Uint8Array(prfOutput);
 
     // Import PRF output as HKDF key material
-    const keyMaterial = await subtle.importKey(
-      "raw",
-      prfBytes,
-      "HKDF",
-      false,
-      ["deriveKey"]
-    );
+    const keyMaterial = await subtle.importKey("raw", prfBytes, "HKDF", false, [
+      "deriveKey",
+    ]);
 
     // Derive AES key using HKDF
     return subtle.deriveKey(
@@ -194,7 +200,10 @@ export const cryptoService = define((): CryptoService => {
    * Generates a fresh IV for each encryption to ensure security.
    * The IV is prepended to the ciphertext in the output.
    */
-  async function encrypt(key: CryptoKey, plaintext: string): Promise<EncryptedField> {
+  async function encrypt(
+    key: CryptoKey,
+    plaintext: string
+  ): Promise<EncryptedField> {
     const iv = generateSalt(AES_IV_LENGTH);
     const plaintextBytes = new TextEncoder().encode(plaintext);
 
@@ -218,7 +227,10 @@ export const cryptoService = define((): CryptoService => {
    *
    * @throws CryptoError if decryption fails (wrong key or tampered data)
    */
-  async function decrypt(key: CryptoKey, encrypted: EncryptedField): Promise<string> {
+  async function decrypt(
+    key: CryptoKey,
+    encrypted: EncryptedField
+  ): Promise<string> {
     const iv = base64ToArrayBuffer(encrypted.iv);
     const ciphertext = base64ToArrayBuffer(encrypted.ciphertext);
 
@@ -234,7 +246,10 @@ export const cryptoService = define((): CryptoService => {
 
       return new TextDecoder().decode(plaintextBytes);
     } catch (error) {
-      throw new CryptoError("Decryption failed: invalid key or tampered data", error);
+      throw new CryptoError(
+        "Decryption failed: invalid key or tampered data",
+        error
+      );
     }
   }
 
@@ -260,15 +275,10 @@ export const cryptoService = define((): CryptoService => {
       ["wrapKey"]
     );
 
-    const wrappedKeyBuffer = await subtle.wrapKey(
-      "raw",
-      dek,
-      wrappingKey,
-      {
-        name: AES_ALGORITHM,
-        iv: toBufferSource(iv),
-      }
-    );
+    const wrappedKeyBuffer = await subtle.wrapKey("raw", dek, wrappingKey, {
+      name: AES_ALGORITHM,
+      iv: toBufferSource(iv),
+    });
 
     return {
       wrappedKey: arrayBufferToBase64(wrappedKeyBuffer),
@@ -282,7 +292,10 @@ export const cryptoService = define((): CryptoService => {
    *
    * @throws CryptoError if unwrapping fails (wrong KEK)
    */
-  async function unwrapKey(kek: CryptoKey, wrapped: WrappedKey): Promise<CryptoKey> {
+  async function unwrapKey(
+    kek: CryptoKey,
+    wrapped: WrappedKey
+  ): Promise<CryptoKey> {
     const iv = base64ToArrayBuffer(wrapped.iv);
     const wrappedKeyBuffer = base64ToArrayBuffer(wrapped.wrappedKey);
 
@@ -313,7 +326,10 @@ export const cryptoService = define((): CryptoService => {
         ["encrypt", "decrypt"]
       );
     } catch (error) {
-      throw new CryptoError("Key unwrapping failed: invalid key encryption key", error);
+      throw new CryptoError(
+        "Key unwrapping failed: invalid key encryption key",
+        error
+      );
     }
   }
 

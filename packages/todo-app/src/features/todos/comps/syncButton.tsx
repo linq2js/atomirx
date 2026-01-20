@@ -13,7 +13,7 @@
 
 import { useSelector } from "atomirx/react";
 import { RefreshCw } from "lucide-react";
-import { syncStore } from "@/features/sync";
+import { syncStore } from "@/features/sync/stores/sync.store";
 import { Button } from "@/ui";
 import { cn } from "@/shared/utils";
 

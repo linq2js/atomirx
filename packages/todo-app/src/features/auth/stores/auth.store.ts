@@ -28,8 +28,9 @@
  */
 
 import { atom, derived, define, batch, readonly } from "atomirx";
-import { authService, cryptoService } from "../services";
-import { storageService } from "@/features/todos/services";
+import { authService } from "../services/auth.service";
+import { cryptoService } from "../services/crypto.service";
+import { storageService } from "@/features/todos/services/storage.service";
 import { arrayBufferToBase64Url } from "@/shared/utils";
 
 /** Session storage key for persisting auth state */

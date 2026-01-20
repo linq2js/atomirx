@@ -14,19 +14,24 @@ Handles user authentication using WebAuthn/Passkeys with optional PRF extension 
 
 ## Folder Structure
 
-- `domain/` - PasskeyPrompt component for WebAuthn ceremony UI
+- `comps/` - Business components (PasskeyPrompt, LoginForm, RegisterForm)
 - `services/` - Auth and crypto services for WebAuthn operations
 - `stores/` - Authentication state management with atomirx
 - `pages/` - AuthPage for login/registration flow
 - `types/` - TypeScript interfaces for auth operations
 
+**Note:** Features MUST NOT have `ui/` folder. Use shared `ui/` components.
+
 ## Key Files
 
-- `domain/PasskeyPrompt.tsx` - Visual prompt during biometric verification
+- `comps/passkeyPrompt.tsx` - Visual prompt during biometric verification
+- `comps/loginForm.tsx` - Login form with passkey sign in
+- `comps/registerForm.tsx` - Registration form for new users
 - `services/auth.service.ts` - WebAuthn registration/authentication
 - `services/crypto.service.ts` - AES-256-GCM encryption operations
 - `stores/auth.store.ts` - Auth state atoms and actions
-- `pages/AuthPage.tsx` - Login/register page composition
+- `pages/authPage/authPage.tsx` - Login/register page composition
+- `pages/authPage/authPage.logic.ts` - Page logic hook
 
 ## Dependencies
 

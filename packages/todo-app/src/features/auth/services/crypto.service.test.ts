@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { cryptoService } from "./crypto.service";
-import type { CryptoService, EncryptedField } from "../types";
+import type { CryptoService, EncryptedField } from "../types/crypto.types";
 
 describe("CryptoService", () => {
   let crypto: CryptoService;
@@ -88,8 +88,12 @@ describe("CryptoService", () => {
       const salt1 = crypto.generateSalt();
       const salt2 = crypto.generateSalt();
 
-      const key1 = await crypto.deriveKeyFromPRF(prfOutput.buffer, { salt: salt1 });
-      const key2 = await crypto.deriveKeyFromPRF(prfOutput.buffer, { salt: salt2 });
+      const key1 = await crypto.deriveKeyFromPRF(prfOutput.buffer, {
+        salt: salt1,
+      });
+      const key2 = await crypto.deriveKeyFromPRF(prfOutput.buffer, {
+        salt: salt2,
+      });
 
       const raw1 = await globalThis.crypto.subtle.exportKey("raw", key1);
       const raw2 = await globalThis.crypto.subtle.exportKey("raw", key2);

@@ -99,16 +99,16 @@ src/
 
 ### No Barrel Exports for Top-Level Feature Dirs (STRICT)
 
-**AI MUST NOT create `index.ts` in top-level feature directories (`comps/`, `pages/`, `services/`, `stores/`).**
+**AI MUST NOT create `index.ts` in feature directories.**
 
-Barrel exports are ONLY allowed for:
+Barrel exports are ONLY allowed for complex component/page folders:
 
-- Feature root: `features/{domain}/index.ts` (public API)
-- Complex component/page folders: `features/{domain}/comps/loginForm/index.ts`
+- `features/{domain}/comps/loginForm/index.ts` ✅ OK
+- `features/{domain}/pages/authPage/index.ts` ✅ OK
 
 ```
 features/auth/
-├── index.ts                      # ✅ Feature public API
+├── index.ts                      # ❌ FORBIDDEN - no feature root barrel
 ├── comps/
 │   ├── index.ts                  # ❌ FORBIDDEN - no barrel for comps/
 │   ├── avatar.tsx                # Simple → file
@@ -133,13 +133,11 @@ features/auth/
 **How to import:**
 
 ```typescript
-// From feature's public API (recommended for cross-feature)
-import { AuthPage, LoginForm } from "@/features/auth";
-
-// Direct import within same feature
-import { LoginForm } from "../comps/loginForm";
-import { AuthPage } from "../pages/authPage";
-import { authService } from "../services/auth.service";
+// Direct import (always use explicit paths)
+import { LoginForm } from "@/features/auth/comps/loginForm";
+import { AuthPage } from "@/features/auth/pages/authPage";
+import { authService } from "@/features/auth/services/auth.service";
+import { authStore } from "@/features/auth/stores/auth.store";
 ```
 
 **Why — Avoid side effects on import:**
@@ -159,11 +157,11 @@ import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its l
 
 **Impact comparison:**
 
-| Import style                | What gets loaded   | Side effects                |
-| --------------------------- | ------------------ | --------------------------- |
-| `from "../comps"` (barrel)  | ALL comps          | High - unused code executed |
-| `from "../comps/loginForm"` | Only LoginForm     | Low - single component      |
-| `from "@/features/auth"`    | Feature public API | Acceptable - explicit API   |
+| Import style                             | What gets loaded | Side effects                |
+| ---------------------------------------- | ---------------- | --------------------------- |
+| `from "../comps"` (barrel)               | ALL comps        | High - unused code executed |
+| `from "@/features/auth"` (barrel)        | ALL feature code | High - unused code executed |
+| `from "@/features/auth/comps/loginForm"` | Only LoginForm   | Low - single component      |
 
 **Single component folder barrel is OK** because:
 
@@ -530,22 +528,27 @@ Is the extracted component...
 features/auth/
 ├── pages/
 │   ├── authPage/                     # Complex page (has parts + hook)
-│   │   ├── index.ts
+│   │   ├── index.ts                  # ✅ OK - complex folder barrel
 │   │   ├── authPage.tsx
 │   │   ├── authPage.logic.ts
 │   │   ├── authLoadingState.tsx      # Private to AuthPage
 │   │   └── authUnsupportedState.tsx  # Private to AuthPage
 │   │
-│   ├── resetPasswordPage.tsx         # Simple page (single file)
-│   └── index.ts                      # Only exports: AuthPage, ResetPasswordPage
+│   └── resetPasswordPage.tsx         # Simple page (single file)
 │
 ├── comps/
-│   ├── registerForm.tsx              # Reusable within auth feature
-│   ├── loginForm.tsx                 # Reusable within auth feature
-│   ├── passkeyPrompt.tsx
-│   └── index.ts
+│   ├── registerForm.tsx              # Simple comp (single file)
+│   ├── loginForm/                    # Complex comp (has hook)
+│   │   ├── index.ts                  # ✅ OK - complex folder barrel
+│   │   ├── loginForm.tsx
+│   │   └── loginForm.logic.ts
+│   └── passkeyPrompt.tsx
 │
-└── index.ts                          # Feature public API
+├── services/
+│   └── auth.service.ts
+│
+└── stores/
+    └── auth.store.ts
 ```
 
 ### Component File Structure: Simple vs Complex (Universal Rule)
@@ -611,98 +614,379 @@ ui/composed/
 | `xxx.styles.ts`  | CSS-in-JS styles (optional)               | -                |
 | `xxxSubPart.tsx` | Private sub-component                     | Not exported     |
 
-**Rules:**
+**Rules (STRICT):**
 
-1. `useXxxLogic` hook is **ONLY** for its component — **MUST NOT** be reused elsewhere
-2. If logic is reusable → move to `features/{domain}/hooks/` or `shared/hooks/`
-3. Component file should be **UI only** — render what the hook returns
-4. Hook returns everything the component needs: state, handlers, computed values
-5. Sub-components in folder are **PRIVATE** — not exported from `index.ts`
+1. Component file MUST only call **ONE hook**: `useXxxLogic()`
+2. **ALL logic** goes in `.logic.ts` — useState, useEffect, useStable, useMemo, handlers
+3. Component file is **pure rendering** — just JSX based on hook return values
+4. `useXxxLogic` hook is **ONLY** for its component — MUST NOT be reused elsewhere
+5. If logic is reusable → move to `features/{domain}/hooks/` or `shared/hooks/`
+
+**Why this pattern (testability):**
 
 ```typescript
-// ❌ BAD: Logic mixed in component
-// articleList.tsx
-export function ArticleList() {
-  const [articles, setArticles] = useState([]);
-  const [filter, setFilter] = useState("all");
-  const [isLoading, setIsLoading] = useState(true);
+// Testing LOGIC - no rendering needed, just call the hook
+import { renderHook } from "@testing-library/react";
+import { useAuthPageLogic } from "./authPage.logic";
 
-  useEffect(() => { /* fetch logic */ }, []);
+it("should switch to login view when credentials exist", async () => {
+  const { result } = renderHook(() => useAuthPageLogic());
+  // Test logic directly without rendering UI
+  expect(result.current.view).toBe("login");
+});
 
-  const handleFilter = (f) => { /* filter logic */ };
-  const handleDelete = (id) => { /* delete logic */ };
-  const filteredArticles = useMemo(() => { /* compute */ }, []);
+// Testing UI - mock the hook, test rendering with fake data
+jest.mock("./authPage.logic", () => ({
+  useAuthPageLogic: () => ({
+    view: "register",
+    isLoading: false,
+    onRegister: jest.fn(),
+  }),
+}));
 
-  return (
-    <div>
-      {/* 50+ lines of JSX */}
-    </div>
-  );
+it("should render register form when view is register", () => {
+  render(<AuthPage />);
+  expect(screen.getByText("Create Account")).toBeInTheDocument();
+});
+```
+
+**Component structure:**
+
+```typescript
+// ❌ BAD: Logic mixed in component (hard to test)
+// authPage.tsx
+export function AuthPage() {
+  const auth = authStore();
+  const { authSupport, authError, isLoading } = useSelector(({ read }) => ({
+    authSupport: read(auth.authSupport$),
+    authError: read(auth.authError$),
+    isLoading: read(auth.isLoading$),
+  }));
+
+  const [view, setView] = useState<AuthView>("checking");
+  const [username, setUsername] = useState("");
+
+  // ❌ BAD: useCallback scattered throughout
+  const handleRegister = useCallback(async () => { /* logic */ }, []);
+  const handleLogin = useCallback(async () => { /* logic */ }, []);
+
+  useEffect(() => {
+    async function initialize() { /* logic */ }
+    initialize();
+  }, [auth]);
+
+  return <div>...</div>;
 }
 
-// ✅ GOOD: Logic extracted to hook
-// articleList.logic.ts
-export function useArticleListLogic() {
-  const [articles, setArticles] = useState([]);
-  const [filter, setFilter] = useState("all");
-  const [isLoading, setIsLoading] = useState(true);
+// ✅ GOOD: Component calls single hook, pure rendering
+// authPage.logic.ts
+export function useAuthPageLogic() {
+  const auth = authStore();
+  const { authSupport, authError, isLoading } = useSelector(({ read }) => ({
+    authSupport: read(auth.authSupport$),
+    authError: read(auth.authError$),
+    isLoading: read(auth.isLoading$),
+  }));
 
-  useEffect(() => { /* fetch logic */ }, []);
+  const [view, setView] = useState<AuthView>("checking");
+  const [username, setUsername] = useState("");
+  const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
 
-  const handleFilter = useCallback((f) => { /* filter logic */ }, []);
-  const handleDelete = useCallback((id) => { /* delete logic */ }, []);
-  const filteredArticles = useMemo(() => { /* compute */ }, [articles, filter]);
+  // ✅ GOOD: All callbacks grouped with useStable
+  const callbacks = useStable({
+    onRegister: async () => { /* logic */ },
+    onLogin: async () => { /* logic */ },
+    onSwitchToRegister: () => { /* logic */ },
+    onSwitchToLogin: () => { /* logic */ },
+  });
+
+  // Effects ALWAYS last
+  useEffect(() => {
+    async function initialize() { /* logic */ }
+    initialize();
+  }, [auth]);
 
   return {
-    articles: filteredArticles,
+    // State
+    view,
+    username,
     isLoading,
-    filter,
-    onFilterChange: handleFilter,
-    onDelete: handleDelete,
+    authError,
+    authSupport,
+    showPasskeyPrompt,
+    // Setters
+    setUsername,
+    // Handlers (spread from useStable)
+    ...callbacks,
   };
 }
 
-// articleList.tsx
-import { useArticleListLogic } from "./articleList.logic";
+// authPage.tsx - PURE RENDERING ONLY
+import { useAuthPageLogic } from "./authPage.logic";
 
-export function ArticleList() {
-  const { articles, isLoading, filter, onFilterChange, onDelete } = useArticleListLogic();
+export function AuthPage() {
+  const {
+    view, username, isLoading, authError, authSupport, showPasskeyPrompt,
+    setUsername, onRegister, onLogin, onSwitchToRegister, onSwitchToLogin,
+  } = useAuthPageLogic();
 
-  if (isLoading) return <ArticleListSkeleton />;
+  if (view === "checking") return <AuthLoadingState />;
+  if (view === "unsupported") return <AuthUnsupportedState />;
 
   return (
-    <div>
-      <FilterBar value={filter} onChange={onFilterChange} />
-      {articles.map(article => (
-        <ArticleCard key={article.id} article={article} onDelete={onDelete} />
-      ))}
-    </div>
+    <AuthLayout>
+      {view === "register" ? (
+        <RegisterForm
+          username={username}
+          onUsernameChange={setUsername}
+          onSubmit={onRegister}
+          isLoading={isLoading}
+          error={authError}
+        />
+      ) : (
+        <LoginForm onSubmit={onLogin} isLoading={isLoading} error={authError} />
+      )}
+      {showPasskeyPrompt && <PasskeyPrompt />}
+    </AuthLayout>
   );
 }
 ```
 
-**When to extract to `.logic.ts`:**
+**When to create `.logic.ts` (MUST if ANY of these):**
 
-| Indicator                          | Action          |
-| ---------------------------------- | --------------- |
-| Component has > 3 useState         | Extract to hook |
-| Component has useEffect with logic | Extract to hook |
-| Component has > 2 event handlers   | Extract to hook |
-| Component has useMemo/useCallback  | Extract to hook |
-| Logic lines > JSX lines            | Extract to hook |
+| Indicator             | Action                      |
+| --------------------- | --------------------------- |
+| ANY useState          | MUST extract to `.logic.ts` |
+| ANY useEffect         | MUST extract to `.logic.ts` |
+| ANY useStable/useMemo | MUST extract to `.logic.ts` |
+| ANY event handler     | MUST extract to `.logic.ts` |
+| Uses store/selector   | MUST extract to `.logic.ts` |
+
+**Allowed in component file (without `.logic.ts`):**
+
+- `useRef` for DOM references
+- Third-party UI hooks (e.g., `useFormContext` from react-hook-form)
+- Simple props-only rendering (no state)
 
 ### Checklist: Before Writing Page/Domain Component
 
+- [ ] Component calls ONLY `useXxxLogic()` — no other state/effect hooks?
+- [ ] ALL useState/useEffect/useStable/useMemo in `.logic.ts`?
+- [ ] Component file is PURE RENDERING — just JSX from hook data?
 - [ ] Total lines < 100 (page) or < 150 (comp)?
 - [ ] JSX lines < 30 (page) or < 50 (comp)?
 - [ ] No conditional render blocks > 10 JSX lines?
 - [ ] No inline forms > 20 JSX lines?
 - [ ] Repeated patterns extracted?
-- [ ] Page is a thin orchestrator (state + composition)?
-- [ ] Logic extracted to `useXXXLogic` hook if > 3 useState or complex effects?
-- [ ] Component file is mostly UI, hook file is mostly logic?
 
-**If ANY check FAILS → Extract first, then implement.**
+**If ANY check FAILS → Extract to `.logic.ts` first, then implement.**
+
+### Hook Code Organization (STRICT)
+
+**AI MUST follow this ordering in `.logic.ts` files:**
+
+```typescript
+export function useXxxLogic() {
+  // 1. External stores/context
+  const auth = authStore();
+  const theme = useTheme();
+
+  // 2. Selectors (read from stores)
+  const { data, isLoading } = useSelector(/* ... */);
+
+  // 3. Local state (useState)
+  const [view, setView] = useState("initial");
+  const [username, setUsername] = useState("");
+
+  // 4. Refs (useRef)
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // 5. Computed values (useMemo)
+  const filteredItems = useMemo(() => /* ... */, [items, filter]);
+
+  // 6. Callbacks/handlers (useStable — NOT useCallback)
+  const callbacks = useStable({
+    onSubmit: () => { /* ... */ },
+    onChange: () => { /* ... */ },
+  });
+
+  // 7. Effects (useEffect, useLayoutEffect) — ALWAYS LAST
+  useEffect(() => {
+    // Side effects after all setup is done
+  }, [dependency]);
+
+  useLayoutEffect(() => {
+    // DOM measurements/mutations
+  }, []);
+
+  // 8. Return object
+  return {
+    // State
+    view,
+    username,
+    isLoading,
+    // Refs
+    inputRef,
+    // Computed
+    filteredItems,
+    // Handlers (spread from useStable)
+    ...callbacks,
+  };
+}
+```
+
+**Why effects MUST be last:**
+
+1. Effects depend on state/callbacks — define dependencies first
+2. Effects are side effects — setup logic should come before side effects
+3. Consistent ordering — easier to read and review
+4. Matches React mental model — render → commit → effects
+
+**Return object ordering:**
+
+| Order | Category     | Prefix | Example                            |
+| ----- | ------------ | ------ | ---------------------------------- |
+| 1     | State values | none   | `view`, `username`, `isLoading`    |
+| 2     | Refs         | none   | `inputRef`, `formRef`              |
+| 3     | Computed     | none   | `filteredItems`, `totalCount`      |
+| 4     | Setters      | `set`  | `setUsername`, `setValue`          |
+| 5     | Handlers     | `on`   | `onSubmit`, `onChange`, `onDelete` |
+
+### JSDoc Requirements for Logic Hooks
+
+**Every `.logic.ts` file MUST have comprehensive JSDoc.**
+
+````typescript
+// ❌ BAD: No documentation
+export function useAuthPageLogic() {
+  const [view, setView] = useState<AuthView>("checking");
+  // ... rest of logic
+}
+
+// ✅ GOOD: Comprehensive JSDoc
+/**
+ * Logic hook for AuthPage.
+ *
+ * @description
+ * Manages authentication page state including view transitions,
+ * passkey registration/login flow, and error handling.
+ *
+ * @businessRules
+ * - Shows "checking" view while detecting WebAuthn support
+ * - Shows "unsupported" if browser lacks WebAuthn/platform authenticator
+ * - Shows "login" if user has existing credentials, otherwise "register"
+ * - Passkey prompt appears during registration/login operations
+ *
+ * @stateFlow
+ * checking → (no support) → unsupported
+ * checking → (has credentials) → login
+ * checking → (no credentials) → register
+ * register ↔ login (user can switch)
+ *
+ * @returns {UseAuthPageLogicReturn} State and handlers for AuthPage
+ *
+ * @example
+ * ```tsx
+ * function AuthPage() {
+ *   const { view, onLogin, onRegister } = useAuthPageLogic();
+ *   // ...
+ * }
+ * ```
+ */
+export function useAuthPageLogic(): UseAuthPageLogicReturn {
+  // ...
+}
+````
+
+**Required JSDoc sections for `.logic.ts`:**
+
+| Section          | Required   | Description                               |
+| ---------------- | ---------- | ----------------------------------------- |
+| `@description`   | YES        | What the hook does, 1-2 sentences         |
+| `@businessRules` | If any     | Business logic rules this hook implements |
+| `@stateFlow`     | If complex | State transitions (use arrows: → ↔)       |
+| `@returns`       | YES        | Return type and brief description         |
+| `@example`       | YES        | Usage example in component                |
+
+**Document return type interface:**
+
+```typescript
+/**
+ * Return type for useAuthPageLogic hook.
+ */
+interface UseAuthPageLogicReturn {
+  /** Current view state: checking, register, login, unsupported */
+  view: AuthView;
+  /** Username input value for registration */
+  username: string;
+  /** Whether user has existing passkey credentials */
+  hasCredentials: boolean;
+  /** Whether passkey prompt overlay is visible */
+  showPasskeyPrompt: boolean;
+  /** Loading state from auth store */
+  isLoading: boolean;
+  /** Error from auth operations */
+  authError: AuthError | null;
+  /** WebAuthn support info */
+  authSupport: AuthSupport | null;
+
+  /** Update username input */
+  setUsername: (value: string) => void;
+  /** Initiate passkey registration */
+  onRegister: () => Promise<void>;
+  /** Initiate passkey login */
+  onLogin: () => Promise<void>;
+  /** Switch to register view */
+  onSwitchToRegister: () => void;
+  /** Switch to login view */
+  onSwitchToLogin: () => void;
+}
+```
+
+**Inline comments for complex logic:**
+
+```typescript
+export function useAuthPageLogic(): UseAuthPageLogicReturn {
+  // ... state declarations ...
+
+  // Callbacks with useStable (before effects)
+  const callbacks = useStable({
+    onRegister: async () => {
+      if (!username.trim()) return;
+
+      // Show passkey prompt overlay while browser handles WebAuthn ceremony
+      setShowPasskeyPrompt(true);
+      await auth.register(username.trim());
+      setShowPasskeyPrompt(false);
+      // Note: success/error handling is done via authStore state
+    },
+    // ... other callbacks
+  });
+
+  // Effects ALWAYS last
+  useEffect(() => {
+    async function initialize() {
+      const support = await auth.checkSupport();
+
+      // Browser must support WebAuthn AND have platform authenticator (Touch ID, Face ID, etc.)
+      if (!support.webauthn || !support.platformAuthenticator) {
+        setView("unsupported");
+        return;
+      }
+
+      // Check if user already registered a passkey on this device
+      const hasExisting = await auth.hasStoredCredentials();
+      setHasCredentials(hasExisting);
+
+      // Show login if returning user, register if new user
+      setView(hasExisting ? "login" : "register");
+    }
+    initialize();
+  }, [auth]);
+
+  return { /* ... */, ...callbacks };
+}
+```
 
 ## Generic UI Component Splitting Rules (MANDATORY)
 
@@ -1176,21 +1460,22 @@ Is it a React component?
 
 - Any feature can import from `ui/`
 - Any feature can import from `shared/`
-- Routes can import from any feature's `pages/`
-- Routes can import from any feature's public `index.ts`
+- Routes can import from any feature's `pages/` (direct path)
+- Cross-feature imports use explicit paths
 
 ### Not Allowed
 
-- Feature A should NOT import from Feature B's internal folders
-- Use feature's `index.ts` for cross-feature imports
 - Features MUST NOT have their own `ui/` folder
+- MUST NOT use barrel imports for cross-feature (no `index.ts` at feature root)
 
 ```typescript
-// GOOD - import from public API
-import { TodoItem } from "@/features/todos";
+// ✅ GOOD - explicit path imports
+import { TodoItem } from "@/features/todos/comps/todoItem";
+import { TodosPage } from "@/features/todos/pages/todosPage";
+import { todoStore } from "@/features/todos/stores/todo.store";
 
-// BAD - import from internal path
-import { TodoItem } from "@/features/todos/comps/TodoItem";
+// ❌ BAD - barrel import (feature index.ts is forbidden)
+import { TodoItem } from "@/features/todos";
 ```
 
 ## Checklist Before Implementation

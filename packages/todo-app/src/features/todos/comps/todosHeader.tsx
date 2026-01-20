@@ -12,11 +12,11 @@
 
 import { useSelector } from "atomirx/react";
 import { LogOut, Wifi, WifiOff, ListTodo } from "lucide-react";
-import { authStore } from "@/features/auth";
-import { networkStore } from "@/features/network";
+import { authStore } from "@/features/auth/stores/auth.store";
+import { networkStore } from "@/features/network/stores/network.store";
 import { Button } from "@/ui";
 import { cn } from "@/shared/utils";
-import { SyncButton } from "./SyncButton";
+import { SyncButton } from "./syncButton";
 
 /**
  * Todos header props.

@@ -11,7 +11,7 @@ import { type ReactNode } from "react";
 import { Dialog as BaseDialog } from "@base-ui-components/react/dialog";
 import { X } from "lucide-react";
 import { cn } from "@/shared/utils";
-import { Button } from "../primitives/Button";
+import { Button } from "../primitives/button";
 
 /**
  * Dialog component props.

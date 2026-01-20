@@ -16,20 +16,29 @@ Manages the todo list with encrypted storage, CRUD operations, filtering, and op
 
 ## Folder Structure
 
-- `domain/` - TodoItem and TodoInput components with business logic
+- `comps/` - Business components (TodoItem, TodoInput, FilterBar, etc.)
 - `services/` - Storage service for encrypted IndexedDB operations
 - `stores/` - Todo state management with atomirx
 - `pages/` - TodosPage composition
 - `types/` - TypeScript interfaces for todos and storage
 
+**Note:** Features MUST NOT have `ui/` folder. Use shared `ui/` components.
+
 ## Key Files
 
-- `domain/TodoItem.tsx` - Individual todo with completion toggle, edit, delete
-- `domain/TodoInput.tsx` - New todo input with validation
+- `comps/todoItem.tsx` - Individual todo with completion toggle, edit, delete
+- `comps/todoItem.logic.ts` - TodoItem logic hook
+- `comps/todoInput.tsx` - New todo input with validation
+- `comps/todoList.tsx` - Filtered todo list display
+- `comps/todoList.logic.ts` - TodoList logic hook
+- `comps/filterBar.tsx` - Filter buttons (all/active/completed)
+- `comps/clearCompletedButton.tsx` - Clear completed todos button
+- `comps/clearCompletedButton.logic.ts` - ClearCompletedButton logic hook
 - `services/storage.service.ts` - Encrypted IndexedDB operations
 - `services/db.ts` - Dexie schema for IndexedDB
 - `stores/todos.store.ts` - Todo state atoms and actions
-- `pages/TodosPage.tsx` - Main todo list page
+- `pages/todosPage/todosPage.tsx` - Main todo list page
+- `pages/todosPage/todosPage.logic.ts` - Page logic hook
 
 ## Dependencies
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { authService } from "./auth.service";
-import type { AuthSupport, AuthService } from "../types";
+import type { AuthSupport, AuthService } from "../types/auth.types";
 
 // Get mocks from setup file - cast through unknown to satisfy TypeScript
 const mockCredentials = globalThis.navigator.credentials as unknown as {
@@ -24,8 +24,12 @@ describe("AuthService", () => {
     originalPublicKeyCredential = globalThis.PublicKeyCredential;
 
     // Reset mock implementations
-    mockPublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable.mockResolvedValue(true);
-    mockPublicKeyCredential.isConditionalMediationAvailable.mockResolvedValue(true);
+    mockPublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable.mockResolvedValue(
+      true
+    );
+    mockPublicKeyCredential.isConditionalMediationAvailable.mockResolvedValue(
+      true
+    );
 
     // Reset and get fresh instance
     authService.reset();
@@ -35,7 +39,9 @@ describe("AuthService", () => {
   afterEach(() => {
     // Restore PublicKeyCredential if it was deleted
     if (originalPublicKeyCredential && !globalThis.PublicKeyCredential) {
-      (globalThis as { PublicKeyCredential?: typeof PublicKeyCredential }).PublicKeyCredential = originalPublicKeyCredential;
+      (
+        globalThis as { PublicKeyCredential?: typeof PublicKeyCredential }
+      ).PublicKeyCredential = originalPublicKeyCredential;
     }
   });
 
@@ -276,9 +282,9 @@ describe("AuthService", () => {
 });
 
 // Helper to create mock credential for registration
-function createMockCredential(
-  extensionResults?: { prfResults?: { first: ArrayBuffer } }
-) {
+function createMockCredential(extensionResults?: {
+  prfResults?: { first: ArrayBuffer };
+}) {
   const id = new Uint8Array(32);
   globalThis.crypto.getRandomValues(id);
 
@@ -299,16 +305,18 @@ function createMockCredential(
       getAuthenticatorData: () => new Uint8Array(37).buffer,
     },
     getClientExtensionResults: () => ({
-      prf: extensionResults?.prfResults ? { results: extensionResults.prfResults } : undefined,
+      prf: extensionResults?.prfResults
+        ? { results: extensionResults.prfResults }
+        : undefined,
     }),
     authenticatorAttachment: "platform",
   };
 }
 
 // Helper to create mock assertion for authentication
-function createMockAssertion(
-  extensionResults?: { prfResults?: { first: ArrayBuffer } }
-) {
+function createMockAssertion(extensionResults?: {
+  prfResults?: { first: ArrayBuffer };
+}) {
   const id = new Uint8Array(32);
   globalThis.crypto.getRandomValues(id);
 
@@ -329,7 +337,9 @@ function createMockAssertion(
       userHandle: new Uint8Array(16).buffer,
     },
     getClientExtensionResults: () => ({
-      prf: extensionResults?.prfResults ? { results: extensionResults.prfResults } : undefined,
+      prf: extensionResults?.prfResults
+        ? { results: extensionResults.prfResults }
+        : undefined,
     }),
     authenticatorAttachment: "platform",
   };

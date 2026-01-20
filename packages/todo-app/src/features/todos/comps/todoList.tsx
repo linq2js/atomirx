@@ -16,12 +16,10 @@
  * - Filter with no matches: Shows filter-specific message
  */
 
-import { useCallback } from "react";
-import { useSelector } from "atomirx/react";
 import { CheckCircle2, Circle, ListTodo } from "lucide-react";
-import { todosStore } from "../stores";
-import { TodoItem } from "./TodoItem";
-import { SkeletonTodoList } from "./SkeletonTodoItem";
+import { TodoItem } from "./todoItem";
+import { SkeletonTodoList } from "./skeletonTodoItem";
+import { useTodoListLogic } from "./todoList.logic";
 
 /**
  * Todo list component.
@@ -34,33 +32,8 @@ import { SkeletonTodoList } from "./SkeletonTodoItem";
  * ```
  */
 export function TodoList() {
-  const todos = todosStore();
-  const { filteredTodos, isLoading, filter } = useSelector(({ read }) => ({
-    filteredTodos: read(todos.filteredTodos$),
-    isLoading: read(todos.isLoading$),
-    filter: read(todos.filter$),
-  }));
-
-  const handleToggle = useCallback(
-    async (id: string) => {
-      await todos.toggleTodo(id);
-    },
-    [todos]
-  );
-
-  const handleUpdate = useCallback(
-    async (id: string, content: string) => {
-      await todos.updateTodoContent(id, content);
-    },
-    [todos]
-  );
-
-  const handleDelete = useCallback(
-    async (id: string) => {
-      await todos.deleteTodo(id);
-    },
-    [todos]
-  );
+  const { filteredTodos, isLoading, filter, onToggle, onUpdate, onDelete } =
+    useTodoListLogic();
 
   if (isLoading) {
     return <SkeletonTodoList count={5} />;
@@ -100,9 +73,9 @@ export function TodoList() {
         <TodoItem
           key={todo.id}
           todo={todo}
-          onToggle={handleToggle}
-          onUpdate={handleUpdate}
-          onDelete={handleDelete}
+          onToggle={onToggle}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
         />
       ))}
     </div>

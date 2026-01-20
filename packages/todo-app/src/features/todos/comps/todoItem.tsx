@@ -21,7 +21,7 @@
  */
 
 import { Check, Circle, Trash2, Edit2, X, Loader2 } from "lucide-react";
-import type { Todo } from "../types";
+import type { Todo } from "../types/storage.types";
 import { StatusBadge } from "./statusBadge";
 import { cn } from "@/shared/utils";
 import { useTodoItemLogic } from "./todoItem.logic";

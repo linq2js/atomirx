@@ -35,7 +35,7 @@ import type {
   RegisterResult,
   RegisterError,
   AuthErrorCode,
-} from "../types";
+} from "../types/auth.types";
 import { arrayBufferToBase64Url, base64UrlToArrayBuffer } from "@/shared/utils";
 
 /** Relying Party configuration */
