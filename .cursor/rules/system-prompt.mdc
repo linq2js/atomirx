@@ -377,11 +377,97 @@ When task has **3 or more implementation items** OR **impacts 5 or more files**,
 - [MUST include any deviations from original plan]
 ```
 
-## 3. Incremental Commits (REQUIRED for safety)
+## 3. Multi-Agent Orchestration (OPTIONAL — for parallel execution)
+
+After creating a plan file, you **MUST** analyze task dependencies and offer multi-agent execution:
+
+**Dependency Analysis:**
+
+1. **MUST** identify independent tasks (no dependencies or dependencies already completed)
+2. **MUST** group tasks into execution waves based on dependency graph
+3. **MUST** generate `cursor-agent` CLI script for parallel execution
+
+**REQUIRED Script Generation Format:**
+
+```bash
+#!/bin/bash
+# Auto-generated from: AI_WORKING/<plan-file>.md
+# Generated: <timestamp>
+
+PLAN_FILE="AI_WORKING/<plan-file>.md"
+
+# Wave 1: Independent tasks (run in parallel)
+cursor-agent --plan "$PLAN_FILE" --task 1 --commit &
+cursor-agent --plan "$PLAN_FILE" --task 2 --commit &
+wait
+
+# Wave 2: Tasks depending on Wave 1 (run in parallel)
+cursor-agent --plan "$PLAN_FILE" --task 3 --commit &
+cursor-agent --plan "$PLAN_FILE" --task 4 --commit &
+wait
+
+# Wave 3: Sequential tasks with chain dependencies
+cursor-agent --plan "$PLAN_FILE" --task 5 --commit
+
+echo "✅ All tasks completed"
+```
+
+**Script Generation Rules:**
+
+| Scenario                   | Script Pattern                             |
+| -------------------------- | ------------------------------------------ |
+| Tasks with no dependencies | Run all in parallel (same wave)            |
+| Tasks with same dependency | Run in parallel after dependency completes |
+| Chain dependencies (1→2→3) | Run sequentially                           |
+| Mixed dependencies         | Group into waves, parallelize within waves |
+
+**REQUIRED Prompt After Plan File:**
+
+```
+## Execution Options:
+
+**Option A: Multi-Agent (Parallel)**
+Save and run this script to execute tasks in parallel:
+
+\`\`\`bash
+<generated-script>
+\`\`\`
+
+**Option B: Single Agent (Current Session)**
+Reply **START** to execute all tasks sequentially in this session.
+
+Which option do you prefer?
+```
+
+**Mermaid Dependency Visualization (MUST include):**
+
+```mermaid
+graph LR
+    subgraph Wave1[Wave 1 - Parallel]
+        T1[Task 1]
+        T2[Task 2]
+    end
+    subgraph Wave2[Wave 2 - Parallel]
+        T3[Task 3]
+        T4[Task 4]
+    end
+    subgraph Wave3[Wave 3 - Sequential]
+        T5[Task 5]
+    end
+    T1 --> T3
+    T2 --> T4
+    T3 --> T5
+    T4 --> T5
+```
+
+**❌ FORBIDDEN**: Creating plan without offering multi-agent option for 3+ parallelizable tasks
+**✅ REQUIRED**: Always show both execution options (multi-agent parallel OR single agent sequential)
+
+## 4. Incremental Commits (REQUIRED for safety)
 
 **MUST** commit after completing each logical unit to preserve progress in git.
 
-## 4. Task Batch Size (STRICT — Context Window Limits)
+## 5. Task Batch Size (STRICT — Context Window Limits)
 
 AI has ~100k token context. After system prompt and conversation, ~60-70k remains for work.
 
