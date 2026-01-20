@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSelector } from "atomirx/react";
-import { ErrorBoundary } from "@/shared/components";
+import { ErrorBoundary } from "@/shared/comps";
 import { ToastProvider, ToastContainer } from "@/features/ui";
 import { authStore, AuthPage } from "@/features/auth";
 import { TodosPage } from "@/features/todos";

@@ -16,18 +16,15 @@ Use this skill when:
 
 ```
 src/
+├── ui/                          # Shared generic components (ONLY place for UI)
+│   ├── primitives/              # Smallest UI (Button, Input, Label, Icon, Badge)
+│   ├── composed/                # Composed from primitives (InputField, Card, Dialog)
+│   └── index.ts
+│
 ├── features/
-│   ├── ui/                      # Shared generic components (cross-feature)
-│   │   ├── README.md
-│   │   ├── Button/
-│   │   ├── Input/
-│   │   ├── Dialog/
-│   │   └── index.ts
-│   │
 │   ├── {domain}/                # Feature module (e.g., auth, todos, settings)
 │   │   ├── README.md            # Feature overview + business rules summary
-│   │   ├── ui/                  # Private generic components (this feature only)
-│   │   ├── comps/               # Components WITH business rules
+│   │   ├── comps/               # Business components (compose from ui/)
 │   │   ├── services/            # Business logic, API calls
 │   │   ├── stores/              # State management (atomirx)
 │   │   ├── pages/               # Full page compositions
@@ -43,7 +40,7 @@ src/
 │   ├── index.tsx                # Route definitions
 │   └── layouts/                 # Layout components
 │
-└── shared/                      # Cross-cutting concerns
+└── shared/                      # Cross-cutting concerns (NO ui/ or comps/)
     ├── hooks/                   # Shared hooks
     ├── utils/                   # Shared utilities
     └── types/                   # Shared types
@@ -74,25 +71,54 @@ export function Button() { ... }        // WRONG - move to Button.tsx
 - Avoids circular dependency issues
 - Makes code easier to find and maintain
 
+### UI Component Location (STRICT)
+
+**All generic UI components MUST be in `ui/` (top-level).**
+
+```
+✅ ALLOWED:
+   ui/primitives/Button/
+   ui/primitives/Input/
+   ui/composed/InputField/
+   ui/composed/Card/
+
+❌ FORBIDDEN:
+   features/{domain}/ui/          # NO ui/ folder in features
+   shared/ui/                     # NO ui/ folder in shared
+   shared/comps/                  # NO comps/ folder in shared
+```
+
+**Rules:**
+
+1. `ui/` — Generic components only, NO business logic
+2. `features/{domain}/comps/` — Business components that **compose** from `ui/`
+3. `features/{domain}/` — **MUST NOT** have `ui/` folder
+4. `shared/` — **MUST NOT** have `ui/` or `comps/` (only hooks, utils, types)
+
+**Why:**
+
+- Forces reuse — no duplicate UI components per feature
+- Single source of truth — one place for all generic UI
+- Clear mental model — `ui/` = generic, `comps/` = business
+
 ## Path-Based Detection Rules
 
 | Path Pattern                   | Contains          | Business Rules | AI Action                      |
 | ------------------------------ | ----------------- | -------------- | ------------------------------ |
-| `features/ui/*`                | Shared generic    | **NO**         | Implement without domain logic |
-| `features/{domain}/ui/*`       | Private generic   | **NO**         | Implement without domain logic |
+| `ui/*`                         | Generic UI        | **NO**         | Implement without domain logic |
 | `features/{domain}/comps/*`    | Domain components | **YES**        | Check JSDoc `@businessRules`   |
 | `features/{domain}/services/*` | Business logic    | **YES**        | Check JSDoc for rules          |
 | `features/{domain}/stores/*`   | State + rules     | **YES**        | Check JSDoc for rules          |
 | `features/{domain}/pages/*`    | Compositions      | **MAYBE**      | Check if complex logic exists  |
 | `features/{domain}/utils/*`    | Utilities         | **NO**         | Pure functions only            |
 | `routes/*`                     | Route definitions | **NO**         | Composition only               |
-| `shared/*`                     | Cross-cutting     | **NO**         | Generic utilities              |
+| `shared/*`                     | Cross-cutting     | **NO**         | Hooks, utils, types only       |
 
 ## Component Classification
 
 ### Generic Components (NO business rules)
 
-Located in: `features/ui/` or `features/{domain}/ui/`
+Located in: `ui/` (top-level only)
 
 Characteristics:
 
@@ -103,7 +129,7 @@ Characteristics:
 - No conditional logic based on business state
 
 ```typescript
-// features/ui/Button/Button.tsx
+// ui/primitives/Button/Button.tsx
 // NO @businessRules tag needed
 interface ButtonProps {
   variant?: "primary" | "secondary" | "danger";
@@ -160,45 +186,44 @@ export const TodoItem = ({ todo, currentUser }: TodoItemProps) => {
 
 **Principle: Generic (dumb) components should be as small and composable as possible.**
 
-This section applies to components in `features/ui/` and `features/{domain}/ui/`.
+This section applies to components in `ui/` (top-level).
 
-AI MUST split generic components following **Atomic Design** principles.
+AI MUST classify generic components into **two categories**:
 
-### Atomic Design Hierarchy
+### Two-Level Hierarchy
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  ATOMS (smallest, single element wrapper)                   │
+│  PRIMITIVES (smallest, cannot be broken down)               │
 │  ├── Button, Input, Label, Icon, Badge, Checkbox, Spinner   │
-│  └── Max: 15 JSX lines, 5 props, 0-1 internal state         │
+│  ├── Single HTML element wrapper or minimal composition     │
+│  └── Max: 20 JSX lines, 5 props, 0-1 internal state         │
 ├─────────────────────────────────────────────────────────────┤
-│  MOLECULES (2-4 atoms combined)                             │
-│  ├── InputField (Label + Input + ErrorText)                 │
-│  ├── SearchBox (Input + Button + Icon)                      │
-│  ├── MenuItem (Icon + Label + Badge)                        │
-│  └── Max: 30 JSX lines, 7 props, 0-1 internal state         │
-├─────────────────────────────────────────────────────────────┤
-│  ORGANISMS (multiple molecules/atoms, uses compound pattern)│
-│  ├── Card, Dialog, Dropdown, Menu, Toast                    │
+│  COMPOSED (built from primitives)                           │
+│  ├── InputField (Label + Input + FormMessage)               │
+│  ├── Card (Card + CardHeader + CardContent + CardFooter)    │
+│  ├── Dialog, Dropdown, Menu, Toast, SearchBox               │
 │  └── Max: 50 JSX lines total, 10 props, 0-2 internal state  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+**Simple rule:** If it uses other `ui/` components → `composed/`, otherwise → `primitives/`
+
 ### Split Indicators for Generic Components
 
-| Indicator                     | Threshold                                     | Action                             |
-| ----------------------------- | --------------------------------------------- | ---------------------------------- |
-| **JSX lines**                 | > 15 (atom), > 30 (molecule), > 50 (organism) | MUST split                         |
-| **Props count**               | > 5 (atom), > 7 (molecule), > 10 (organism)   | MUST split or use composition      |
-| **Multiple HTML sections**    | > 1 visual area                               | Split into sub-components          |
-| **Optional sections**         | Any                                           | Use slot props or compound pattern |
-| **Wrapper + Content pattern** | Any                                           | Split wrapper from content         |
-| **Repeated elements**         | Any                                           | Extract to smaller atom            |
-| **Internal state**            | > 1 useState                                  | Extract to hook or split           |
+| Indicator                     | Threshold                         | Action                             |
+| ----------------------------- | --------------------------------- | ---------------------------------- |
+| **JSX lines**                 | > 20 (primitive), > 50 (composed) | MUST split                         |
+| **Props count**               | > 5 (primitive), > 10 (composed)  | MUST split or use composition      |
+| **Multiple HTML sections**    | > 1 visual area                   | Use compound pattern (composed/)   |
+| **Optional sections**         | Any                               | Use slot props or compound pattern |
+| **Wrapper + Content pattern** | Any                               | Split wrapper from content         |
+| **Repeated elements**         | Any                               | Extract to primitive               |
+| **Internal state**            | > 1 useState                      | Extract to hook or split           |
 
 ### Core Splitting Patterns
 
-#### Pattern 1: Compound Components (REQUIRED for Organisms)
+#### Pattern 1: Compound Components (for multi-section composed components)
 
 **When component has multiple distinct sections → Use compound pattern**
 
@@ -235,7 +260,7 @@ const Card = ({ title, subtitle, icon, children, footer, actions, headerRight, o
 };
 
 // ✅ GOOD: Compound components - maximum flexibility, minimal props each
-// Each sub-component is an ATOM (< 15 lines)
+// Each sub-component is primitive-sized (< 20 lines)
 
 const Card = ({ children, className }: { children: ReactNode; className?: string }) => (
   <div className={cn("card", className)}>{children}</div>
@@ -277,9 +302,9 @@ const CardFooter = ({ children, className }: { children: ReactNode; className?: 
 </Card>
 ```
 
-#### Pattern 2: Extract Atoms from Molecules
+#### Pattern 2: Extract Primitives from Composed
 
-**When molecule has distinct pieces → Extract each as atom**
+**When composed component has distinct pieces → Extract each as primitive**
 
 ```typescript
 // ❌ BAD: Input with built-in label and error (doing too much)
@@ -305,26 +330,26 @@ const Input = ({ label, error, helperText, leftIcon, rightIcon, ...props }: Inpu
   </div>
 );
 
-// ✅ GOOD: Separate atoms, compose into molecule
+// ✅ GOOD: Separate primitives, compose into composed component
 
-// ATOM: Input (pure input element)
+// PRIMITIVE: Input (pure input element)
 const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
     <input ref={ref} className={cn("input", className)} {...props} />
   )
 );
 
-// ATOM: Label
+// PRIMITIVE: Label
 const Label = ({ children, htmlFor, className }: LabelProps) => (
   <label htmlFor={htmlFor} className={cn("label", className)}>{children}</label>
 );
 
-// ATOM: FormMessage (for errors/helpers)
+// PRIMITIVE: FormMessage (for errors/helpers)
 const FormMessage = ({ children, variant = "default", className }: FormMessageProps) => (
   <span className={cn("form-message", `form-message-${variant}`, className)}>{children}</span>
 );
 
-// MOLECULE: InputField (composes atoms)
+// COMPOSED: InputField (composes primitives)
 const InputField = ({ label, error, helperText, id, ...inputProps }: InputFieldProps) => (
   <div className="input-field">
     {label && <Label htmlFor={id}>{label}</Label>}
@@ -374,12 +399,12 @@ const DialogFooter = ({ children, className }: { children: ReactNode; className?
 );
 ```
 
-#### Pattern 4: Variants via Props (Atoms Only)
+#### Pattern 4: Variants via Props (Primitives Only)
 
-**Atoms can use variant props - keep simple**
+**Primitives can use variant props - keep simple**
 
 ```typescript
-// ✅ GOOD: Simple variants via props for atoms
+// ✅ GOOD: Simple variants via props for primitives
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "ghost" | "danger";
   size?: "sm" | "md" | "lg";
@@ -401,11 +426,11 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 ### File Organization for Generic UI
 
 ```
-features/ui/
-├── atoms/
+ui/
+├── primitives/
 │   ├── Button/
 │   │   ├── index.ts
-│   │   └── Button.tsx           # ≤ 15 lines JSX
+│   │   └── Button.tsx           # ≤ 20 lines JSX
 │   ├── Input/
 │   │   ├── index.ts
 │   │   └── Input.tsx
@@ -413,25 +438,21 @@ features/ui/
 │   ├── Badge/
 │   ├── Icon/
 │   ├── Spinner/
-│   └── index.ts                  # Re-export all atoms
+│   ├── FormMessage/
+│   └── index.ts                  # Re-export all primitives
 │
-├── molecules/
+├── composed/
 │   ├── InputField/
 │   │   ├── index.ts
-│   │   └── InputField.tsx       # ≤ 30 lines, composes atoms
+│   │   └── InputField.tsx       # Composes Label + Input + FormMessage
 │   ├── SearchBox/
-│   ├── MenuItem/
-│   └── index.ts
-│
-├── organisms/
 │   ├── Card/
 │   │   ├── index.ts              # Export all compound parts
-│   │   ├── Card.tsx              # Root (≤ 10 lines)
-│   │   ├── CardHeader.tsx        # ≤ 10 lines
-│   │   ├── CardTitle.tsx         # ≤ 10 lines
-│   │   ├── CardDescription.tsx   # ≤ 10 lines
-│   │   ├── CardContent.tsx       # ≤ 10 lines
-│   │   └── CardFooter.tsx        # ≤ 10 lines
+│   │   ├── Card.tsx              # Root
+│   │   ├── CardHeader.tsx
+│   │   ├── CardTitle.tsx
+│   │   ├── CardContent.tsx
+│   │   └── CardFooter.tsx
 │   ├── Dialog/
 │   ├── Dropdown/
 │   └── index.ts
@@ -441,32 +462,30 @@ features/ui/
 
 ### Generic Component Size Limits (STRICT)
 
-| Level    | Max JSX Lines | Max Props | Max useState | Sub-components      |
-| -------- | ------------- | --------- | ------------ | ------------------- |
-| Atom     | 15            | 5         | 1            | 0 (leaf)            |
-| Molecule | 30            | 7         | 1            | 2-4 atoms           |
-| Organism | 50 total      | 10        | 2            | 3-6 atoms/molecules |
+| Level     | Max JSX Lines | Max Props | Max useState | Description                     |
+| --------- | ------------- | --------- | ------------ | ------------------------------- |
+| Primitive | 20            | 5         | 1            | Cannot use other ui/ components |
+| Composed  | 50 total      | 10        | 2            | Built from primitives           |
 
-**Note:** Organism "50 total" means the root + all compound parts combined.
+**Note:** Composed "50 total" means the root + all compound parts combined.
 
 ### Decision Tree: Split Generic Component?
 
 ```
 Creating a generic (dumb) component?
 │
-├── Is it wrapping a single HTML element?
-│   └── YES → ATOM
-│       └── Keep ≤ 15 JSX lines, ≤ 5 props
-│       └── Examples: Button, Input, Label, Badge, Icon
-│
-├── Does it combine 2-4 atoms into one unit?
-│   └── YES → MOLECULE
-│       └── Keep ≤ 30 JSX lines, ≤ 7 props
-│       └── Examples: InputField, SearchBox, MenuItem
+├── Does it use other ui/ components?
+│   ├── NO → PRIMITIVE (ui/primitives/)
+│   │   └── Keep ≤ 20 JSX lines, ≤ 5 props
+│   │   └── Examples: Button, Input, Label, Badge, Icon
+│   │
+│   └── YES → COMPOSED (ui/composed/)
+│       └── Keep ≤ 50 JSX lines total, ≤ 10 props
+│       └── Examples: InputField, Card, Dialog, SearchBox
 │
 ├── Does it have multiple distinct visual sections?
-│   └── YES → ORGANISM with COMPOUND pattern
-│       └── Split each section into atom-sized sub-component
+│   └── YES → Use COMPOUND pattern
+│       └── Split each section into primitive-sized sub-component
 │       └── Examples: Card → Card+Header+Content+Footer
 │
 ├── Does it have optional sections (header?, footer?)?
@@ -484,25 +503,25 @@ Creating a generic (dumb) component?
 
 ### Naming Conventions
 
-| Type           | Pattern                      | Examples                                    |
-| -------------- | ---------------------------- | ------------------------------------------- |
-| Atom           | `{Name}`                     | `Button`, `Input`, `Badge`                  |
-| Molecule       | `{Purpose}` or `{Atom}Field` | `SearchBox`, `InputField`                   |
-| Organism root  | `{Name}`                     | `Card`, `Dialog`, `Menu`                    |
-| Organism parts | `{Parent}{Part}`             | `CardHeader`, `CardContent`, `DialogFooter` |
-| Loading state  | `{Name}Skeleton`             | `CardSkeleton`, `InputSkeleton`             |
+| Type           | Pattern          | Examples                                    |
+| -------------- | ---------------- | ------------------------------------------- |
+| Primitive      | `{Name}`         | `Button`, `Input`, `Badge`, `Label`         |
+| Composed       | `{Purpose}`      | `InputField`, `SearchBox`, `Card`, `Dialog` |
+| Compound parts | `{Parent}{Part}` | `CardHeader`, `CardContent`, `DialogFooter` |
+| Loading state  | `{Name}Skeleton` | `CardSkeleton`, `InputSkeleton`             |
 
 ### Checklist: Before Writing Generic Component
 
-- [ ] Identified level: Atom / Molecule / Organism?
-- [ ] JSX within limit for its level?
-- [ ] Props within limit for its level?
-- [ ] No more than 1 useState (2 for organisms)?
-- [ ] Using compound pattern for multi-section organisms?
+- [ ] Identified level: Primitive or Composed?
+- [ ] Primitive: Does NOT use other `ui/` components?
+- [ ] Composed: ONLY uses `ui/primitives/` components?
+- [ ] JSX within limit? (20 primitive / 50 composed)
+- [ ] Props within limit? (5 primitive / 10 composed)
+- [ ] No more than 1 useState (2 for composed)?
+- [ ] Using compound pattern for multi-section components?
 - [ ] No business logic (pure presentation)?
 - [ ] Accepts `className` prop for style extension?
 - [ ] Uses `forwardRef` where appropriate?
-- [ ] Each sub-component is independently usable?
 
 **If ANY check FAILS → Split first, then implement.**
 
@@ -510,7 +529,7 @@ Creating a generic (dumb) component?
 
 ### For Generic Components (`ui/`)
 
-1. Check if component already exists in `features/ui/`
+1. Check if component already exists in `ui/`
 2. If creating new, ensure NO domain logic
 3. Document props with JSDoc (no `@businessRules` needed)
 
@@ -578,12 +597,14 @@ Each feature should have a README.md:
 
 ## Folder Structure
 
-- `ui/` - Private presentational components (no business logic)
-- `comps/` - Components with business rules (see JSDoc)
+- `comps/` - Business components (compose from `ui/`, see JSDoc for rules)
 - `services/` - Business logic and API calls
 - `stores/` - State management with atomirx
 - `pages/` - Full page compositions
 - `utils/` - Feature-specific utilities
+- `types/` - Feature-specific types
+
+**Note:** Features MUST NOT have `ui/` folder. Use shared `ui/` components.
 
 ## Key Files
 
@@ -604,12 +625,10 @@ Is it a React component?
 ├── YES
 │   ├── Does it have business logic / domain rules?
 │   │   ├── YES → features/{domain}/comps/
-│   │   └── NO
-│   │       ├── Used by multiple features?
-│   │       │   ├── YES → features/ui/
-│   │       │   └── NO → features/{domain}/ui/
-│   │       └── Is it a full page?
-│   │           └── YES → features/{domain}/pages/
+│   │   └── NO (generic/dumb component)
+│   │       └── ALWAYS → ui/ (top-level)
+│   ├── Is it a full page?
+│   │   └── YES → features/{domain}/pages/
 │   └── Is it a layout component?
 │       └── YES → routes/layouts/
 └── NO
@@ -617,6 +636,10 @@ Is it a React component?
     │   └── YES → features/{domain}/stores/
     ├── Is it business logic / API?
     │   └── YES → features/{domain}/services/
+    ├── Is it a hook?
+    │   ├── Feature-specific?
+    │   │   ├── YES → features/{domain}/hooks/ or inline
+    │   │   └── NO → shared/hooks/
     ├── Is it a utility function?
     │   ├── Feature-specific?
     │   │   ├── YES → features/{domain}/utils/
@@ -631,7 +654,7 @@ Is it a React component?
 
 ### Allowed
 
-- Any feature can import from `features/ui/`
+- Any feature can import from `ui/`
 - Any feature can import from `shared/`
 - Routes can import from any feature's `pages/`
 - Routes can import from any feature's public `index.ts`
@@ -640,6 +663,7 @@ Is it a React component?
 
 - Feature A should NOT import from Feature B's internal folders
 - Use feature's `index.ts` for cross-feature imports
+- Features MUST NOT have their own `ui/` folder
 
 ```typescript
 // GOOD - import from public API
@@ -662,13 +686,13 @@ import { TodoItem } from "@/features/todos/comps/TodoItem";
 - [ ] Checked for `.spec.md` companion file
 - [ ] Read feature README for rules summary
 
-### 3. Generic Component Splitting Check (for `ui/` components)
+### 3. Generic Component Splitting Check (for `ui/` components only)
 
-- [ ] Identified level: Atom / Molecule / Organism?
-- [ ] JSX within limit? (15 atom / 30 molecule / 50 organism)
-- [ ] Props within limit? (5 atom / 7 molecule / 10 organism)
-- [ ] useState ≤ 1? (≤ 2 for organisms)
-- [ ] Multi-section organism → using compound pattern?
+- [ ] Identified level: Primitive or Composed?
+- [ ] JSX within limit? (20 primitive / 50 composed)
+- [ ] Props within limit? (5 primitive / 10 composed)
+- [ ] useState ≤ 1? (≤ 2 for composed)
+- [ ] Multi-section component → using compound pattern?
 - [ ] No business logic (pure presentation)?
 - [ ] Accepts `className` prop?
 - [ ] Uses `forwardRef` where appropriate?
@@ -677,7 +701,7 @@ import { TodoItem } from "@/features/todos/comps/TodoItem";
 
 ### 4. After Implementation
 
-- [ ] Each sub-component is at atom-level size (≤ 15 JSX lines)
+- [ ] Each sub-component is at primitive-level size (≤ 20 JSX lines)
 - [ ] Compound parts are independently usable
-- [ ] File organization follows atoms/molecules/organisms structure
+- [ ] File organization follows primitives/composed structure
 - [ ] All parts exported from index.ts
