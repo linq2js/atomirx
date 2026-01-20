@@ -1,9 +1,13 @@
+/**
+ * @module BasicAtomDemo
+ * @description Demonstrates basic atom usage - get/set operations, lazy initialization, and reset.
+ */
+
 import { useEffect, useRef } from "react";
 import { atom } from "atomirx";
 import { useSelector } from "atomirx/react";
-import { DemoSection } from "../components/DemoSection";
-import { CodeBlock } from "../components/CodeBlock";
-import { useEventLog } from "../App";
+import { DemoSection, CodeBlock } from "../../../../ui";
+import { eventLogStore } from "../../stores";
 import { Plus, Minus, RotateCcw, Edit3 } from "lucide-react";
 
 // Create atoms outside component to persist across renders
@@ -14,12 +18,20 @@ const name$ = atom("atomirx", { meta: { key: "name" } });
 // Example of lazy initialization - value computed once at creation
 const timestamp$ = atom(() => Date.now(), { meta: { key: "timestamp" } });
 
+/**
+ * Demo component showing basic atom operations.
+ *
+ * @example
+ * ```tsx
+ * <BasicAtomDemo />
+ * ```
+ */
 export function BasicAtomDemo() {
   // Shorthand: pass atom directly to get its value
   const count = useSelector(count$);
   const name = useSelector(name$);
   const timestamp = useSelector(timestamp$);
-  const { log } = useEventLog();
+  const { log } = eventLogStore();
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Subscribe to changes for logging

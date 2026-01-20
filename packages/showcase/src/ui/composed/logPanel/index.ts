@@ -1,2 +1,4 @@
-export { LogPanel, type LogPanelProps, type LogEntry } from "./logPanel";
-export { LogPanelPure, type LogPanelPureProps } from "./logPanel.pure";
+export { LogPanel } from "./logPanel";
+export { LogPanelPure } from "./logPanel.pure";
+export type { LogPanelProps, LogEntry } from "./logPanel";
+export type { LogPanelPureProps } from "./logPanel.pure";

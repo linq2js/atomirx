@@ -4,5 +4,5 @@
  * Page components that orchestrate the showcase feature.
  */
 
-// Pages will be added by Task 9
-export {};
+export { ShowcasePage, ShowcasePagePure } from "./showcasePage";
+export type { ShowcasePagePureProps } from "./showcasePage";

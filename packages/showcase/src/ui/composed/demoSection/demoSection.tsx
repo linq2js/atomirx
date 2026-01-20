@@ -1,30 +1,37 @@
 import { ReactNode } from "react";
 
 /**
- * Props for the DemoSection component.
+ * Demo section component for wrapping demo content.
+ *
+ * @description Provides consistent layout for demo sections with
+ * a title, optional description, and card-styled content area.
  */
+
 export interface DemoSectionProps {
-  /** Title of the demo section */
+  /** The section title */
   title: string;
-  /** Optional description text shown below the title */
+  /** Optional description text */
   description?: string;
-  /** Content to render inside the demo card */
+  /** The demo content to render */
   children: ReactNode;
 }
 
 /**
- * A section wrapper for demo content with title and optional description.
- * Used to organize and present individual demo examples.
+ * Wraps demo content in a styled section with title and description.
+ *
+ * @param props - Component props
+ * @param props.title - The section heading
+ * @param props.description - Optional explanatory text
+ * @param props.children - The demo content to display
+ * @returns A styled section element with title, description, and content card
  *
  * @example
- * ```tsx
  * <DemoSection
  *   title="Basic Counter"
- *   description="Demonstrates a simple counter with atom state"
+ *   description="A simple counter using atoms"
  * >
- *   <Counter />
+ *   <CounterDemo />
  * </DemoSection>
- * ```
  */
 export function DemoSection({
   title,

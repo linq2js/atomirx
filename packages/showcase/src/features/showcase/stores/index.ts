@@ -4,5 +4,5 @@
  * Contains atomirx stores for the showcase feature.
  */
 
-// Stores will be added by Task 4
-export {};
+export { eventLogStore } from "./eventLogStore";
+export type { LogEntry, LogEntryType } from "./eventLogStore";

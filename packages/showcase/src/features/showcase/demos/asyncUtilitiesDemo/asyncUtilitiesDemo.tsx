@@ -1,3 +1,8 @@
+/**
+ * @module AsyncUtilitiesDemo
+ * @description Demonstrates async utilities (all, any, race, settled) for coordinating multiple async atoms.
+ */
+
 import { useState, useEffect, useRef } from "react";
 import {
   atom,
@@ -6,10 +11,8 @@ import {
   DerivedAtom,
   AllAtomsRejectedError,
 } from "atomirx";
-import { DemoSection } from "../components/DemoSection";
-import { CodeBlock } from "../components/CodeBlock";
-import { useEventLog } from "../App";
-import { StatusBadge } from "../components/StatusBadge";
+import { DemoSection, CodeBlock, StatusBadge } from "../../../../ui";
+import { eventLogStore } from "../../stores";
 import { Workflow, Loader2, CheckCircle, Trophy, Play } from "lucide-react";
 
 // Helper to create delayed promise
@@ -55,8 +58,16 @@ const createFreshAtoms = (): Atoms => ({
   failing$: createAsyncAtom("Failing", 1500, true),
 });
 
+/**
+ * Demo component showing async utilities (all, any, race, settled).
+ *
+ * @example
+ * ```tsx
+ * <AsyncUtilitiesDemo />
+ * ```
+ */
 export function AsyncUtilitiesDemo() {
-  const { log, clear } = useEventLog();
+  const { log, clear } = eventLogStore();
 
   // Current atoms being observed (kept for potential future use)
   const [, setAtoms] = useState<Atoms | null>(null);

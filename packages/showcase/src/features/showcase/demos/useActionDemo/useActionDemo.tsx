@@ -1,9 +1,12 @@
+/**
+ * @module UseActionDemo
+ * @description Demonstrates useAction hook for handling async actions with automatic state management.
+ */
+
 import { atom } from "atomirx";
 import { useAction, useSelector } from "atomirx/react";
-import { DemoSection } from "../components/DemoSection";
-import { CodeBlock } from "../components/CodeBlock";
-import { StatusBadge } from "../components/StatusBadge";
-import { useEventLog } from "../App";
+import { DemoSection, CodeBlock, StatusBadge } from "../../../../ui";
+import { eventLogStore } from "../../stores";
 import {
   Play,
   Square,
@@ -41,10 +44,18 @@ const fetchData = async (
 // Atom for auto-dispatch demo (use $ suffix convention)
 const userId$ = atom(1, { meta: { key: "userId" } });
 
+/**
+ * Demo component showing useAction hook capabilities.
+ *
+ * @example
+ * ```tsx
+ * <UseActionDemo />
+ * ```
+ */
 export function UseActionDemo() {
   // Shorthand: pass atom directly to get its value
   const userId = useSelector(userId$);
-  const { log } = useEventLog();
+  const { log } = eventLogStore();
 
   // Basic manual dispatch (lazy: true by default)
   const basicAction = useAction(async ({ signal }) => {

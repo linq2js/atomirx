@@ -1,11 +1,14 @@
 # Feature-Sliced Architecture Skill
 
-Guide for working with feature-sliced architecture in this project. Use when implementing components, pages, services, or stores within the `features/` directory structure.
+Guide for working with feature-sliced architecture in this project. Use when implementing components, screens, services, or stores within the `features/` directory structure.
+
+> **Mobile-First Approach**: This skill uses `screens` (not `pages`) as the term for full-view compositions. This terminology aligns with mobile development conventions (React Native, Flutter) and works well for cross-platform projects. For web-only projects, `screens` maps to route-level components.
 
 ## Table of Contents
 
 - [Trigger Conditions](#trigger-conditions)
 - [Directory Structure](#directory-structure)
+- [Sub-Features](#sub-features)
 - [Critical Rules](#critical-rules)
   - [Feature Changes: README First](#feature-changes-readme-first-strict)
   - [No Barrel Exports for Top-Level Feature Dirs](#no-barrel-exports-for-top-level-feature-dirs-strict)
@@ -33,7 +36,7 @@ Guide for working with feature-sliced architecture in this project. Use when imp
 
 Use this skill when:
 
-- Creating new components, services, stores, or pages
+- Creating new components, services, stores, or screens
 - Asking which folder to place new code
 - Implementing UI components (need to determine if generic or domain)
 - Reviewing code organization
@@ -53,7 +56,7 @@ src/
 │   │   ├── comps/               # Business components (compose from ui/)
 │   │   ├── services/            # Business logic, API calls
 │   │   ├── stores/              # State management (atomirx)
-│   │   ├── pages/               # Full page compositions
+│   │   ├── screens/             # Full screen compositions (mobile-first)
 │   │   ├── utils/               # Feature-specific utilities
 │   │   └── types/               # Feature-specific types
 │   │   # NOTE: NO index.ts at feature root — see "No Barrel Exports" rule
@@ -70,6 +73,133 @@ src/
     ├── hooks/                   # Shared hooks
     ├── utils/                   # Shared utilities
     └── types/                   # Shared types
+```
+
+## Sub-Features
+
+Features can have unlimited sub-features using **dash notation** (`-`). Sub-features follow the **same FSA rules** as regular features.
+
+### When to Use Sub-Features
+
+**Size Indicators:**
+
+- Feature has > 10-15 components
+- Feature has > 5-7 services/stores
+- Feature spans multiple distinct business domains
+- Team size working on feature > 3-4 people
+
+**Business Indicators:**
+
+- Feature has multiple user workflows
+- Feature has distinct sub-domains with different business rules
+- Feature could be deployed/maintained as separate modules
+
+### Naming Convention: Dash Notation
+
+**Use `-` (dash) to separate parent feature from sub-feature:**
+
+```typescript
+features/
+├── todos-management/           # ✅ CORRECT: sub-feature of todos
+│   ├── comps/
+│   ├── services/
+│   └── stores/
+├── todos-filtering/           # ✅ CORRECT: sub-feature of todos
+│   ├── comps/
+│   ├── services/
+│   └── stores/
+├── user-profile/              # ✅ CORRECT: sub-feature of user
+│   ├── comps/
+│   ├── services/
+│   └── stores/
+└── user-settings/             # ✅ CORRECT: sub-feature of user
+    ├── comps/
+    ├── services/
+    └── stores/
+```
+
+**❌ FORBIDDEN naming patterns:**
+
+```typescript
+features/
+├── todos.management/          # ❌ Dots cause filesystem/URL issues
+├── todos_management/          # ❌ Underscores less readable
+├── todos/management/          # ❌ Nested dirs (use flat structure)
+```
+
+### Sub-Features Work Like Normal Features
+
+**Same FSA structure and rules apply:**
+
+- ✅ **Full FSA structure**: `comps/`, `services/`, `stores/`, `screens/`, etc.
+- ✅ **No barrel exports** at sub-feature root
+- ✅ **Direct explicit imports** only
+- ✅ **README.md required** for each sub-feature
+- ✅ **Can have their own sub-features** if needed (e.g., `user-profile-settings/`)
+
+### Import Rules for Sub-Features
+
+**Same rules as regular features:**
+
+```typescript
+// ✅ GOOD: Direct imports from sub-features
+import { TodoItem } from "@/features/todos-management/comps/todoItem";
+import { FilterBar } from "@/features/todos-filtering/comps/filterBar";
+import { UserProfile } from "@/features/user-profile/comps/userProfile";
+
+// ❌ BAD: No barrel exports at any level
+import { TodoItem } from "@/features/todos-management";
+```
+
+### Cross-Feature Sub-Feature Imports (AVOID)
+
+**Parent features should NOT import sub-features of other features:**
+
+```typescript
+// ❌ BAD: Cross-feature sub-feature import (tight coupling)
+import { TodoFilters } from "@/features/todos-filtering/comps/filterBar";
+
+// ✅ GOOD: Keep sub-features internal to their parent feature
+// Or make them separate features: features/todoFilters/
+```
+
+### Example: Complex Feature with Sub-Features
+
+```typescript
+features/
+├── todos-management/
+│   ├── README.md           # Sub-feature overview
+│   ├── comps/
+│   │   ├── todoItem/       # CRUD components
+│   │   ├── todoInput/
+│   │   └── todoList/
+│   ├── services/
+│   │   └── storageService.ts
+│   └── stores/
+│       └── todosStore.ts
+├── todos-filtering/
+│   ├── README.md           # Filtering business rules
+│   ├── comps/
+│   │   ├── filterBar/
+│   │   └── clearCompletedButton/
+│   └── stores/
+│       └── filterStore.ts
+├── todos-display/
+│   ├── README.md           # Display/presentation logic
+│   ├── comps/
+│   │   ├── todosHeader/
+│   │   ├── todoStats/
+│   │   └── statusBadge/
+│   └── utils/
+│       └── displayUtils.ts
+└── todos-sync/
+    ├── README.md           # Sync business rules
+    ├── comps/
+    │   └── syncButton/
+    ├── services/
+    │   └── syncService.ts
+    └── stores/
+        └── syncStore.ts
 ```
 
 ## Critical Rules
@@ -106,7 +236,7 @@ src/
 ```markdown
 ## Proposed Changes <!-- Add this section -->
 
-- [ ] Add `resetPasswordPage.tsx` to pages/
+- [ ] Add `resetPasswordScreen.tsx` to screens/
 - [ ] Extract `authLayout.tsx` to comps/ (now reusable)
 - [ ] Add new business rule: "Password reset expires after 24h"
 
@@ -127,10 +257,10 @@ src/
 
 **AI MUST NOT create `index.ts` in feature directories.**
 
-Barrel exports are ONLY allowed for complex component/page folders:
+Barrel exports are ONLY allowed for complex component/screen folders:
 
 - `features/{domain}/comps/loginForm/index.ts` ✅ OK
-- `features/{domain}/pages/authPage/index.ts` ✅ OK
+- `features/{domain}/screens/authScreen/index.ts` ✅ OK
 
 ```
 features/auth/
@@ -142,12 +272,12 @@ features/auth/
 │   └── loginForm/
 │       └── index.ts              # ✅ OK - barrel for component
 │
-├── pages/
-│   ├── index.ts                  # ❌ FORBIDDEN - no barrel for pages/
-│   ├── settingsPage/             # ALL pages use folder structure
-│   │   └── index.ts              # ✅ OK - barrel for page
-│   └── authPage/
-│       └── index.ts              # ✅ OK - barrel for page
+├── screens/
+│   ├── index.ts                  # ❌ FORBIDDEN - no barrel for screens/
+│   ├── settingsScreen/           # ALL screens use folder structure
+│   │   └── index.ts              # ✅ OK - barrel for screen
+│   └── authScreen/
+│       └── index.ts              # ✅ OK - barrel for screen
 │
 ├── services/
 │   ├── index.ts                  # ❌ FORBIDDEN - no barrel for services/
@@ -163,7 +293,7 @@ features/auth/
 ```typescript
 // Direct import (always use explicit paths)
 import { LoginForm } from "@/features/auth/comps/loginForm";
-import { AuthPage } from "@/features/auth/pages/authPage";
+import { AuthScreen } from "@/features/auth/screens/authScreen";
 import { authService } from "@/features/auth/services/authService";
 import { authStore } from "@/features/auth/stores/authStore";
 ```
@@ -203,8 +333,8 @@ import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its P
 
 ```
 ✅ CORRECT (camelCase):
-   authPage.tsx
-   authPage.pure.tsx
+   authScreen.tsx
+   authScreen.pure.tsx
    registerForm.tsx
    loginForm.pure.tsx
    todoItem.styles.css
@@ -212,7 +342,7 @@ import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its P
    authStore.ts          # Store name in filename, NOT auth.store.ts
 
 ❌ FORBIDDEN (PascalCase):
-   AuthPage.tsx
+   AuthScreen.tsx
    RegisterForm.tsx
    TodoItem.styles.css
 
@@ -269,29 +399,29 @@ Each React component MUST have its own file:
 
 ```
 ✅ CORRECT:
-   features/auth/pages/
-   ├── authPage.tsx          # Only AuthPage
+   features/auth/screens/
+   ├── authScreen.tsx        # Only AuthScreen
    ├── registerForm.tsx      # Only RegisterForm
    ├── loginForm.tsx         # Only LoginForm
    └── index.ts              # Barrel export
 
 ❌ FORBIDDEN:
-   features/auth/pages/
-   └── authPage.tsx          # Contains AuthPage + RegisterForm + LoginForm
+   features/auth/screens/
+   └── authScreen.tsx        # Contains AuthScreen + RegisterForm + LoginForm
 ```
 
 ```typescript
 // ❌ FORBIDDEN - Multiple components in one file
-// authPage.tsx
-export function AuthPage() { ... }
+// authScreen.tsx
+export function AuthScreen() { ... }
 function RegisterForm() { ... }  // WRONG - extract to registerForm.tsx
 function LoginForm() { ... }     // WRONG - extract to loginForm.tsx
 
 // ✅ CORRECT - One component per file
-// authPage.tsx
+// authScreen.tsx
 import { RegisterForm } from "./registerForm";
 import { LoginForm } from "./loginForm";
-export function AuthPage() { ... }
+export function AuthScreen() { ... }
 
 // registerForm.tsx
 export function RegisterForm() { ... }
@@ -350,7 +480,7 @@ export function LoginForm() { ... }
 | `features/{domain}/comps/*`    | Domain components | **YES**        | Check JSDoc `@businessRules`   |
 | `features/{domain}/services/*` | Business logic    | **YES**        | Check JSDoc for rules          |
 | `features/{domain}/stores/*`   | State + rules     | **YES**        | Check JSDoc for rules          |
-| `features/{domain}/pages/*`    | Compositions      | **MAYBE**      | Check if complex logic exists  |
+| `features/{domain}/screens/*`  | Compositions      | **MAYBE**      | Check if complex logic exists  |
 | `features/{domain}/utils/*`    | Utilities         | **NO**         | Pure functions only            |
 | `routes/*`                     | Route definitions | **NO**         | Composition only               |
 | `shared/*`                     | Cross-cutting     | **NO**         | Hooks, utils, types only       |
@@ -425,16 +555,16 @@ export const TodoItem = ({ todo, currentUser }: TodoItemProps) => {
 
 ## Domain Component Splitting Rules (MANDATORY)
 
-**Principle: Pages and domain components should be thin orchestrators, not UI factories.**
+**Principle: Screens and domain components should be thin orchestrators, not UI factories.**
 
-This section applies to components in `features/{domain}/pages/` and `features/{domain}/comps/`.
+This section applies to components in `features/{domain}/screens/` and `features/{domain}/comps/`.
 
 ### Size Limits for Domain Components (STRICT)
 
-| Type | Max JSX Lines | Max Total Lines | Action if exceeded       |
-| ---- | ------------- | --------------- | ------------------------ |
-| Page | 30            | 100             | Extract to comps/        |
-| Comp | 50            | 150             | Split into smaller comps |
+| Type   | Max JSX Lines | Max Total Lines | Action if exceeded       |
+| ------ | ------------- | --------------- | ------------------------ |
+| Screen | 30            | 100             | Extract to comps/        |
+| Comp   | 50            | 150             | Split into smaller comps |
 
 ### Split Indicators for Domain Components
 
@@ -442,15 +572,15 @@ This section applies to components in `features/{domain}/pages/` and `features/{
 | ------------------------------------------- | --------------------------- | ---------------------------------------- |
 | **Conditional render block > 10 JSX lines** | `if (loading) return <...>` | Extract to `loadingState.tsx`            |
 | **Error/empty state > 5 JSX lines**         | `if (error) return <...>`   | Extract to `errorState.tsx` or use `ui/` |
-| **Form section > 20 JSX lines**             | Large form in page          | Extract to `{name}Form.tsx` in comps/    |
+| **Form section > 20 JSX lines**             | Large form in screen        | Extract to `{name}Form.tsx` in comps/    |
 | **Repeated UI pattern**                     | Alert box used 2+ times     | Extract to `ui/` or local component      |
 | **View-specific JSX**                       | Register vs Login views     | Extract each view to separate component  |
 
-### Example: Splitting a Large Page
+### Example: Splitting a Large Screen
 
 ```typescript
-// ❌ BAD: Page with too much inline UI (AuthPage.tsx - 377 lines)
-export function AuthPage() {
+// ❌ BAD: Screen with too much inline UI (authScreen.tsx - 377 lines)
+export function AuthScreen() {
   // ... state and hooks ...
 
   if (view === "checking") {
@@ -484,13 +614,13 @@ export function AuthPage() {
   );
 }
 
-// ✅ GOOD: Page as thin orchestrator
-// AuthPage.tsx (< 50 lines)
-export function AuthPage() {
-  const { view, ... } = useAuthPage();  // Extract logic to hook
+// ✅ GOOD: Screen as thin orchestrator
+// authScreen.tsx (< 50 lines)
+export function AuthScreen() {
+  const { view, ... } = useAuthScreen();  // Extract logic to hook
 
-  if (view === "checking") return <AuthPageLoading />;
-  if (view === "unsupported") return <AuthPageUnsupported />;
+  if (view === "checking") return <AuthScreenLoading />;
+  if (view === "unsupported") return <AuthScreenUnsupported />;
 
   return (
     <AuthLayout>
@@ -500,40 +630,40 @@ export function AuthPage() {
 }
 ```
 
-### Page File Structure (MANDATORY — Always Use Folder)
+### Screen File Structure (MANDATORY — Always Use Folder)
 
-**ALL pages MUST use folder structure:**
+**ALL screens MUST use folder structure:**
 
 ```
-pages/
-├── authPage/
-│   ├── index.ts                  # export { AuthPage } from "./authPage"
-│   ├── authPage.tsx              # useAuthPageLogic hook + AuthPage container
-│   ├── authPage.pure.tsx         # AuthPagePure presentation (Storybook-ready)
-│   ├── authPage.loading.tsx      # Loading state (dot notation)
-│   ├── authPage.unsupported.tsx  # Unsupported state (dot notation)
-│   └── authLayout.tsx            # Page-private layout
+screens/
+├── authScreen/
+│   ├── index.ts                  # export { AuthScreen } from "./authScreen"
+│   ├── authScreen.tsx            # useAuthScreenLogic hook + AuthScreen container
+│   ├── authScreen.pure.tsx       # AuthScreenPure presentation (Storybook-ready)
+│   ├── authScreen.loading.tsx    # Loading state (dot notation)
+│   ├── authScreen.unsupported.tsx # Unsupported state (dot notation)
+│   └── authLayout.tsx            # Screen-private layout
 │
-├── settingsPage/                 # Even simple pages use folder
+├── settingsScreen/               # Even simple screens use folder
 │   ├── index.ts
-│   ├── settingsPage.tsx
-│   └── settingsPage.pure.tsx
+│   ├── settingsScreen.tsx
+│   └── settingsScreen.pure.tsx
 │
-└── profilePage/
+└── profileScreen/
     ├── index.ts
-    ├── profilePage.tsx
-    └── profilePage.pure.tsx
+    ├── profileScreen.tsx
+    └── profileScreen.pure.tsx
 ```
 
 **Rules:**
 
-1. **ALL pages** → `pages/myPage/` folder structure (no single file pages)
-2. **Every page folder MUST have:**
+1. **ALL screens** → `screens/myScreen/` folder structure (no single file screens)
+2. **Every screen folder MUST have:**
    - `index.ts` — barrel export
-   - `myPage.tsx` — logic hook + container
-   - `myPage.pure.tsx` — presentation component
-3. **Page parts are PRIVATE** — only used by that page, not exported from `pages/index.ts`
-4. **If page part becomes reusable** → Move to `comps/`
+   - `myScreen.tsx` — logic hook + container
+   - `myScreen.pure.tsx` — presentation component
+3. **Screen parts are PRIVATE** — only used by that screen, not exported from `screens/index.ts`
+4. **If screen part becomes reusable** → Move to `comps/`
 
 ### Decision Tree: Where to Put Extracted Code?
 
@@ -544,12 +674,12 @@ Is the extracted component...
 │   └── YES → ui/primitives/ or ui/composed/
 │       └── Examples: LoadingSpinner, ErrorAlert, EmptyState
 │
-├── Page-private (only used by one page)?
-│   └── YES → Same folder as page (pages/myPage/)
-│       └── Examples: authPage.loading, authPage.unsupported, authLayout
-│       └── MUST NOT be exported from pages/index.ts
+├── Screen-private (only used by one screen)?
+│   └── YES → Same folder as screen (screens/myScreen/)
+│       └── Examples: authScreen.loading, authScreen.unsupported, authLayout
+│       └── MUST NOT be exported from screens/index.ts
 │
-├── Reusable within this feature (used by multiple pages/comps)?
+├── Reusable within this feature (used by multiple screens/comps)?
 │   └── YES → features/{domain}/comps/
 │       └── Examples: RegisterForm, LoginForm, UserAvatar
 │
@@ -561,18 +691,18 @@ Is the extracted component...
 
 ```
 features/auth/
-├── pages/
-│   ├── authPage/                     # Complex page (has hook + Pure)
+├── screens/
+│   ├── authScreen/                   # Complex screen (has hook + Pure)
 │   │   ├── index.ts                  # ✅ OK - complex folder barrel
-│   │   ├── authPage.tsx              # useAuthPageLogic + AuthPage container
-│   │   ├── authPage.pure.tsx         # AuthPagePure presentation
-│   │   ├── authPage.loading.tsx      # Loading state (dot notation)
-│   │   └── authPage.unsupported.tsx  # Unsupported state (dot notation)
+│   │   ├── authScreen.tsx            # useAuthScreenLogic + AuthScreen container
+│   │   ├── authScreen.pure.tsx       # AuthScreenPure presentation
+│   │   ├── authScreen.loading.tsx    # Loading state (dot notation)
+│   │   └── authScreen.unsupported.tsx # Unsupported state (dot notation)
 │   │
-│   └── resetPasswordPage/            # ALL pages use folder structure
+│   └── resetPasswordScreen/          # ALL screens use folder structure
 │       ├── index.ts
-│       ├── resetPasswordPage.tsx
-│       └── resetPasswordPage.pure.tsx
+│       ├── resetPasswordScreen.tsx
+│       └── resetPasswordScreen.pure.tsx
 │
 ├── comps/
 │   ├── registerForm/                 # ALL comps use folder structure
@@ -597,7 +727,7 @@ features/auth/
 
 ### Component File Structure (MANDATORY — Always Use Folder)
 
-**This rule applies to ALL components: pages, comps, and ui.**
+**This rule applies to ALL components: screens, comps, and ui.**
 
 **ALL components MUST use folder structure:**
 
@@ -678,19 +808,19 @@ Compound parts are exempt when:
 - They have no hooks or state
 - They are only used within their parent compound component
 
-**2. Component/Page State Files (dot notation for states)**
+**2. Component/Screen State Files (dot notation for states)**
 
 When a component has multiple view states (loading, error, empty, etc.), use dot notation:
 
 ```
-pages/authPage/
+screens/authScreen/
 ├── index.ts
-├── authPage.tsx
-├── authPage.pure.tsx           # Main presentation
-├── authPage.loading.tsx        # Loading state view
-├── authPage.error.tsx          # Error state view
-├── authPage.unsupported.tsx    # Custom state view
-└── authPage.empty.tsx          # Empty state view (if needed)
+├── authScreen.tsx
+├── authScreen.pure.tsx         # Main presentation
+├── authScreen.loading.tsx      # Loading state view
+├── authScreen.error.tsx        # Error state view
+├── authScreen.unsupported.tsx  # Custom state view
+└── authScreen.empty.tsx        # Empty state view (if needed)
 
 comps/userProfile/
 ├── index.ts
@@ -774,9 +904,9 @@ componentName/
 
 ### Component Pattern (MANDATORY)
 
-**This pattern applies to domain components (pages, comps) and stateful generic UI.**
+**This pattern applies to domain components (screens, comps) and stateful generic UI.**
 
-For exceptions (simple primitives, compound parts, page-private states), see [Exceptions: When .pure.tsx is NOT Required](#exceptions-when-puretsx-is-not-required).
+For exceptions (simple primitives, compound parts, screen-private states), see [Exceptions: When .pure.tsx is NOT Required](#exceptions-when-puretsx-is-not-required).
 
 ```
 componentName/
@@ -789,7 +919,7 @@ componentName/
 
 | Type          | Folder Required  | `.pure.tsx` Required | `useXxxLogic` Required |
 | ------------- | ---------------- | -------------------- | ---------------------- |
-| Domain Page   | YES              | YES                  | YES                    |
+| Domain Screen | YES              | YES                  | YES                    |
 | Domain Comp   | YES              | YES                  | YES                    |
 | Composed UI   | YES              | YES                  | YES (if stateful)      |
 | Primitive UI  | YES              | Optional\*           | Optional\*             |
@@ -980,20 +1110,20 @@ export const WithError: Story = {
 };
 ```
 
-### Complete Example: AuthPage
+### Complete Example: AuthScreen
 
 ```
-features/auth/pages/authPage/
+features/auth/screens/authScreen/
 ├── index.ts
-├── authPage.tsx           # useAuthPageLogic + AuthPage container
-├── authPage.pure.tsx      # AuthPagePure presentation
-├── authPage.loading.tsx      # Loading state (dot notation)
-└── authPage.unsupported.tsx  # Unsupported state (dot notation)
+├── authScreen.tsx         # useAuthScreenLogic + AuthScreen container
+├── authScreen.pure.tsx    # AuthScreenPure presentation
+├── authScreen.loading.tsx # Loading state (dot notation)
+└── authScreen.unsupported.tsx # Unsupported state (dot notation)
 ```
 
 ```typescript
-// authPage.pure.tsx
-export interface AuthPagePureProps {
+// authScreen.pure.tsx
+export interface AuthScreenPureProps {
   view: "checking" | "register" | "login" | "unsupported";
   username: string;
   isLoading: boolean;
@@ -1006,11 +1136,11 @@ export interface AuthPagePureProps {
   onSwitchToLogin: () => void;
 }
 
-export function AuthPagePure(props: AuthPagePureProps) {
+export function AuthScreenPure(props: AuthScreenPureProps) {
   const { view, ...rest } = props;
 
-  if (view === "checking") return <AuthPageLoading />;
-  if (view === "unsupported") return <AuthPageUnsupported />;
+  if (view === "checking") return <AuthScreenLoading />;
+  if (view === "unsupported") return <AuthScreenUnsupported />;
 
   return (
     <AuthLayout>
@@ -1024,22 +1154,22 @@ export function AuthPagePure(props: AuthPagePureProps) {
   );
 }
 
-// authPage.tsx
-import { AuthPagePure, AuthPagePureProps } from "./authPage.pure";
+// authScreen.tsx
+import { AuthScreenPure, AuthScreenPureProps } from "./authScreen.pure";
 
-export interface AuthPageProps {}
+export interface AuthScreenProps {}
 
-export function useAuthPageLogic(props: AuthPageProps): AuthPagePureProps {
-  // ... all logic here, returns AuthPagePureProps
+export function useAuthScreenLogic(props: AuthScreenProps): AuthScreenPureProps {
+  // ... all logic here, returns AuthScreenPureProps
 }
 
-export function AuthPage(props: AuthPageProps) {
-  const pureProps = useAuthPageLogic(props);
-  return <AuthPagePure {...pureProps} />;
+export function AuthScreen(props: AuthScreenProps) {
+  const pureProps = useAuthScreenLogic(props);
+  return <AuthScreenPure {...pureProps} />;
 }
 ```
 
-### Checklist: Before Writing Component/Page (MANDATORY)
+### Checklist: Before Writing Component/Screen (MANDATORY)
 
 **❌ FORBIDDEN:**
 
@@ -1050,7 +1180,7 @@ export function AuthPage(props: AuthPageProps) {
 - Returning type different from `XxxPureProps` in `useXxxLogic`
 - Creating `.logic.ts` files (use `.tsx` for logic + container)
 
-**✅ REQUIRED (every component/page MUST have):**
+**✅ REQUIRED (every component/screen MUST have):**
 
 - [ ] Folder structure: `componentName/` directory
 - [ ] `index.ts` — barrel exports all public APIs
@@ -1058,7 +1188,7 @@ export function AuthPage(props: AuthPageProps) {
 - [ ] `componentName.pure.tsx` — presentation component (Storybook-ready)
 - [ ] `useXxxLogic` returns exactly `XxxPureProps`
 - [ ] `XxxPure` has no hooks, no state — only props
-- [ ] Total lines < 100 (page) or < 150 (comp)
+- [ ] Total lines < 100 (screen) or < 150 (comp)
 
 **If ANY check FAILS → Fix structure first, then implement.**
 
@@ -1143,17 +1273,17 @@ export function useXxxLogic(props: XxxProps): XxxPureProps {
 
 ````typescript
 // ❌ BAD: No documentation
-export function useAuthPageLogic() {
+export function useAuthScreenLogic() {
   const [view, setView] = useState<AuthView>("checking");
   // ... rest of logic
 }
 
 // ✅ GOOD: Comprehensive JSDoc
 /**
- * Logic hook for AuthPage.
+ * Logic hook for AuthScreen.
  *
  * @description
- * Manages authentication page state including view transitions,
+ * Manages authentication screen state including view transitions,
  * passkey registration/login flow, and error handling.
  *
  * @businessRules
@@ -1168,17 +1298,17 @@ export function useAuthPageLogic() {
  * checking → (no credentials) → register
  * register ↔ login (user can switch)
  *
- * @returns {UseAuthPageLogicReturn} State and handlers for AuthPage
+ * @returns {UseAuthScreenLogicReturn} State and handlers for AuthScreen
  *
  * @example
  * ```tsx
- * function AuthPage() {
- *   const { view, onLogin, onRegister } = useAuthPageLogic();
+ * function AuthScreen() {
+ *   const { view, onLogin, onRegister } = useAuthScreenLogic();
  *   // ...
  * }
  * ```
  */
-export function useAuthPageLogic(): UseAuthPageLogicReturn {
+export function useAuthScreenLogic(): UseAuthScreenLogicReturn {
   // ...
 }
 ````
@@ -1197,9 +1327,9 @@ export function useAuthPageLogic(): UseAuthPageLogicReturn {
 
 ```typescript
 /**
- * Return type for useAuthPageLogic hook.
+ * Return type for useAuthScreenLogic hook.
  */
-interface UseAuthPageLogicReturn {
+interface UseAuthScreenLogicReturn {
   /** Current view state: checking, register, login, unsupported */
   view: AuthView;
   /** Username input value for registration */
@@ -1231,7 +1361,7 @@ interface UseAuthPageLogicReturn {
 **Inline comments for complex logic:**
 
 ```typescript
-export function useAuthPageLogic(): UseAuthPageLogicReturn {
+export function useAuthScreenLogic(): UseAuthScreenLogicReturn {
   // ... state declarations ...
 
   // Callbacks with useStable (before effects)
@@ -1724,7 +1854,7 @@ Each feature should have a README.md:
 - `comps/` - Business components (compose from `ui/`, see JSDoc for rules)
 - `services/` - Business logic and API calls
 - `stores/` - State management with atomirx
-- `pages/` - Full page compositions
+- `screens/` - Full screen compositions (mobile-first)
 - `utils/` - Feature-specific utilities
 - `types/` - Feature-specific types
 
@@ -1751,8 +1881,8 @@ Is it a React component?
 │   │   ├── YES → features/{domain}/comps/
 │   │   └── NO (generic/dumb component)
 │   │       └── ALWAYS → ui/ (top-level)
-│   ├── Is it a full page?
-│   │   └── YES → features/{domain}/pages/
+│   ├── Is it a full screen?
+│   │   └── YES → features/{domain}/screens/
 │   └── Is it a layout component?
 │       └── YES → routes/layouts/
 └── NO
@@ -1780,43 +1910,46 @@ Is it a React component?
 
 - Any feature can import from `ui/`
 - Any feature can import from `shared/`
-- Routes can import from any feature's `pages/` (direct path)
+- Routes can import from any feature's `screens/` (direct path)
 - Cross-feature imports use explicit paths
 
 ### Not Allowed
 
 - Features MUST NOT have their own `ui/` folder
-- MUST NOT use barrel imports for cross-feature (no `index.ts` at feature root)
+- MUST NOT use barrel imports for cross-feature (no `index.ts` at feature or sub-feature root)
+- MUST NOT import sub-features from other features (maintains feature encapsulation)
 
 ```typescript
-// ✅ GOOD - explicit path imports
+// ✅ GOOD - explicit path imports (features and sub-features)
 import { TodoItem } from "@/features/todos/comps/todoItem";
-import { TodosPage } from "@/features/todos/pages/todosPage";
+import { TodosScreen } from "@/features/todos/screens/todosScreen";
 import { todoStore } from "@/features/todos/stores/todoStore";
+import { FilterBar } from "@/features/todos-filtering/comps/filterBar";
 
-// ❌ BAD - barrel import (feature index.ts is forbidden)
+// ❌ BAD - barrel import (feature/sub-feature index.ts is forbidden)
 import { TodoItem } from "@/features/todos";
+import { FilterBar } from "@/features/todos-filtering";
 ```
 
 ### Cross-Feature Import Rules for Services/Stores (STRICT)
 
 **Allowed cross-feature imports:**
 
-| From        | Can Import From Other Features                  |
-| ----------- | ----------------------------------------------- |
-| `routes/`   | ONLY features' `pages/` — nothing else          |
-| `pages/`    | Other features' `comps/`, `stores/` (read-only) |
-| `comps/`    | Other features' `stores/` (read-only)           |
-| `stores/`   | ❌ FORBIDDEN — stores must be independent       |
-| `services/` | Other features' `services/` (carefully)         |
+| From        | Can Import From Other Features                    |
+| ----------- | ------------------------------------------------- |
+| `routes/`   | ONLY features' `screens/` — nothing else          |
+| `screens/`  | Other features' `comps/`, `stores/` (read-only)   |
+| `comps/`    | Other features' `stores/` (read-only)             |
+| `stores/`   | ❌ FORBIDDEN — stores must be independent         |
+| `services/` | Other features' `services/` (carefully)           |
 
 **Rules:**
 
-1. **Routes are thin** — Routes ONLY import pages, never comps/services/stores directly
+1. **Routes are thin** — Routes ONLY import screens, never comps/services/stores directly
 2. **Stores are isolated** — A feature's store MUST NOT import another feature's store directly
 3. **Services can compose** — Services may call other features' services for orchestration
 4. **Components can read** — Components may read (not write) other features' stores
-5. **Pages orchestrate** — Pages can import from multiple features to compose views
+5. **Screens orchestrate** — Screens can import from multiple features to compose views
 
 **When cross-feature dependency grows:**
 
@@ -1891,14 +2024,14 @@ interface LoginFormProps {
   onLoginSuccess: (user: User) => void;  // Parent handles cross-feature logic
 }
 
-// features/auth/pages/authPage/authPage.tsx
-const AuthPage = () => {
+// features/auth/screens/authScreen/authScreen.tsx
+const AuthScreen = () => {
   const navigate = useNavigate();
 
   return (
     <LoginForm
       onLoginSuccess={(user) => {
-        // Orchestration happens at page level
+        // Orchestration happens at screen level
         syncStore().startSync(user.id);
         navigate("/dashboard");
       }}
@@ -1930,7 +2063,7 @@ Create a new feature folder when ALL of these apply:
 
 Keep code in existing feature when:
 
-- It's just a sub-page of an existing feature (use `pages/subPage/` instead)
+- It's just a sub-screen of an existing feature (use `screens/subScreen/` instead)
 - It's a variation of existing business logic (extend existing service)
 - It would create tight coupling back to the original feature
 - It's purely for code organization (use folders within feature instead)
@@ -1942,7 +2075,7 @@ Keep code in existing feature when:
 | Components in `comps/` | 10         | 15         | Consider splitting feature  |
 | Services               | 5          | 7          | Extract shared to `shared/` |
 | Stores                 | 3          | 5          | Merge related stores        |
-| Pages                  | 5          | 8          | Consider sub-features       |
+| Screens                | 5          | 8          | Consider sub-features       |
 
 ### Splitting Large Features
 
@@ -1951,7 +2084,7 @@ When a feature grows too large:
 ```
 features/ecommerce/          # TOO BIG
 ├── comps/                   # 20+ components
-├── pages/                   # 10+ pages
+├── screens/                 # 10+ screens
 └── stores/                  # 6+ stores
 
 ↓ Split into sub-features ↓
@@ -1959,19 +2092,19 @@ features/ecommerce/          # TOO BIG
 features/
 ├── cart/                    # Cart management
 │   ├── comps/
-│   ├── pages/
+│   ├── screens/
 │   └── stores/
 ├── checkout/                # Checkout flow
 │   ├── comps/
-│   ├── pages/
+│   ├── screens/
 │   └── stores/
 ├── products/                # Product catalog
 │   ├── comps/
-│   ├── pages/
+│   ├── screens/
 │   └── stores/
 └── orders/                  # Order history
     ├── comps/
-    ├── pages/
+    ├── screens/
     └── stores/
 ```
 
@@ -2033,10 +2166,10 @@ features/
    // After: useXxxLogic hook, component just renders
    ```
 
-3. **Split into page + comps**
+3. **Split into screen + comps**
    ```typescript
-   // Before: Page doing everything
-   // After: Page orchestrates, comps handle sections
+   // Before: Screen doing everything
+   // After: Screen orchestrates, comps handle sections
    ```
 
 ### Issue: Feature Coupling (Feature A heavily imports from Feature B)
@@ -2067,7 +2200,7 @@ features/
 Is it a React component?
 ├── Generic (no business rules)? → ui/
 ├── Has business rules? → features/{domain}/comps/
-└── Full page? → features/{domain}/pages/
+└── Full screen? → features/{domain}/screens/
 
 Is it state management?
 ├── Used by one feature? → features/{domain}/stores/
@@ -2110,14 +2243,14 @@ Is it a utility?
 1. **Create feature folders**
 
    ```
-   mkdir -p features/{domain}/{comps,pages,services,stores,utils,types}
+   mkdir -p features/{domain}/{comps,screens,services,stores,utils,types}
    ```
 
 2. **Move files following conventions**
 
    ```
    src/components/Auth/ → features/auth/comps/
-   src/pages/AuthPage.tsx → features/auth/pages/authPage/
+   src/pages/AuthPage.tsx → features/auth/screens/authScreen/
    src/services/authService.ts → features/auth/services/authService.ts
    ```
 

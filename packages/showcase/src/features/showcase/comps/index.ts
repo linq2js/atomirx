@@ -6,3 +6,4 @@
 
 export * from "./showcaseHeader";
 export * from "./showcaseNav";
+export * from "./eventLogPanel";

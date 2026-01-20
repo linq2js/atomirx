@@ -1,11 +1,15 @@
-import { useState, useEffect, Suspense, useCallback, useRef } from "react";
+/**
+ * @module TodoListDemo
+ * @description Demonstrates local/remote state reconciliation with atomirx.
+ * Shows define() for module scope, derived() for transforms, and useSelector with Suspense.
+ */
+
+import { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { atom, derived, define, DerivedAtom, onCreateHook } from "atomirx";
 import { useSelector } from "atomirx/react";
-import { DemoSection } from "../components/DemoSection";
-import { CodeBlock } from "../components/CodeBlock";
-import { StatusBadge } from "../components/StatusBadge";
-import { useEventLog } from "../App";
-import { ErrorBoundary } from "../components/ErrorBoundary";
+import { DemoSection, CodeBlock, StatusBadge } from "../../../../ui";
+import { eventLogStore } from "../../stores";
+import { ErrorBoundary } from "../../../../shared/utils";
 import {
   RefreshCw,
   AlertCircle,
@@ -37,14 +41,14 @@ onCreateHook.override((prev) => (info) => {
   prev?.(info);
   if (info.type === "mutable" && info.meta?.persisted && info.meta?.key) {
     const key = `todo-app-demo-${info.meta.key}`;
-    if (!info.atom.dirty()) {
+    if (!info.instance.dirty()) {
       const value = localStorage.getItem(key);
       if (value) {
-        info.atom.set(JSON.parse(value));
+        info.instance.set(JSON.parse(value));
       }
     }
-    info.atom.on(() => {
-      localStorage.setItem(key, JSON.stringify(info.atom.get()));
+    info.instance.on(() => {
+      localStorage.setItem(key, JSON.stringify(info.instance.get()));
     });
   }
 });
@@ -298,7 +302,7 @@ export const TodoListDemoModule = define(() => {
 });
 
 function TodoListDemoContent() {
-  const { log } = useEventLog();
+  const { log } = eventLogStore();
 
   // Get module instance (lazy singleton)
   const {
@@ -342,13 +346,6 @@ function TodoListDemoContent() {
     log("Failed to load todos", "error");
   }, [log]);
 
-  // Actions
-  const changeFilter = (filter: FilterType) => {
-    setActiveFilter(filter);
-    setFilter(filter);
-    log(`Filter changed to: ${filter}`, "info");
-  };
-
   const handleToggle = useCallback(
     (id: number, completed: boolean) => {
       updateTodo(id, { completed });
@@ -359,6 +356,13 @@ function TodoListDemoContent() {
     },
     [updateTodo, log]
   );
+
+  // Actions (not callbacks - direct functions)
+  const changeFilter = (filter: FilterType) => {
+    setActiveFilter(filter);
+    setFilter(filter);
+    log(`Filter changed to: ${filter}`, "info");
+  };
 
   const handleRefetch = () => {
     log("Refetching todos...");
@@ -642,5 +646,8 @@ Module.invalidate(); // Reset for next test`}
   );
 }
 
-// Legacy export for backward compatibility
+/**
+ * Legacy export for backward compatibility
+ * @deprecated Use TodoListDemoModule().render() instead
+ */
 export const TodoListDemo = () => TodoListDemoModule().render();

@@ -1,9 +1,13 @@
+/**
+ * @module DerivedAtomDemo
+ * @description Demonstrates derived atoms with automatic dependency tracking.
+ */
+
 import { useEffect } from "react";
 import { atom, derived } from "atomirx";
 import { useSelector } from "atomirx/react";
-import { DemoSection } from "../components/DemoSection";
-import { CodeBlock } from "../components/CodeBlock";
-import { useEventLog } from "../App";
+import { DemoSection, CodeBlock } from "../../../../ui";
+import { eventLogStore } from "../../stores";
 import { Calculator, ArrowRight, Shuffle } from "lucide-react";
 
 // Source atoms (use $ suffix convention)
@@ -33,6 +37,14 @@ const info$ = derived(({ read }) =>
   read(showDetails$) ? read(detailedInfo$) : read(basicInfo$)
 );
 
+/**
+ * Demo component showing derived atom operations.
+ *
+ * @example
+ * ```tsx
+ * <DerivedAtomDemo />
+ * ```
+ */
 export function DerivedAtomDemo() {
   // Shorthand: pass atom directly to get its value
   const price = useSelector(price$);
@@ -44,7 +56,7 @@ export function DerivedAtomDemo() {
   const showDetails = useSelector(showDetails$);
   const info = useSelector(info$);
 
-  const { log } = useEventLog();
+  const { log } = eventLogStore();
 
   useEffect(() => {
     const unsubs = [

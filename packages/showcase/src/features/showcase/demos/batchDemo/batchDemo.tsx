@@ -1,9 +1,13 @@
+/**
+ * @module BatchDemo
+ * @description Demonstrates batch updates and listener deduping in atomirx.
+ */
+
 import { useState, useEffect, useRef } from "react";
 import { atom, batch } from "atomirx";
 import { useSelector } from "atomirx/react";
-import { DemoSection } from "../components/DemoSection";
-import { CodeBlock } from "../components/CodeBlock";
-import { useEventLog } from "../App";
+import { DemoSection, CodeBlock } from "../../../../ui";
+import { eventLogStore } from "../../stores";
 import { Layers, Zap, ArrowRight, Users } from "lucide-react";
 
 // Create atoms for demo (use $ suffix convention)
@@ -12,6 +16,14 @@ const a$ = atom(0, { meta: { key: "a" } });
 const b$ = atom(0, { meta: { key: "b" } });
 const c$ = atom(0, { meta: { key: "c" } });
 
+/**
+ * Demo component showing batch update operations.
+ *
+ * @example
+ * ```tsx
+ * <BatchDemo />
+ * ```
+ */
 export function BatchDemo() {
   // Shorthand: pass atom directly to get its value
   const counter = useSelector(counter$);
@@ -19,7 +31,7 @@ export function BatchDemo() {
   const b = useSelector(b$);
   const c = useSelector(c$);
 
-  const { log, clear } = useEventLog();
+  const { log, clear } = eventLogStore();
   const [notificationCount, setNotificationCount] = useState(0);
   const [sharedListenerCount, setSharedListenerCount] = useState(0);
   const notificationCountRef = useRef(0);

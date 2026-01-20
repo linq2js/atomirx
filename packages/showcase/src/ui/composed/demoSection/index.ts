@@ -1,1 +1,2 @@
-export { DemoSection, type DemoSectionProps } from "./demoSection";
+export { DemoSection } from "./demoSection";
+export type { DemoSectionProps } from "./demoSection";

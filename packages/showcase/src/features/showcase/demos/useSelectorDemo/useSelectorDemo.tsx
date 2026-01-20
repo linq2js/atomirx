@@ -1,9 +1,13 @@
+/**
+ * @module UseSelectorDemo
+ * @description Demonstrates useSelector hook for fine-grained subscriptions in React components.
+ */
+
 import { useRef, memo } from "react";
 import { atom } from "atomirx";
 import { useSelector } from "atomirx/react";
-import { DemoSection } from "../components/DemoSection";
-import { CodeBlock } from "../components/CodeBlock";
-import { useEventLog } from "../App";
+import { DemoSection, CodeBlock } from "../../../../ui";
+import { eventLogStore } from "../../stores";
 import { Eye, RefreshCw, Layers } from "lucide-react";
 
 // Create atoms for demo (use $ suffix convention)
@@ -110,10 +114,18 @@ const CombinedDisplay = memo(function CombinedDisplay() {
   );
 });
 
-export function useSelectorDemo() {
+/**
+ * Demo component showing useSelector fine-grained subscriptions.
+ *
+ * @example
+ * ```tsx
+ * <UseSelectorDemo />
+ * ```
+ */
+export function UseSelectorDemo() {
   // Shorthand: pass atom directly to get its value
   const counter = useSelector(counter$);
-  const { log } = useEventLog();
+  const { log } = eventLogStore();
 
   const updateName = () => {
     const names = ["John Doe", "Jane Smith", "Bob Wilson", "Alice Brown"];
