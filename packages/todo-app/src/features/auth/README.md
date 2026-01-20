@@ -1,5 +1,14 @@
 # Auth Feature
 
+## Proposed Changes <!-- FSA Refactoring -->
+
+- [ ] Merge `authPage.logic.ts` into `authPage.tsx`
+- [ ] Create `authPage.pure.tsx` with AuthPagePure presentation
+- [ ] Refactor `comps/loginForm.tsx` → `comps/loginForm/` folder structure
+- [ ] Refactor `comps/registerForm.tsx` → `comps/registerForm/` folder structure
+- [ ] Refactor `comps/passkeyPrompt.tsx` → `comps/passkeyPrompt/` folder structure
+- [ ] Each component gets: `index.ts`, `xxx.tsx` (logic+container), `xxx.pure.tsx` (presentation)
+
 ## Purpose
 
 Handles user authentication using WebAuthn/Passkeys with optional PRF extension for encryption key derivation. Provides secure, passwordless authentication with biometric verification.

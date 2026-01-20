@@ -6,7 +6,6 @@ Guide for working with feature-sliced architecture in this project. Use when imp
 
 Use this skill when:
 
-- Working in `src/features/` directory
 - Creating new components, services, stores, or pages
 - Asking which folder to place new code
 - Implementing UI components (need to determine if generic or domain)
@@ -111,15 +110,17 @@ features/auth/
 ├── index.ts                      # ❌ FORBIDDEN - no feature root barrel
 ├── comps/
 │   ├── index.ts                  # ❌ FORBIDDEN - no barrel for comps/
-│   ├── avatar.tsx                # Simple → file
-│   └── loginForm/                # Complex → folder
-│       └── index.ts              # ✅ OK - barrel for complex component
+│   ├── avatar/                   # ALL comps use folder structure
+│   │   └── index.ts              # ✅ OK - barrel for component
+│   └── loginForm/
+│       └── index.ts              # ✅ OK - barrel for component
 │
 ├── pages/
 │   ├── index.ts                  # ❌ FORBIDDEN - no barrel for pages/
-│   ├── settingsPage.tsx          # Simple → file
-│   └── authPage/                 # Complex → folder
-│       └── index.ts              # ✅ OK - barrel for complex page
+│   ├── settingsPage/             # ALL pages use folder structure
+│   │   └── index.ts              # ✅ OK - barrel for page
+│   └── authPage/
+│       └── index.ts              # ✅ OK - barrel for page
 │
 ├── services/
 │   ├── index.ts                  # ❌ FORBIDDEN - no barrel for services/
@@ -151,8 +152,8 @@ import { LoginForm } from "../comps"; // Loads: LoginForm, RegisterForm, Avatar,
 import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm
 
 // ✅ OK: Single component folder barrel is fine (minimal scope)
-// loginForm/index.ts only exports loginForm.tsx, loginForm.logic.ts
-import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its logic
+// loginForm/index.ts only exports loginForm.tsx, loginForm.pure.tsx
+import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its Pure
 ```
 
 **Impact comparison:**
@@ -166,7 +167,7 @@ import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its l
 **Single component folder barrel is OK** because:
 
 - Scope is limited to one component
-- Only loads that component's files (`.tsx`, `.logic.ts`, `.styles.css`)
+- Only loads that component's files (`.tsx`, `.pure.tsx`, `.styles.css`)
 - No risk of loading unrelated components
 
 ### File Naming: camelCase (STRICT)
@@ -176,9 +177,9 @@ import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its l
 ```
 ✅ CORRECT (camelCase):
    authPage.tsx
-   authPage.logic.ts
+   authPage.pure.tsx
    registerForm.tsx
-   loginForm.tsx
+   loginForm.pure.tsx
    todoItem.styles.css
    auth.service.ts
    auth.store.ts
@@ -463,40 +464,38 @@ export function AuthPage() {
 }
 ```
 
-### Page File Structure: Simple vs Complex
+### Page File Structure (MANDATORY — Always Use Folder)
 
-**Simple page (no hook, minimal parts) → Single file**
-
-```
-pages/
-├── settingsPage.tsx              # Simple page, single file
-├── profilePage.tsx               # Simple page, single file
-└── index.ts
-```
-
-**Complex page (has hook, multiple parts) → Folder**
+**ALL pages MUST use folder structure:**
 
 ```
 pages/
 ├── authPage/
 │   ├── index.ts                  # export { AuthPage } from "./authPage"
-│   ├── authPage.tsx              # Main page component
-│   ├── authPage.logic.ts         # useAuthPageLogic hook
-│   ├── authLoadingState.tsx      # Page-private view state
-│   ├── authUnsupportedState.tsx  # Page-private view state
+│   ├── authPage.tsx              # useAuthPageLogic hook + AuthPage container
+│   ├── authPage.pure.tsx         # AuthPagePure presentation (Storybook-ready)
+│   ├── authLoadingState.tsx      # Page-private view state (simple, no .pure)
+│   ├── authUnsupportedState.tsx  # Page-private view state (simple, no .pure)
 │   └── authLayout.tsx            # Page-private layout
 │
-├── settingsPage.tsx              # Simple page stays as file
-└── index.ts                      # export * from "./authPage"; export * from "./settingsPage"
+├── settingsPage/                 # Even simple pages use folder
+│   ├── index.ts
+│   ├── settingsPage.tsx
+│   └── settingsPage.pure.tsx
+│
+└── profilePage/
+    ├── index.ts
+    ├── profilePage.tsx
+    └── profilePage.pure.tsx
 ```
 
 **Rules:**
 
-1. **Simple page** → `pages/myPage.tsx` (single file, < 100 lines, no hook)
-2. **Complex page** → `pages/myPage/` folder when:
-   - Page has a logic hook (`MyPage.logic.ts`)
-   - Page has multiple private parts (loading states, layouts, sub-views)
-   - Page would exceed 100 lines as single file
+1. **ALL pages** → `pages/myPage/` folder structure (no single file pages)
+2. **Every page folder MUST have:**
+   - `index.ts` — barrel export
+   - `myPage.tsx` — logic hook + container
+   - `myPage.pure.tsx` — presentation component
 3. **Page parts are PRIVATE** — only used by that page, not exported from `pages/index.ts`
 4. **If page part becomes reusable** → Move to `comps/`
 
@@ -527,22 +526,31 @@ Is the extracted component...
 ```
 features/auth/
 ├── pages/
-│   ├── authPage/                     # Complex page (has parts + hook)
+│   ├── authPage/                     # Complex page (has hook + Pure)
 │   │   ├── index.ts                  # ✅ OK - complex folder barrel
-│   │   ├── authPage.tsx
-│   │   ├── authPage.logic.ts
-│   │   ├── authLoadingState.tsx      # Private to AuthPage
-│   │   └── authUnsupportedState.tsx  # Private to AuthPage
+│   │   ├── authPage.tsx              # useAuthPageLogic + AuthPage container
+│   │   ├── authPage.pure.tsx         # AuthPagePure presentation
+│   │   ├── authLoadingState.tsx      # Private to AuthPage (simple)
+│   │   └── authUnsupportedState.tsx  # Private to AuthPage (simple)
 │   │
-│   └── resetPasswordPage.tsx         # Simple page (single file)
+│   └── resetPasswordPage/            # ALL pages use folder structure
+│       ├── index.ts
+│       ├── resetPasswordPage.tsx
+│       └── resetPasswordPage.pure.tsx
 │
 ├── comps/
-│   ├── registerForm.tsx              # Simple comp (single file)
-│   ├── loginForm/                    # Complex comp (has hook)
-│   │   ├── index.ts                  # ✅ OK - complex folder barrel
+│   ├── registerForm/                 # ALL comps use folder structure
+│   │   ├── index.ts
+│   │   ├── registerForm.tsx          # useRegisterFormLogic + container
+│   │   └── registerForm.pure.tsx     # RegisterFormPure presentation
+│   ├── loginForm/
+│   │   ├── index.ts
 │   │   ├── loginForm.tsx
-│   │   └── loginForm.logic.ts
-│   └── passkeyPrompt.tsx
+│   │   └── loginForm.pure.tsx
+│   └── passkeyPrompt/                # Even simple comps use folder
+│       ├── index.ts
+│       ├── passkeyPrompt.tsx
+│       └── passkeyPrompt.pure.tsx
 │
 ├── services/
 │   └── auth.service.ts
@@ -551,184 +559,314 @@ features/auth/
     └── auth.store.ts
 ```
 
-### Component File Structure: Simple vs Complex (Universal Rule)
+### Component File Structure (MANDATORY — Always Use Folder)
 
 **This rule applies to ALL components: pages, comps, and ui.**
 
-**Simple component → Single file**
+**ALL components MUST use folder structure:**
 
 ```
 comps/
-├── avatar.tsx                    # Simple, no hook, no styles
-├── statusBadge.tsx               # Simple, just props → UI
-└── index.ts
+├── avatar/                       # ALL comps use folder
+│   ├── index.ts
+│   ├── avatar.tsx
+│   └── avatar.pure.tsx
+├── statusBadge/
+│   ├── index.ts
+│   ├── statusBadge.tsx
+│   └── statusBadge.pure.tsx
+└── articleList/
+    ├── index.ts
+    ├── articleList.tsx           # useArticleListLogic hook + container
+    ├── articleList.pure.tsx      # ArticleListPure presentation (Storybook-ready)
+    └── articleList.styles.css    # Optional: styles
 
 ui/primitives/
-├── button.tsx                    # Simple primitive
-├── label.tsx                     # Simple primitive
-└── index.ts
-```
-
-**Complex component → Folder**
-
-```
-comps/
-├── articleList/                  # Complex: has hook + styles
-│   ├── index.ts                  # export { ArticleList } from "./articleList"
-│   ├── articleList.tsx           # UI only (renders from hook data)
-│   ├── articleList.logic.ts      # useArticleListLogic hook
-│   └── articleList.styles.css    # Optional: styles
-│
-├── avatar.tsx                    # Simple stays as file
+├── button/                       # ALL primitives use folder
+│   ├── index.ts
+│   ├── button.tsx
+│   └── button.pure.tsx
+├── label/
+│   ├── index.ts
+│   ├── label.tsx
+│   └── label.pure.tsx
 └── index.ts
 
 ui/composed/
-├── card/                         # Complex: has compound parts
+├── card/                         # Compound parts in same folder
 │   ├── index.ts
 │   ├── card.tsx
-│   ├── cardHeader.tsx
+│   ├── card.pure.tsx
+│   ├── cardHeader.tsx            # Compound part (simple, no .pure)
 │   ├── cardContent.tsx
 │   └── cardFooter.tsx
-│
-├── inputField.tsx                # Simple composed stays as file
+├── inputField/
+│   ├── index.ts
+│   ├── inputField.tsx
+│   └── inputField.pure.tsx
 └── index.ts
 ```
 
-**When to use folder vs file:**
+**❌ FORBIDDEN:**
 
-| Condition                              | Structure               |
-| -------------------------------------- | ----------------------- |
-| Single file, no hook, no custom styles | `componentName.tsx`     |
-| Has logic hook (`.logic.ts`)           | `componentName/` folder |
-| Has custom styles (`.styles.css`)      | `componentName/` folder |
-| Has compound parts (Card + CardHeader) | `componentName/` folder |
-| Has private sub-components             | `componentName/` folder |
+- Single file components (`avatar.tsx` at comps/ level)
+- Components without `.pure.tsx` presentation file
+- Components without `index.ts` barrel export
 
-**Naming convention (inside folder):**
+**✅ REQUIRED for every component:**
 
-| File             | Contains                                  | Naming           |
-| ---------------- | ----------------------------------------- | ---------------- |
-| `xxx.tsx`        | React component (UI only)                 | `function Xxx()` |
-| `xxx.logic.ts`   | Component hook (state, handlers, effects) | `useXxxLogic()`  |
-| `xxx.styles.css` | CSS/SCSS styles (optional)                | -                |
-| `xxx.styles.ts`  | CSS-in-JS styles (optional)               | -                |
-| `xxxSubPart.tsx` | Private sub-component                     | Not exported     |
+| File             | Required | Contains                       |
+| ---------------- | -------- | ------------------------------ |
+| `index.ts`       | YES      | Barrel exports                 |
+| `xxx.tsx`        | YES      | Logic hook + Container         |
+| `xxx.pure.tsx`   | YES      | Presentation (Storybook-ready) |
+| `xxx.styles.css` | Optional | Styles                         |
+
+**File structure inside folder (STRICT):**
+
+```
+componentName/
+├── index.ts              # Barrel export all public APIs
+├── componentName.tsx     # Logic hook + Container component
+├── componentName.pure.tsx  # Presentation component (Storybook-ready)
+├── componentName.styles.css  # Optional: styles
+└── componentName.test.tsx    # Optional: tests
+```
+
+| File             | Contains                          | Exports                               |
+| ---------------- | --------------------------------- | ------------------------------------- |
+| `xxx.tsx`        | Logic hook + Container component  | `useXxxLogic`, `Xxx`                  |
+| `xxx.pure.tsx`   | Presentation component (no state) | `XxxPure`, `XxxPureProps`             |
+| `xxx.styles.css` | Styles (optional)                 | -                                     |
+| `index.ts`       | Barrel exports                    | Re-export from `.tsx` and `.pure.tsx` |
 
 **Rules (STRICT):**
 
-1. Component file MUST only call **ONE hook**: `useXxxLogic()`
-2. **ALL logic** goes in `.logic.ts` — useState, useEffect, useStable, useMemo, handlers
-3. Component file is **pure rendering** — just JSX based on hook return values
-4. `useXxxLogic` hook is **ONLY** for its component — MUST NOT be reused elsewhere
-5. If logic is reusable → move to `features/{domain}/hooks/` or `shared/hooks/`
+1. **Container** (`Xxx`) calls `useXxxLogic()` and renders `<XxxPure {...result} />`
+2. **Presentation** (`XxxPure`) is pure — no hooks, no state, only props
+3. **Logic hook** (`useXxxLogic`) returns exactly `XxxPureProps`
+4. **Storybook** uses `XxxPure` directly with mock props
+5. **Tests** can test hook and UI separately
 
-**Why this pattern (testability):**
+### Component Pattern (MANDATORY)
 
-```typescript
-// Testing LOGIC - no rendering needed, just call the hook
-import { renderHook } from "@testing-library/react";
-import { useAuthPageLogic } from "./authPage.logic";
+**This pattern applies to ALL components: pages, business comps, and generic UI.**
 
-it("should switch to login view when credentials exist", async () => {
-  const { result } = renderHook(() => useAuthPageLogic());
-  // Test logic directly without rendering UI
-  expect(result.current.view).toBe("login");
-});
-
-// Testing UI - mock the hook, test rendering with fake data
-jest.mock("./authPage.logic", () => ({
-  useAuthPageLogic: () => ({
-    view: "register",
-    isLoading: false,
-    onRegister: jest.fn(),
-  }),
-}));
-
-it("should render register form when view is register", () => {
-  render(<AuthPage />);
-  expect(screen.getByText("Create Account")).toBeInTheDocument();
-});
+```
+componentName/
+├── index.ts
+├── componentName.tsx      # Hook + Container
+└── componentName.pure.tsx   # Presentation (Storybook-ready)
 ```
 
-**Component structure:**
+**File: `componentName.pure.tsx` — Presentation Component**
 
 ```typescript
-// ❌ BAD: Logic mixed in component (hard to test)
-// authPage.tsx
-export function AuthPage() {
-  const auth = authStore();
-  const { authSupport, authError, isLoading } = useSelector(({ read }) => ({
-    authSupport: read(auth.authSupport$),
-    authError: read(auth.authError$),
-    isLoading: read(auth.isLoading$),
-  }));
+// loginForm.pure.tsx
+// Pure presentation, no state, no hooks — perfect for Storybook
 
-  const [view, setView] = useState<AuthView>("checking");
-  const [username, setUsername] = useState("");
-
-  // ❌ BAD: useCallback scattered throughout
-  const handleRegister = useCallback(async () => { /* logic */ }, []);
-  const handleLogin = useCallback(async () => { /* logic */ }, []);
-
-  useEffect(() => {
-    async function initialize() { /* logic */ }
-    initialize();
-  }, [auth]);
-
-  return <div>...</div>;
+export interface LoginFormPureProps {
+  /** Current loading state */
+  isLoading: boolean;
+  /** Error message to display */
+  error: string | null;
+  /** Handler for form submission */
+  onSubmit: () => void;
+  /** Handler for switch to register */
+  onSwitchToRegister: () => void;
 }
 
-// ✅ GOOD: Component calls single hook, pure rendering
-// authPage.logic.ts
-export function useAuthPageLogic() {
+/**
+ * Presentation component for LoginForm.
+ * Use this in Storybook to test all visual states.
+ */
+export function LoginFormPure({
+  isLoading,
+  error,
+  onSubmit,
+  onSwitchToRegister,
+}: LoginFormPureProps) {
+  return (
+    <div className="space-y-6">
+      <h2>Welcome Back</h2>
+
+      {error && <ErrorAlert message={error} />}
+
+      <Button onClick={onSubmit} isLoading={isLoading}>
+        Sign in with Passkey
+      </Button>
+
+      <button onClick={onSwitchToRegister}>
+        Create a new account
+      </button>
+    </div>
+  );
+}
+```
+
+**File: `componentName.tsx` — Logic Hook + Container**
+
+```typescript
+// loginForm.tsx
+import { LoginFormPure, LoginFormPureProps } from "./loginForm.pure";
+
+export interface LoginFormProps {
+  /** Callback when login succeeds */
+  onSuccess?: () => void;
+}
+
+/**
+ * Logic hook for LoginForm.
+ * Test this with renderHook() — no rendering needed.
+ *
+ * @param props - Component props
+ * @returns Props for LoginFormPure
+ */
+export function useLoginFormLogic(props: LoginFormProps): LoginFormPureProps {
   const auth = authStore();
-  const { authSupport, authError, isLoading } = useSelector(({ read }) => ({
-    authSupport: read(auth.authSupport$),
+  const { authError, isLoading } = useSelector(({ read }) => ({
     authError: read(auth.authError$),
     isLoading: read(auth.isLoading$),
   }));
 
-  const [view, setView] = useState<AuthView>("checking");
-  const [username, setUsername] = useState("");
-  const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false);
-
-  // ✅ GOOD: All callbacks grouped with useStable
-  const callbacks = useStable({
-    onRegister: async () => { /* logic */ },
-    onLogin: async () => { /* logic */ },
-    onSwitchToRegister: () => { /* logic */ },
-    onSwitchToLogin: () => { /* logic */ },
+  const stable = useStable({
+    onSubmit: async () => {
+      const result = await auth.login();
+      if (result.success) props.onSuccess?.();
+    },
+    onSwitchToRegister: () => {
+      auth.clearError();
+      // navigation logic
+    },
   });
 
-  // Effects ALWAYS last
-  useEffect(() => {
-    async function initialize() { /* logic */ }
-    initialize();
-  }, [auth]);
-
   return {
-    // State
-    view,
-    username,
     isLoading,
-    authError,
-    authSupport,
-    showPasskeyPrompt,
-    // Setters
-    setUsername,
-    // Handlers (spread from useStable)
-    ...callbacks,
+    error: authError?.message ?? null,
+    ...stable,
   };
 }
 
-// authPage.tsx - PURE RENDERING ONLY
-import { useAuthPageLogic } from "./authPage.logic";
+/**
+ * Container component — connects logic to UI.
+ * Use this at runtime in the app.
+ */
+export function LoginForm(props: LoginFormProps) {
+  const pureProps = useLoginFormLogic(props);
+  return <LoginFormPure {...pureProps} />;
+}
+```
 
-export function AuthPage() {
-  const {
-    view, username, isLoading, authError, authSupport, showPasskeyPrompt,
-    setUsername, onRegister, onLogin, onSwitchToRegister, onSwitchToLogin,
-  } = useAuthPageLogic();
+**File: `index.ts` — Barrel Export**
+
+```typescript
+// index.ts
+export { LoginForm, useLoginFormLogic } from "./loginForm";
+export type { LoginFormProps } from "./loginForm";
+export { LoginFormPure } from "./loginForm.pure";
+export type { LoginFormPureProps } from "./loginForm.pure";
+```
+
+### Why This Pattern (Testability + Storybook)
+
+**1. Test Logic — No rendering needed:**
+
+```typescript
+import { renderHook } from "@testing-library/react";
+import { useLoginFormLogic } from "./loginForm";
+
+it("should show error from auth store", () => {
+  // Mock the store to return error
+  const { result } = renderHook(() => useLoginFormLogic({}));
+  expect(result.current.error).toBe("Invalid credentials");
+});
+```
+
+**2. Test UI — Pure component with props:**
+
+```typescript
+import { render, screen } from "@testing-library/react";
+import { LoginFormPure } from "./loginForm.pure";
+
+it("should show error message", () => {
+  render(
+    <LoginFormPure
+      isLoading={false}
+      error="Invalid credentials"
+      onSubmit={jest.fn()}
+      onSwitchToRegister={jest.fn()}
+    />
+  );
+  expect(screen.getByText("Invalid credentials")).toBeInTheDocument();
+});
+```
+
+**3. Storybook — All visual states:**
+
+```typescript
+// loginForm.stories.tsx
+import type { Meta, StoryObj } from "@storybook/react";
+import { LoginFormPure } from "./loginForm.pure";
+
+const meta: Meta<typeof LoginFormPure> = {
+  component: LoginFormPure,
+};
+export default meta;
+
+type Story = StoryObj<typeof LoginFormPure>;
+
+export const Default: Story = {
+  args: {
+    isLoading: false,
+    error: null,
+    onSubmit: () => {},
+    onSwitchToRegister: () => {},
+  },
+};
+
+export const Loading: Story = {
+  args: {
+    ...Default.args,
+    isLoading: true,
+  },
+};
+
+export const WithError: Story = {
+  args: {
+    ...Default.args,
+    error: "Invalid credentials. Please try again.",
+  },
+};
+```
+
+### Complete Example: AuthPage
+
+```
+features/auth/pages/authPage/
+├── index.ts
+├── authPage.tsx           # useAuthPageLogic + AuthPage container
+├── authPage.pure.tsx      # AuthPagePure presentation
+├── authLoadingState.tsx   # Private sub-component (simple, no .pure)
+└── authUnsupportedState.tsx
+```
+
+```typescript
+// authPage.pure.tsx
+export interface AuthPagePureProps {
+  view: "checking" | "register" | "login" | "unsupported";
+  username: string;
+  isLoading: boolean;
+  error: string | null;
+  showPasskeyPrompt: boolean;
+  setUsername: (value: string) => void;
+  onRegister: () => void;
+  onLogin: () => void;
+  onSwitchToRegister: () => void;
+  onSwitchToLogin: () => void;
+}
+
+export function AuthPagePure(props: AuthPagePureProps) {
+  const { view, ...rest } = props;
 
   if (view === "checking") return <AuthLoadingState />;
   if (view === "unsupported") return <AuthUnsupportedState />;
@@ -736,57 +874,59 @@ export function AuthPage() {
   return (
     <AuthLayout>
       {view === "register" ? (
-        <RegisterForm
-          username={username}
-          onUsernameChange={setUsername}
-          onSubmit={onRegister}
-          isLoading={isLoading}
-          error={authError}
-        />
+        <RegisterForm {...rest} />
       ) : (
-        <LoginForm onSubmit={onLogin} isLoading={isLoading} error={authError} />
+        <LoginForm {...rest} />
       )}
-      {showPasskeyPrompt && <PasskeyPrompt />}
+      {props.showPasskeyPrompt && <PasskeyPrompt />}
     </AuthLayout>
   );
 }
+
+// authPage.tsx
+import { AuthPagePure, AuthPagePureProps } from "./authPage.pure";
+
+export interface AuthPageProps {}
+
+export function useAuthPageLogic(props: AuthPageProps): AuthPagePureProps {
+  // ... all logic here, returns AuthPagePureProps
+}
+
+export function AuthPage(props: AuthPageProps) {
+  const pureProps = useAuthPageLogic(props);
+  return <AuthPagePure {...pureProps} />;
+}
 ```
 
-**When to create `.logic.ts` (MUST if ANY of these):**
+### Checklist: Before Writing Component/Page (MANDATORY)
 
-| Indicator             | Action                      |
-| --------------------- | --------------------------- |
-| ANY useState          | MUST extract to `.logic.ts` |
-| ANY useEffect         | MUST extract to `.logic.ts` |
-| ANY useStable/useMemo | MUST extract to `.logic.ts` |
-| ANY event handler     | MUST extract to `.logic.ts` |
-| Uses store/selector   | MUST extract to `.logic.ts` |
+**❌ FORBIDDEN:**
 
-**Allowed in component file (without `.logic.ts`):**
+- Single file components (`avatar.tsx` at folder level)
+- Writing component without folder structure
+- Writing component without `componentName.pure.tsx` presentation file
+- Putting hooks/state in `.pure.tsx` files
+- Returning type different from `XxxPureProps` in `useXxxLogic`
+- Creating `.logic.ts` files (use `.tsx` for logic + container)
 
-- `useRef` for DOM references
-- Third-party UI hooks (e.g., `useFormContext` from react-hook-form)
-- Simple props-only rendering (no state)
+**✅ REQUIRED (every component/page MUST have):**
 
-### Checklist: Before Writing Page/Domain Component
+- [ ] Folder structure: `componentName/` directory
+- [ ] `index.ts` — barrel exports all public APIs
+- [ ] `componentName.tsx` — logic hook + container
+- [ ] `componentName.pure.tsx` — presentation component (Storybook-ready)
+- [ ] `useXxxLogic` returns exactly `XxxPureProps`
+- [ ] `XxxPure` has no hooks, no state — only props
+- [ ] Total lines < 100 (page) or < 150 (comp)
 
-- [ ] Component calls ONLY `useXxxLogic()` — no other state/effect hooks?
-- [ ] ALL useState/useEffect/useStable/useMemo in `.logic.ts`?
-- [ ] Component file is PURE RENDERING — just JSX from hook data?
-- [ ] Total lines < 100 (page) or < 150 (comp)?
-- [ ] JSX lines < 30 (page) or < 50 (comp)?
-- [ ] No conditional render blocks > 10 JSX lines?
-- [ ] No inline forms > 20 JSX lines?
-- [ ] Repeated patterns extracted?
-
-**If ANY check FAILS → Extract to `.logic.ts` first, then implement.**
+**If ANY check FAILS → Fix structure first, then implement.**
 
 ### Hook Code Organization (STRICT)
 
-**AI MUST follow this ordering in `.logic.ts` files:**
+**AI MUST follow this ordering in `useXxxLogic` hooks (inside `componentName.tsx`):**
 
 ```typescript
-export function useXxxLogic() {
+export function useXxxLogic(props: XxxProps): XxxPureProps {
   // 1. External stores/context
   const auth = authStore();
   const theme = useTheme();
@@ -805,7 +945,7 @@ export function useXxxLogic() {
   const filteredItems = useMemo(() => /* ... */, [items, filter]);
 
   // 6. Callbacks/handlers (useStable — NOT useCallback)
-  const callbacks = useStable({
+  const stable = useStable({
     onSubmit: () => { /* ... */ },
     onChange: () => { /* ... */ },
   });
@@ -815,11 +955,7 @@ export function useXxxLogic() {
     // Side effects after all setup is done
   }, [dependency]);
 
-  useLayoutEffect(() => {
-    // DOM measurements/mutations
-  }, []);
-
-  // 8. Return object
+  // 8. Return XxxPureProps
   return {
     // State
     view,
@@ -830,7 +966,7 @@ export function useXxxLogic() {
     // Computed
     filteredItems,
     // Handlers (spread from useStable)
-    ...callbacks,
+    ...stable,
   };
 }
 ```
@@ -854,7 +990,7 @@ export function useXxxLogic() {
 
 ### JSDoc Requirements for Logic Hooks
 
-**Every `.logic.ts` file MUST have comprehensive JSDoc.**
+**Every `useXxxLogic` hook in `.tsx` files MUST have comprehensive JSDoc.**
 
 ````typescript
 // ❌ BAD: No documentation
@@ -898,7 +1034,7 @@ export function useAuthPageLogic(): UseAuthPageLogicReturn {
 }
 ````
 
-**Required JSDoc sections for `.logic.ts`:**
+**Required JSDoc sections for `useXxxLogic` hooks:**
 
 | Section          | Required   | Description                               |
 | ---------------- | ---------- | ----------------------------------------- |
@@ -1231,34 +1367,60 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
 ### File Organization for Generic UI
 
+**ALL UI components MUST use folder structure:**
+
 ```
 ui/
 ├── primitives/
-│   ├── button.tsx                # Simple → file
-│   ├── input.tsx                 # Simple → file
-│   ├── label.tsx                 # Simple → file
-│   ├── badge.tsx                 # Simple → file
-│   ├── icon.tsx                  # Simple → file
-│   ├── spinner.tsx               # Simple → file
-│   ├── formMessage.tsx           # Simple → file
+│   ├── button/                   # ALL primitives use folder
+│   │   ├── index.ts
+│   │   ├── button.tsx
+│   │   └── button.pure.tsx
+│   ├── input/
+│   │   ├── index.ts
+│   │   ├── input.tsx
+│   │   └── input.pure.tsx
+│   ├── label/
+│   │   ├── index.ts
+│   │   ├── label.tsx
+│   │   └── label.pure.tsx
+│   ├── badge/
+│   │   ├── index.ts
+│   │   ├── badge.tsx
+│   │   └── badge.pure.tsx
+│   ├── icon/
+│   │   ├── index.ts
+│   │   ├── icon.tsx
+│   │   └── icon.pure.tsx
+│   ├── spinner/
+│   │   ├── index.ts
+│   │   ├── spinner.tsx
+│   │   └── spinner.pure.tsx
 │   └── index.ts                  # Re-export all primitives
 │
 ├── composed/
-│   ├── inputField.tsx            # Simple composed → file
-│   ├── searchBox.tsx             # Simple composed → file
-│   ├── card/                     # Complex (compound parts) → folder
-│   │   ├── index.ts              # Export all compound parts
-│   │   ├── card.tsx              # Root
-│   │   ├── cardHeader.tsx
+│   ├── inputField/               # ALL composed use folder
+│   │   ├── index.ts
+│   │   ├── inputField.tsx
+│   │   └── inputField.pure.tsx
+│   ├── searchBox/
+│   │   ├── index.ts
+│   │   ├── searchBox.tsx
+│   │   └── searchBox.pure.tsx
+│   ├── card/                     # Compound parts in same folder
+│   │   ├── index.ts
+│   │   ├── card.tsx
+│   │   ├── card.pure.tsx
+│   │   ├── cardHeader.tsx        # Compound part (simple, no .pure)
 │   │   ├── cardTitle.tsx
 │   │   ├── cardContent.tsx
 │   │   └── cardFooter.tsx
-│   ├── dialog/                   # Complex → folder
+│   ├── dialog/
 │   │   ├── index.ts
 │   │   ├── dialog.tsx
-│   │   ├── dialogHeader.tsx
+│   │   ├── dialog.pure.tsx
+│   │   ├── dialogHeader.tsx      # Compound part
 │   │   └── dialogFooter.tsx
-│   ├── dropdown/                 # Complex → folder
 │   └── index.ts
 │
 └── index.ts                      # Re-export all
@@ -1316,6 +1478,15 @@ Creating a generic (dumb) component?
 
 ### Checklist: Before Writing Generic Component
 
+**Structure (MANDATORY):**
+
+- [ ] Using folder structure: `componentName/` directory
+- [ ] Has `index.ts` — barrel exports
+- [ ] Has `componentName.tsx` — logic hook + container
+- [ ] Has `componentName.pure.tsx` — presentation component
+
+**Design:**
+
 - [ ] Identified level: Primitive or Composed?
 - [ ] Primitive: Does NOT use other `ui/` components?
 - [ ] Composed: ONLY uses `ui/primitives/` components?
@@ -1327,7 +1498,7 @@ Creating a generic (dumb) component?
 - [ ] Accepts `className` prop for style extension?
 - [ ] Uses `forwardRef` where appropriate?
 
-**If ANY check FAILS → Split first, then implement.**
+**If ANY check FAILS → Fix first, then implement.**
 
 ## Before Implementing
 
@@ -1480,18 +1651,25 @@ import { TodoItem } from "@/features/todos";
 
 ## Checklist Before Implementation
 
-### 1. Location Check
+### 1. Structure Check (MANDATORY for ALL components)
+
+- [ ] Using folder structure: `componentName/` directory
+- [ ] Has `index.ts` — barrel exports
+- [ ] Has `componentName.tsx` — logic hook + container
+- [ ] Has `componentName.pure.tsx` — presentation component (Storybook-ready)
+
+### 2. Location Check
 
 - [ ] Identified correct folder based on decision tree
 - [ ] Checked for existing similar components
 
-### 2. Business Rules Check (for domain components)
+### 3. Business Rules Check (for domain components)
 
 - [ ] Read `@businessRules` in JSDoc
 - [ ] Checked for `.spec.md` companion file
 - [ ] Read feature README for rules summary
 
-### 3. Generic Component Splitting Check (for `ui/` components only)
+### 4. Generic Component Splitting Check (for `ui/` components only)
 
 - [ ] Identified level: Primitive or Composed?
 - [ ] JSX within limit? (20 primitive / 50 composed)
@@ -1502,11 +1680,11 @@ import { TodoItem } from "@/features/todos";
 - [ ] Accepts `className` prop?
 - [ ] Uses `forwardRef` where appropriate?
 
-**If ANY check FAILS → Split first, then implement.**
+**If ANY check FAILS → Fix first, then implement.**
 
-### 4. After Implementation
+### 5. After Implementation
 
 - [ ] Each sub-component is at primitive-level size (≤ 20 JSX lines)
 - [ ] Compound parts are independently usable
-- [ ] File organization follows primitives/composed structure
+- [ ] File organization follows folder structure
 - [ ] All parts exported from index.ts

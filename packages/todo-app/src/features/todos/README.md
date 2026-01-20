@@ -1,5 +1,18 @@
 # Todos Feature
 
+## Proposed Changes <!-- FSA Refactoring -->
+
+- [ ] Merge `todoItem.logic.ts` → `todoItem.tsx`
+- [ ] Merge `todoList.logic.ts` → `todoList.tsx`
+- [ ] Merge `clearCompletedButton.logic.ts` → `clearCompletedButton.tsx`
+- [ ] Merge `todosPage.logic.ts` → `todosPage.tsx`
+- [ ] Convert all comps to folder structure:
+  - `todoItem/`, `todoList/`, `todoInput/`, `filterBar/`, `statusBadge/`
+  - `syncButton/`, `todosHeader/`, `todoStats/`, `clearCompletedButton/`
+  - `skeletonTodoItem/`, `decryptionError/`
+- [ ] Each component gets: `index.ts`, `xxx.tsx`, `xxx.pure.tsx`
+- [ ] Create `todosPage.pure.tsx` with TodosPagePure presentation
+
 ## Purpose
 
 Manages the todo list with encrypted storage, CRUD operations, filtering, and optimistic updates. All todo content is encrypted before storage using the encryption key derived during authentication.
@@ -87,13 +100,13 @@ Manages the todo list with encrypted storage, CRUD operations, filtering, and op
 
 ```typescript
 interface EncryptedTodo {
-  id: string;              // UUID v4
+  id: string; // UUID v4
   encryptedContent: string; // AES-GCM encrypted JSON
   completed: boolean;
-  createdAt: number;       // Unix timestamp
-  updatedAt: number;       // For conflict resolution
+  createdAt: number; // Unix timestamp
+  updatedAt: number; // For conflict resolution
   syncStatus: "pending" | "synced" | "conflict";
-  serverId?: number;       // From jsonplaceholder
-  deleted?: boolean;       // Soft delete flag
+  serverId?: number; // From jsonplaceholder
+  deleted?: boolean; // Soft delete flag
 }
 ```

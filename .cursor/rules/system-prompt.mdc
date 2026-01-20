@@ -381,6 +381,39 @@ When task has **3 or more implementation items** OR **impacts 5 or more files**,
 
 **MUST** commit after completing each logical unit to preserve progress in git.
 
+## 4. Task Batch Size (STRICT — Context Window Limits)
+
+AI has ~100k token context. After system prompt and conversation, ~60-70k remains for work.
+
+**Token costs (approx):**
+
+| Item                 | Tokens |
+| -------------------- | ------ |
+| 1 line of code       | ~15    |
+| 1 file (200 lines)   | ~3k    |
+| Tool call + response | ~1-2k  |
+
+**Per batch, AI MUST NOT exceed:**
+
+| Action             | Limit     | Reason                   |
+| ------------------ | --------- | ------------------------ |
+| Files to read      | 10 files  | ~3k each = 30k tokens    |
+| Files to create    | 5 files   | Must output full content |
+| Files to edit      | 8 files   | Read + write cost        |
+| Total line changes | 500 lines | Output token cost        |
+
+**When limit reached:**
+
+1. **STOP** current batch
+2. **COMMIT** completed work
+3. **UPDATE** plan file with progress
+4. **INFORM** user: "Batch complete. Ready for next batch."
+5. **WAIT** for user to continue
+
+**❌ FORBIDDEN**: Exceeding batch limits without committing
+**❌ FORBIDDEN**: Continuing after hitting limit without user confirmation
+**✅ REQUIRED**: Track file/line counts mentally during implementation
+
 **Why plan files are MANDATORY:**
 
 - Context window may exceed limits mid-task — plan file enables recovery
