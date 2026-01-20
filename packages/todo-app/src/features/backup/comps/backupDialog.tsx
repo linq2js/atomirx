@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { Dialog, Button } from "@/ui";
 import { cn } from "@/shared/utils";
-import { useBackupDialogLogic } from "./BackupDialog.logic";
+import { useBackupDialogLogic } from "./backupDialog.logic";
 
 /**
  * Backup dialog props.

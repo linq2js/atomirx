@@ -2,11 +2,11 @@
  * Auth components with business rules.
  */
 
-export { PasskeyPrompt, PasskeyError } from "./PasskeyPrompt";
-export type { PasskeyErrorProps } from "./PasskeyPrompt";
+export { PasskeyPrompt, PasskeyError } from "./passkeyPrompt";
+export type { PasskeyErrorProps } from "./passkeyPrompt";
 
-export { RegisterForm } from "./RegisterForm";
-export type { RegisterFormProps } from "./RegisterForm";
+export { RegisterForm } from "./registerForm";
+export type { RegisterFormProps } from "./registerForm";
 
-export { LoginForm } from "./LoginForm";
-export type { LoginFormProps } from "./LoginForm";
+export { LoginForm } from "./loginForm";
+export type { LoginFormProps } from "./loginForm";

@@ -2,4 +2,4 @@
  * Todos feature pages.
  */
 
-export { TodosPage } from "./TodosPage";
+export { TodosPage } from "./todosPage";

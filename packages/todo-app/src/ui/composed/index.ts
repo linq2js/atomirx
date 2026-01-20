@@ -12,19 +12,19 @@
  * - ONLY imports from ui/primitives
  */
 
-export { InputField } from "./InputField";
-export type { InputFieldProps } from "./InputField";
+export { InputField } from "./inputField";
+export type { InputFieldProps } from "./inputField";
 
-export { CheckboxField } from "./CheckboxField";
-export type { CheckboxFieldProps } from "./CheckboxField";
+export { CheckboxField } from "./checkboxField";
+export type { CheckboxFieldProps } from "./checkboxField";
 
-export { Dialog, DialogTrigger, DialogClose, ConfirmDialog } from "./Dialog";
-export type { DialogProps, ConfirmDialogProps } from "./Dialog";
+export { Dialog, DialogTrigger, DialogClose, ConfirmDialog } from "./dialog";
+export type { DialogProps, ConfirmDialogProps } from "./dialog";
 
-export { ToastProvider, ToastContainer, useToast } from "./Toast";
-export type { Toast, ToastType } from "./Toast";
+export { ToastProvider, ToastContainer, useToast } from "./toast";
+export type { Toast, ToastType } from "./toast";
 
-export { SkeletonText } from "./SkeletonText";
-export type { SkeletonTextProps } from "./SkeletonText";
+export { SkeletonText } from "./skeletonText";
+export type { SkeletonTextProps } from "./skeletonText";
 
-export { ErrorBoundary } from "./ErrorBoundary";
+export { ErrorBoundary } from "./errorBoundary";

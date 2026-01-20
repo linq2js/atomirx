@@ -48,6 +48,129 @@ src/
 
 ## Critical Rules
 
+### Feature Changes: README First (STRICT)
+
+**When changing/refactoring a feature, AI MUST update README.md first and get user confirmation before implementing.**
+
+**Workflow:**
+
+1. **Read** existing `features/{domain}/README.md`
+2. **Update** README.md with proposed changes:
+   - New/modified components
+   - New/modified business rules
+   - Changed folder structure
+   - Updated dependencies
+3. **Present** changes to user for confirmation
+4. **Wait** for user approval
+5. **Implement** only after confirmation
+
+```
+❌ FORBIDDEN:
+   1. Start coding immediately
+   2. Update README.md after implementation
+
+✅ REQUIRED:
+   1. Update README.md with plan
+   2. User confirms: "looks good" / "proceed"
+   3. Start implementation
+```
+
+**Example README.md update:**
+
+```markdown
+## Proposed Changes <!-- Add this section -->
+
+- [ ] Add `resetPasswordPage.tsx` to pages/
+- [ ] Extract `authLayout.tsx` to comps/ (now reusable)
+- [ ] Add new business rule: "Password reset expires after 24h"
+
+## Business Rules Summary
+
+- [existing rules...]
+- **NEW:** Password reset link expires after 24 hours
+```
+
+**Why:**
+
+- Ensures AI understands the feature before changing it
+- User can catch misunderstandings early
+- Creates documentation as a side effect
+- Reduces wasted implementation effort
+
+### No Barrel Exports for Top-Level Feature Dirs (STRICT)
+
+**AI MUST NOT create `index.ts` in top-level feature directories (`comps/`, `pages/`, `services/`, `stores/`).**
+
+Barrel exports are ONLY allowed for:
+
+- Feature root: `features/{domain}/index.ts` (public API)
+- Complex component/page folders: `features/{domain}/comps/loginForm/index.ts`
+
+```
+features/auth/
+├── index.ts                      # ✅ Feature public API
+├── comps/
+│   ├── index.ts                  # ❌ FORBIDDEN - no barrel for comps/
+│   ├── avatar.tsx                # Simple → file
+│   └── loginForm/                # Complex → folder
+│       └── index.ts              # ✅ OK - barrel for complex component
+│
+├── pages/
+│   ├── index.ts                  # ❌ FORBIDDEN - no barrel for pages/
+│   ├── settingsPage.tsx          # Simple → file
+│   └── authPage/                 # Complex → folder
+│       └── index.ts              # ✅ OK - barrel for complex page
+│
+├── services/
+│   ├── index.ts                  # ❌ FORBIDDEN - no barrel for services/
+│   └── auth.service.ts
+│
+└── stores/
+    ├── index.ts                  # ❌ FORBIDDEN - no barrel for stores/
+    └── auth.store.ts
+```
+
+**How to import:**
+
+```typescript
+// From feature's public API (recommended for cross-feature)
+import { AuthPage, LoginForm } from "@/features/auth";
+
+// Direct import within same feature
+import { LoginForm } from "../comps/loginForm";
+import { AuthPage } from "../pages/authPage";
+import { authService } from "../services/auth.service";
+```
+
+**Why — Avoid side effects on import:**
+
+```typescript
+// ❌ BAD: comps/index.ts barrel exports everything
+// When you import ONE component, ALL components are loaded/executed
+import { LoginForm } from "../comps"; // Loads: LoginForm, RegisterForm, Avatar, etc.
+
+// ✅ GOOD: Direct import loads only what you need
+import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm
+
+// ✅ OK: Single component folder barrel is fine (minimal scope)
+// loginForm/index.ts only exports loginForm.tsx, loginForm.logic.ts
+import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its logic
+```
+
+**Impact comparison:**
+
+| Import style                | What gets loaded   | Side effects                |
+| --------------------------- | ------------------ | --------------------------- |
+| `from "../comps"` (barrel)  | ALL comps          | High - unused code executed |
+| `from "../comps/loginForm"` | Only LoginForm     | Low - single component      |
+| `from "@/features/auth"`    | Feature public API | Acceptable - explicit API   |
+
+**Single component folder barrel is OK** because:
+
+- Scope is limited to one component
+- Only loads that component's files (`.tsx`, `.logic.ts`, `.styles.css`)
+- No risk of loading unrelated components
+
 ### File Naming: camelCase (STRICT)
 
 **AI MUST use camelCase for all code file names.**

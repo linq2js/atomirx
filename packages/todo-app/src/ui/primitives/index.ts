@@ -12,17 +12,17 @@
  * - NO imports from ui/composed or ui/primitives
  */
 
-export { Button } from "./Button";
-export type { ButtonProps, ButtonVariant, ButtonSize } from "./Button";
+export { Button } from "./button";
+export type { ButtonProps, ButtonVariant, ButtonSize } from "./button";
 
-export { Input } from "./Input";
-export type { InputProps } from "./Input";
+export { Input } from "./input";
+export type { InputProps } from "./input";
 
-export { Checkbox } from "./Checkbox";
-export type { CheckboxProps } from "./Checkbox";
+export { Checkbox } from "./checkbox";
+export type { CheckboxProps } from "./checkbox";
 
-export { Badge } from "./Badge";
-export type { BadgeProps, BadgeVariant, BadgeSize } from "./Badge";
+export { Badge } from "./badge";
+export type { BadgeProps, BadgeVariant, BadgeSize } from "./badge";
 
-export { Skeleton } from "./Skeleton";
-export type { SkeletonProps } from "./Skeleton";
+export { Skeleton } from "./skeleton";
+export type { SkeletonProps } from "./skeleton";

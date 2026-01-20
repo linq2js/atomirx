@@ -8,11 +8,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSelector } from "atomirx/react";
-import { authStore } from "../stores";
-import { PasskeyPrompt, RegisterForm, LoginForm } from "../comps";
-import { AuthLoadingState } from "./AuthLoadingState";
-import { AuthUnsupportedState } from "./AuthUnsupportedState";
-import { AuthLayout } from "./AuthLayout";
+import { authStore } from "../../stores";
+import { PasskeyPrompt, RegisterForm, LoginForm } from "../../comps";
+import { AuthLoadingState } from "./authLoadingState";
+import { AuthUnsupportedState } from "./authUnsupportedState";
+import { AuthLayout } from "./authLayout";
 
 type AuthView = "checking" | "register" | "login" | "unsupported";
 

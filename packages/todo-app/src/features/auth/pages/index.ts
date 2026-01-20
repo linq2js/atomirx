@@ -1,9 +1,9 @@
 /**
  * Auth feature pages.
+ *
+ * @description
+ * Only exports public page components.
+ * Page-private parts are NOT exported from here.
  */
 
-export { AuthPage } from "./AuthPage";
-export { AuthLoadingState } from "./AuthLoadingState";
-export { AuthUnsupportedState } from "./AuthUnsupportedState";
-export { AuthLayout } from "./AuthLayout";
-export type { AuthLayoutProps } from "./AuthLayout";
+export { AuthPage } from "./authPage";

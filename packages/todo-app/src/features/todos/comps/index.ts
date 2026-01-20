@@ -2,31 +2,31 @@
  * Todos components with business rules.
  */
 
-export { TodoItem } from "./TodoItem";
-export type { TodoItemProps } from "./TodoItem";
+export { TodoItem } from "./todoItem";
+export type { TodoItemProps } from "./todoItem";
 
-export { TodoInput } from "./TodoInput";
-export type { TodoInputProps } from "./TodoInput";
+export { TodoInput } from "./todoInput";
+export type { TodoInputProps } from "./todoInput";
 
-export { StatusBadge } from "./StatusBadge";
-export type { StatusBadgeProps } from "./StatusBadge";
+export { StatusBadge } from "./statusBadge";
+export type { StatusBadgeProps } from "./statusBadge";
 
-export { SkeletonTodoItem, SkeletonTodoList } from "./SkeletonTodoItem";
+export { SkeletonTodoItem, SkeletonTodoList } from "./skeletonTodoItem";
 
-export { TodoList } from "./TodoList";
+export { TodoList } from "./todoList";
 
-export { FilterBar } from "./FilterBar";
+export { FilterBar } from "./filterBar";
 
-export { TodoStats } from "./TodoStats";
+export { TodoStats } from "./todoStats";
 
-export { SyncButton } from "./SyncButton";
-export type { SyncButtonProps } from "./SyncButton";
+export { SyncButton } from "./syncButton";
+export type { SyncButtonProps } from "./syncButton";
 
-export { ClearCompletedButton } from "./ClearCompletedButton";
-export type { ClearCompletedButtonProps } from "./ClearCompletedButton";
+export { ClearCompletedButton } from "./clearCompletedButton";
+export type { ClearCompletedButtonProps } from "./clearCompletedButton";
 
-export { DecryptionError } from "./DecryptionError";
-export type { DecryptionErrorProps } from "./DecryptionError";
+export { DecryptionError } from "./decryptionError";
+export type { DecryptionErrorProps } from "./decryptionError";
 
-export { TodosHeader } from "./TodosHeader";
-export type { TodosHeaderProps } from "./TodosHeader";
+export { TodosHeader } from "./todosHeader";
+export type { TodosHeaderProps } from "./todosHeader";

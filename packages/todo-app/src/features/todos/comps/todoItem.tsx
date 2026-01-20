@@ -22,9 +22,9 @@
 
 import { Check, Circle, Trash2, Edit2, X, Loader2 } from "lucide-react";
 import type { Todo } from "../types";
-import { StatusBadge } from "./StatusBadge";
+import { StatusBadge } from "./statusBadge";
 import { cn } from "@/shared/utils";
-import { useTodoItemLogic } from "./TodoItem.logic";
+import { useTodoItemLogic } from "./todoItem.logic";
 
 /**
  * Todo item props.
