@@ -9,8 +9,8 @@
 import { PasskeyPrompt } from "../../comps/passkeyPrompt";
 import { RegisterForm } from "../../comps/registerForm";
 import { LoginForm } from "../../comps/loginForm";
-import { AuthLoadingState } from "./authLoadingState";
-import { AuthUnsupportedState } from "./authUnsupportedState";
+import { AuthLoadingState } from "./authPage.loading";
+import { AuthUnsupportedState } from "./authPage.unsupported";
 import { AuthLayout } from "./authLayout";
 import type { AuthView } from "./authPage";
 

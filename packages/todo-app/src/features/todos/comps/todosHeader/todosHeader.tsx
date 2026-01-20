@@ -6,8 +6,8 @@
  */
 
 import { useSelector } from "atomirx/react";
-import { authStore } from "@/features/auth/stores/auth.store";
-import { networkStore } from "@/features/network/stores/network.store";
+import { authStore } from "@/features/auth/stores/authStore";
+import { networkStore } from "@/features/network/stores/networkStore";
 import { TodosHeaderPure, type TodosHeaderPureProps } from "./todosHeader.pure";
 
 /**

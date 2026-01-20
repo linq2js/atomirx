@@ -17,7 +17,7 @@ Monitors network connectivity using browser events. Provides reactive state for 
 
 ## Key Files
 
-- `stores/network.store.ts` - Network atoms and event listeners
+- `stores/networkStore.ts` - Network atoms and event listeners
 
 ## Dependencies
 

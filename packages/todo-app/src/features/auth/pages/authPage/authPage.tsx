@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { useSelector, useStable } from "atomirx/react";
-import { authStore } from "../../stores/auth.store";
+import { authStore } from "../../stores/authStore";
 import { AuthPagePure } from "./authPage.pure";
 
 /**

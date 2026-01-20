@@ -13,8 +13,8 @@
 import { CheckCircle2, Circle, ListTodo } from "lucide-react";
 import { TodoItem } from "../todoItem";
 import { SkeletonTodoList } from "../skeletonTodoItem";
-import type { TodoFilterType } from "../../stores/todos.store";
-import type { Todo } from "../../types/storage.types";
+import type { TodoFilterType } from "../../stores/todosStore";
+import type { Todo } from "../../types/storageTypes";
 
 /**
  * TodoList pure component props.

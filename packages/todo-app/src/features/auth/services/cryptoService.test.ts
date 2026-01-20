@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { cryptoService } from "./crypto.service";
-import type { CryptoService, EncryptedField } from "../types/crypto.types";
+import { cryptoService } from "./cryptoService";
+import type { CryptoService, EncryptedField } from "../types/cryptoTypes";
 
 describe("CryptoService", () => {
   let crypto: CryptoService;

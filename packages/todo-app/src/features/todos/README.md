@@ -47,9 +47,9 @@ Manages the todo list with encrypted storage, CRUD operations, filtering, and op
 - `comps/filterBar.tsx` - Filter buttons (all/active/completed)
 - `comps/clearCompletedButton.tsx` - Clear completed todos button
 - `comps/clearCompletedButton.logic.ts` - ClearCompletedButton logic hook
-- `services/storage.service.ts` - Encrypted IndexedDB operations
+- `services/storageService.ts` - Encrypted IndexedDB operations
 - `services/db.ts` - Dexie schema for IndexedDB
-- `stores/todos.store.ts` - Todo state atoms and actions
+- `stores/todosStore.ts` - Todo state atoms and actions
 - `pages/todosPage/todosPage.tsx` - Main todo list page
 - `pages/todosPage/todosPage.logic.ts` - Page logic hook
 

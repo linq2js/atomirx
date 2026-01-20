@@ -7,7 +7,7 @@
  *
  * @example
  * ```ts
- * import { backupService } from "@/features/backup/services/backup.service";
+ * import { backupService } from "@/features/backup/services/backupService";
  *
  * const backup = backupService();
  * const result = await backup.exportBackup();
@@ -15,7 +15,7 @@
  */
 
 import { define } from "atomirx";
-import { storageService } from "@/features/todos/services/storage.service";
+import { storageService } from "@/features/todos/services/storageService";
 
 /**
  * Backup file format version.

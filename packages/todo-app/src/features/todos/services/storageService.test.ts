@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { storageService } from "./storage.service";
-import { cryptoService } from "@/features/auth/services/crypto.service";
+import { storageService } from "./storageService";
+import { cryptoService } from "@/features/auth/services/cryptoService";
 import { resetDatabase } from "./db";
-import type { StorageService } from "../types/storage.types";
+import type { StorageService } from "../types/storageTypes";
 
 describe("StorageService", () => {
   let storage: StorageService;

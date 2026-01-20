@@ -7,7 +7,7 @@
  */
 
 import { useSelector } from "atomirx/react";
-import { todosStore, type TodoFilterType } from "../../stores/todos.store";
+import { todosStore, type TodoFilterType } from "../../stores/todosStore";
 import { FilterBarPure, type FilterBarPureProps } from "./filterBar.pure";
 
 /**

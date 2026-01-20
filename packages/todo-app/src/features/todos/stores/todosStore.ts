@@ -31,8 +31,8 @@
  */
 
 import { atom, derived, define, batch, readonly } from "atomirx";
-import { storageService } from "../services/storage.service";
-import type { Todo, CreateTodoInput } from "../types/storage.types";
+import { storageService } from "../services/storageService";
+import type { Todo, CreateTodoInput } from "../types/storageTypes";
 
 /**
  * Todo filter type.
@@ -191,10 +191,7 @@ export const todosStore = define(() => {
 
     try {
       console.log("[Todos] Loading todos from storage...");
-      console.log(
-        "[Todos] Storage initialized:",
-        storage.isInitialized()
-      );
+      console.log("[Todos] Storage initialized:", storage.isInitialized());
       const todos = await storage.getTodos();
       console.log("[Todos] Loaded", todos.length, "todos");
       // Sort by createdAt descending (newest first)

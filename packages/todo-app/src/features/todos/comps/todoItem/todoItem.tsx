@@ -8,7 +8,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useStable } from "atomirx/react";
-import type { Todo } from "../../types/storage.types";
+import type { Todo } from "../../types/storageTypes";
 import { TodoItemPure } from "./todoItem.pure";
 
 /**
@@ -195,7 +195,12 @@ export interface TodoItemProps {
  * />
  * ```
  */
-export function TodoItem({ todo, onToggle, onUpdate, onDelete }: TodoItemProps) {
+export function TodoItem({
+  todo,
+  onToggle,
+  onUpdate,
+  onDelete,
+}: TodoItemProps) {
   const logicProps = useTodoItemLogic({ todo, onToggle, onUpdate, onDelete });
   return <TodoItemPure todo={todo} {...logicProps} />;
 }

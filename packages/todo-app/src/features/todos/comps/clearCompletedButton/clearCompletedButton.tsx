@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { useStable } from "atomirx/react";
-import { todosStore } from "../../stores/todos.store";
+import { todosStore } from "../../stores/todosStore";
 import { ClearCompletedButtonPure } from "./clearCompletedButton.pure";
 
 /**
@@ -76,7 +76,9 @@ export interface ClearCompletedButtonProps {
  * )}
  * ```
  */
-export function ClearCompletedButton({ completedCount }: ClearCompletedButtonProps) {
+export function ClearCompletedButton({
+  completedCount,
+}: ClearCompletedButtonProps) {
   const { isClearing, onClear } = useClearCompletedButtonLogic();
   return (
     <ClearCompletedButtonPure

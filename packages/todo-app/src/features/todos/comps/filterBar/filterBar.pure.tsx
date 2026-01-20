@@ -10,7 +10,7 @@
  */
 
 import { Filter, Circle, CheckCircle2 } from "lucide-react";
-import type { TodoFilterType } from "../../stores/todos.store";
+import type { TodoFilterType } from "../../stores/todosStore";
 import { cn } from "@/shared/utils";
 
 /**

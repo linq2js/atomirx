@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { authService } from "./auth.service";
-import type { AuthSupport, AuthService } from "../types/auth.types";
+import { authService } from "./authService";
+import type { AuthSupport, AuthService } from "../types/authTypes";
 
 // Get mocks from setup file - cast through unknown to satisfy TypeScript
 const mockCredentials = globalThis.navigator.credentials as unknown as {

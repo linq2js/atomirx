@@ -20,7 +20,7 @@ Provides export and import functionality for encrypted todo data. Users can down
 ## Key Files
 
 - `domain/BackupDialog.tsx` - Modal UI for backup operations
-- `services/backup.service.ts` - Export/import/validate logic
+- `services/backupService.ts` - Export/import/validate logic
 
 ## Dependencies
 

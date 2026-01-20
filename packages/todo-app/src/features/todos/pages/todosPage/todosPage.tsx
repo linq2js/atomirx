@@ -8,9 +8,9 @@
 
 import { useEffect } from "react";
 import { useSelector, useStable } from "atomirx/react";
-import { authStore } from "@/features/auth/stores/auth.store";
-import { syncStore } from "@/features/sync/stores/sync.store";
-import { todosStore, type TodoError } from "../../stores/todos.store";
+import { authStore } from "@/features/auth/stores/authStore";
+import { syncStore } from "@/features/sync/stores/syncStore";
+import { todosStore, type TodoError } from "../../stores/todosStore";
 import { TodosPagePure } from "./todosPage.pure";
 
 /**

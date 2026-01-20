@@ -8,7 +8,7 @@
 
 import { useState, useRef } from "react";
 import { useStable } from "atomirx/react";
-import { backupService, downloadBlob } from "../../services/backup.service";
+import { backupService, downloadBlob } from "../../services/backupService";
 import {
   BackupDialogPure,
   type BackupDialogPureProps,

@@ -29,10 +29,10 @@ import type {
   EncryptedField,
   KeyDerivationConfig,
   WrappedKey,
-} from "../types/crypto.types";
+} from "../types/cryptoTypes";
 
 // Re-export types that are used by other modules
-export type { EncryptedField } from "../types/crypto.types";
+export type { EncryptedField } from "../types/cryptoTypes";
 import { arrayBufferToBase64, base64ToArrayBuffer } from "@/shared/utils";
 
 /** AES-GCM configuration */

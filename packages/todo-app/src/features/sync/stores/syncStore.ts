@@ -25,8 +25,8 @@
  */
 
 import { atom, derived, define, effect, batch, readonly } from "atomirx";
-import { storageService } from "@/features/todos/services/storage.service";
-import { networkStore } from "@/features/network/stores/network.store";
+import { storageService } from "@/features/todos/services/storageService";
+import { networkStore } from "@/features/network/stores/networkStore";
 
 /**
  * Sync status type.

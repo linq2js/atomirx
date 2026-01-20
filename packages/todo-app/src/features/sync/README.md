@@ -18,7 +18,7 @@ Manages synchronization between local IndexedDB storage and a remote server (jso
 
 ## Key Files
 
-- `stores/sync.store.ts` - Sync atoms, derived state, and actions
+- `stores/syncStore.ts` - Sync atoms, derived state, and actions
 
 ## Dependencies
 

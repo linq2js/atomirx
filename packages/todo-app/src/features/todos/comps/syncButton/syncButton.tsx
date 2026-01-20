@@ -7,7 +7,7 @@
  */
 
 import { useSelector } from "atomirx/react";
-import { syncStore } from "@/features/sync/stores/sync.store";
+import { syncStore } from "@/features/sync/stores/syncStore";
 import { SyncButtonPure, type SyncButtonPureProps } from "./syncButton.pure";
 
 /**
@@ -32,7 +32,9 @@ export type UseSyncButtonLogicReturn = SyncButtonPureProps;
  * @param onSync - Callback when sync is triggered
  * @returns Sync button state and handlers
  */
-export function useSyncButtonLogic(onSync: () => Promise<void>): UseSyncButtonLogicReturn {
+export function useSyncButtonLogic(
+  onSync: () => Promise<void>
+): UseSyncButtonLogicReturn {
   const sync = syncStore();
   const { syncStatus, isSyncing } = useSelector(({ read }) => ({
     syncStatus: read(sync.syncStatus$),

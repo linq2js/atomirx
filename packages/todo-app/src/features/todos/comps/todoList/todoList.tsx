@@ -7,8 +7,8 @@
  */
 
 import { useSelector, useStable } from "atomirx/react";
-import { todosStore, type TodoFilterType } from "../../stores/todos.store";
-import type { Todo } from "../../types/storage.types";
+import { todosStore, type TodoFilterType } from "../../stores/todosStore";
+import type { Todo } from "../../types/storageTypes";
 import { TodoListPure } from "./todoList.pure";
 
 /**

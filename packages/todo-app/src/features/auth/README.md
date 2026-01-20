@@ -36,9 +36,9 @@ Handles user authentication using WebAuthn/Passkeys with optional PRF extension 
 - `comps/passkeyPrompt.tsx` - Visual prompt during biometric verification
 - `comps/loginForm.tsx` - Login form with passkey sign in
 - `comps/registerForm.tsx` - Registration form for new users
-- `services/auth.service.ts` - WebAuthn registration/authentication
-- `services/crypto.service.ts` - AES-256-GCM encryption operations
-- `stores/auth.store.ts` - Auth state atoms and actions
+- `services/authService.ts` - WebAuthn registration/authentication
+- `services/cryptoService.ts` - AES-256-GCM encryption operations
+- `stores/authStore.ts` - Auth state atoms and actions
 - `pages/authPage/authPage.tsx` - Login/register page composition
 - `pages/authPage/authPage.logic.ts` - Page logic hook
 

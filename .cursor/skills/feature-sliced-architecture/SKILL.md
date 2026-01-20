@@ -151,11 +151,11 @@ features/auth/
 │
 ├── services/
 │   ├── index.ts                  # ❌ FORBIDDEN - no barrel for services/
-│   └── auth.service.ts
+│   └── authService.ts
 │
 └── stores/
     ├── index.ts                  # ❌ FORBIDDEN - no barrel for stores/
-    └── auth.store.ts
+    └── authStore.ts
 ```
 
 **How to import:**
@@ -164,8 +164,8 @@ features/auth/
 // Direct import (always use explicit paths)
 import { LoginForm } from "@/features/auth/comps/loginForm";
 import { AuthPage } from "@/features/auth/pages/authPage";
-import { authService } from "@/features/auth/services/auth.service";
-import { authStore } from "@/features/auth/stores/auth.store";
+import { authService } from "@/features/auth/services/authService";
+import { authStore } from "@/features/auth/stores/authStore";
 ```
 
 **Why — Avoid side effects on import:**
@@ -208,13 +208,18 @@ import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its P
    registerForm.tsx
    loginForm.pure.tsx
    todoItem.styles.css
-   auth.service.ts
-   auth.store.ts
+   authService.ts        # Service name in filename, NOT auth.service.ts
+   authStore.ts          # Store name in filename, NOT auth.store.ts
 
 ❌ FORBIDDEN (PascalCase):
    AuthPage.tsx
    RegisterForm.tsx
    TodoItem.styles.css
+
+❌ FORBIDDEN (dot notation for stores/services):
+   auth.store.ts         # Use authStore.ts instead
+   auth.service.ts       # Use authService.ts instead
+   todo.store.ts         # Use todoStore.ts instead
 ```
 
 **Exceptions:**
@@ -228,6 +233,10 @@ import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its P
 - Consistent with common JS/TS conventions
 - Avoids case-sensitivity issues across OS
 - Distinguishes files from exported components/classes
+- **Stores/Services use camelCase (not dot notation)** because:
+  - Consistent with component naming (`loginForm.tsx` not `login.form.tsx`)
+  - Export name matches filename: `authStore` from `authStore.ts`
+  - Dot notation (`.pure.tsx`, `.styles.css`) is reserved for file variations within a component folder
 
 ### Index Files (STRICT)
 
@@ -480,8 +489,8 @@ export function AuthPage() {
 export function AuthPage() {
   const { view, ... } = useAuthPage();  // Extract logic to hook
 
-  if (view === "checking") return <AuthLoadingState />;
-  if (view === "unsupported") return <AuthUnsupportedState />;
+  if (view === "checking") return <AuthPageLoading />;
+  if (view === "unsupported") return <AuthPageUnsupported />;
 
   return (
     <AuthLayout>
@@ -501,8 +510,8 @@ pages/
 │   ├── index.ts                  # export { AuthPage } from "./authPage"
 │   ├── authPage.tsx              # useAuthPageLogic hook + AuthPage container
 │   ├── authPage.pure.tsx         # AuthPagePure presentation (Storybook-ready)
-│   ├── authLoadingState.tsx      # Page-private view state (simple, no .pure)
-│   ├── authUnsupportedState.tsx  # Page-private view state (simple, no .pure)
+│   ├── authPage.loading.tsx      # Loading state (dot notation)
+│   ├── authPage.unsupported.tsx  # Unsupported state (dot notation)
 │   └── authLayout.tsx            # Page-private layout
 │
 ├── settingsPage/                 # Even simple pages use folder
@@ -537,7 +546,7 @@ Is the extracted component...
 │
 ├── Page-private (only used by one page)?
 │   └── YES → Same folder as page (pages/myPage/)
-│       └── Examples: authLoadingState, authLayout (if auth-specific)
+│       └── Examples: authPage.loading, authPage.unsupported, authLayout
 │       └── MUST NOT be exported from pages/index.ts
 │
 ├── Reusable within this feature (used by multiple pages/comps)?
@@ -557,8 +566,8 @@ features/auth/
 │   │   ├── index.ts                  # ✅ OK - complex folder barrel
 │   │   ├── authPage.tsx              # useAuthPageLogic + AuthPage container
 │   │   ├── authPage.pure.tsx         # AuthPagePure presentation
-│   │   ├── authLoadingState.tsx      # Private to AuthPage (simple)
-│   │   └── authUnsupportedState.tsx  # Private to AuthPage (simple)
+│   │   ├── authPage.loading.tsx      # Loading state (dot notation)
+│   │   └── authPage.unsupported.tsx  # Unsupported state (dot notation)
 │   │
 │   └── resetPasswordPage/            # ALL pages use folder structure
 │       ├── index.ts
@@ -580,10 +589,10 @@ features/auth/
 │       └── passkeyPrompt.pure.tsx
 │
 ├── services/
-│   └── auth.service.ts
+│   └── authService.ts
 │
 └── stores/
-    └── auth.store.ts
+    └── authStore.ts
 ```
 
 ### Component File Structure (MANDATORY — Always Use Folder)
@@ -669,22 +678,44 @@ Compound parts are exempt when:
 - They have no hooks or state
 - They are only used within their parent compound component
 
-**2. Page-Private View States (simple conditional renders)**
+**2. Component/Page State Files (dot notation for states)**
+
+When a component has multiple view states (loading, error, empty, etc.), use dot notation:
 
 ```
 pages/authPage/
+├── index.ts
 ├── authPage.tsx
-├── authPage.pure.tsx      # ✅ Main page needs .pure
-├── authLoadingState.tsx   # ✅ OK - simple view state, no .pure needed
-└── authUnsupportedState.tsx  # ✅ OK - simple view state
+├── authPage.pure.tsx           # Main presentation
+├── authPage.loading.tsx        # Loading state view
+├── authPage.error.tsx          # Error state view
+├── authPage.unsupported.tsx    # Custom state view
+└── authPage.empty.tsx          # Empty state view (if needed)
+
+comps/userProfile/
+├── index.ts
+├── userProfile.tsx
+├── userProfile.pure.tsx
+├── userProfile.loading.tsx     # Skeleton/loading state
+└── userProfile.error.tsx       # Error state
 ```
 
-Page-private view states are exempt when:
+**Naming pattern:** `{componentName}.{stateName}.tsx`
+
+Common state names:
+
+- `.loading.tsx` — Loading/skeleton state
+- `.error.tsx` — Error state
+- `.empty.tsx` — Empty/no-data state
+- `.offline.tsx` — Offline state
+- `.unsupported.tsx` — Unsupported browser/feature state
+
+State files are exempt from `.pure.tsx` requirement when:
 
 - They are < 20 JSX lines
 - They have no props or only 1-2 simple props
-- They are only used by their parent page
-- They are NOT exported from the page's index.ts
+- They are only used by their parent component
+- They are NOT exported from the component's index.ts
 
 **3. UI Primitives (optional simplified pattern)**
 
@@ -723,12 +754,15 @@ componentName/
 └── componentName.test.tsx    # Optional: tests
 ```
 
-| File             | Contains                          | Exports                               |
-| ---------------- | --------------------------------- | ------------------------------------- |
-| `xxx.tsx`        | Logic hook + Container component  | `useXxxLogic`, `Xxx`                  |
-| `xxx.pure.tsx`   | Presentation component (no state) | `XxxPure`, `XxxPureProps`             |
-| `xxx.styles.css` | Styles (optional)                 | -                                     |
-| `index.ts`       | Barrel exports                    | Re-export from `.tsx` and `.pure.tsx` |
+| File              | Contains                          | Exports                               |
+| ----------------- | --------------------------------- | ------------------------------------- |
+| `xxx.tsx`         | Logic hook + Container component  | `useXxxLogic`, `Xxx`                  |
+| `xxx.pure.tsx`    | Presentation component (no state) | `XxxPure`, `XxxPureProps`             |
+| `xxx.loading.tsx` | Loading state view (optional)     | Internal use only                     |
+| `xxx.error.tsx`   | Error state view (optional)       | Internal use only                     |
+| `xxx.{state}.tsx` | Custom state view (optional)      | Internal use only                     |
+| `xxx.styles.css`  | Styles (optional)                 | -                                     |
+| `index.ts`        | Barrel exports                    | Re-export from `.tsx` and `.pure.tsx` |
 
 **Rules (STRICT):**
 
@@ -753,16 +787,18 @@ componentName/
 
 **Pattern Requirements by Component Type:**
 
-| Type               | Folder Required  | `.pure.tsx` Required | `useXxxLogic` Required |
-| ------------------ | ---------------- | -------------------- | ---------------------- |
-| Domain Page        | YES              | YES                  | YES                    |
-| Domain Comp        | YES              | YES                  | YES                    |
-| Composed UI        | YES              | YES                  | YES (if stateful)      |
-| Primitive UI       | YES              | Optional\*           | Optional\*             |
-| Compound Part      | In parent folder | NO                   | NO                     |
-| Page-Private State | In parent folder | NO                   | NO                     |
+| Type          | Folder Required  | `.pure.tsx` Required | `useXxxLogic` Required |
+| ------------- | ---------------- | -------------------- | ---------------------- |
+| Domain Page   | YES              | YES                  | YES                    |
+| Domain Comp   | YES              | YES                  | YES                    |
+| Composed UI   | YES              | YES                  | YES (if stateful)      |
+| Primitive UI  | YES              | Optional\*           | Optional\*             |
+| Compound Part | In parent folder | NO                   | NO                     |
+| State File    | In parent folder | NO                   | NO                     |
 
 \*Primitives with 0 state, ≤5 props, ≤20 JSX lines may use single-file pattern.
+
+**State files** use dot notation: `componentName.loading.tsx`, `componentName.error.tsx`, etc.
 
 **File: `componentName.pure.tsx` — Presentation Component**
 
@@ -951,8 +987,8 @@ features/auth/pages/authPage/
 ├── index.ts
 ├── authPage.tsx           # useAuthPageLogic + AuthPage container
 ├── authPage.pure.tsx      # AuthPagePure presentation
-├── authLoadingState.tsx   # Private sub-component (simple, no .pure)
-└── authUnsupportedState.tsx
+├── authPage.loading.tsx      # Loading state (dot notation)
+└── authPage.unsupported.tsx  # Unsupported state (dot notation)
 ```
 
 ```typescript
@@ -973,8 +1009,8 @@ export interface AuthPagePureProps {
 export function AuthPagePure(props: AuthPagePureProps) {
   const { view, ...rest } = props;
 
-  if (view === "checking") return <AuthLoadingState />;
-  if (view === "unsupported") return <AuthUnsupportedState />;
+  if (view === "checking") return <AuthPageLoading />;
+  if (view === "unsupported") return <AuthPageUnsupported />;
 
   return (
     <AuthLayout>
@@ -1697,8 +1733,8 @@ Each feature should have a README.md:
 ## Key Files
 
 - `comps/componentName.tsx` - [brief description]
-- `services/feature.service.ts` - [brief description]
-- `stores/feature.store.ts` - [brief description]
+- `services/featureService.ts` - [brief description]
+- `stores/featureStore.ts` - [brief description]
 
 ## Dependencies
 
@@ -1756,7 +1792,7 @@ Is it a React component?
 // ✅ GOOD - explicit path imports
 import { TodoItem } from "@/features/todos/comps/todoItem";
 import { TodosPage } from "@/features/todos/pages/todosPage";
-import { todoStore } from "@/features/todos/stores/todo.store";
+import { todoStore } from "@/features/todos/stores/todoStore";
 
 // ❌ BAD - barrel import (feature index.ts is forbidden)
 import { TodoItem } from "@/features/todos";
@@ -1766,19 +1802,21 @@ import { TodoItem } from "@/features/todos";
 
 **Allowed cross-feature imports:**
 
-| From Feature | Can Import From Other Features                  |
-| ------------ | ----------------------------------------------- |
-| `pages/`     | Other features' `comps/`, `stores/` (read-only) |
-| `comps/`     | Other features' `stores/` (read-only)           |
-| `stores/`    | ❌ FORBIDDEN — stores must be independent       |
-| `services/`  | Other features' `services/` (carefully)         |
+| From        | Can Import From Other Features                  |
+| ----------- | ----------------------------------------------- |
+| `routes/`   | ONLY features' `pages/` — nothing else          |
+| `pages/`    | Other features' `comps/`, `stores/` (read-only) |
+| `comps/`    | Other features' `stores/` (read-only)           |
+| `stores/`   | ❌ FORBIDDEN — stores must be independent       |
+| `services/` | Other features' `services/` (carefully)         |
 
 **Rules:**
 
-1. **Stores are isolated** — A feature's store MUST NOT import another feature's store directly
-2. **Services can compose** — Services may call other features' services for orchestration
-3. **Components can read** — Components may read (not write) other features' stores
-4. **Pages orchestrate** — Pages can import from multiple features to compose views
+1. **Routes are thin** — Routes ONLY import pages, never comps/services/stores directly
+2. **Stores are isolated** — A feature's store MUST NOT import another feature's store directly
+3. **Services can compose** — Services may call other features' services for orchestration
+4. **Components can read** — Components may read (not write) other features' stores
+5. **Pages orchestrate** — Pages can import from multiple features to compose views
 
 **When cross-feature dependency grows:**
 
@@ -1811,13 +1849,13 @@ export const featureEvents = createEventBus<{
   "sync:completed": { feature: string; count: number };
 }>();
 
-// Usage in features/auth/stores/auth.store.ts
+// Usage in features/auth/stores/authStore.ts
 import { featureEvents } from "@/shared/events/featureEvents";
 
 // Emit event when logging out
 featureEvents.emit("auth:logout");
 
-// Usage in features/todos/stores/todo.store.ts
+// Usage in features/todos/stores/todoStore.ts
 import { featureEvents } from "@/shared/events/featureEvents";
 
 // Listen for auth events
@@ -1830,7 +1868,7 @@ featureEvents.on("auth:logout", () => {
 **2. Shared State in `shared/` (common data)**
 
 ```typescript
-// shared/stores/user.store.ts
+// shared/stores/userStore.ts
 // For data needed by multiple features (current user, preferences, etc.)
 import { define, atom } from "atomirx";
 
@@ -1954,11 +1992,11 @@ features/
 1. **Extract shared logic to `shared/`**
 
    ```
-   // Before: auth.store.ts ↔ user.service.ts circular
+   // Before: authStore.ts ↔ userService.ts circular
    // After:
-   shared/stores/currentUser.store.ts  # Shared state
-   features/auth/stores/auth.store.ts  # Auth-specific
-   features/auth/services/user.service.ts  # Uses shared store
+   shared/stores/currentUserStore.ts      # Shared state
+   features/auth/stores/authStore.ts      # Auth-specific
+   features/auth/services/userService.ts  # Uses shared store
    ```
 
 2. **Use event-based communication**
@@ -2050,11 +2088,11 @@ Is it a utility?
 1. **Split by concern**
 
    ```typescript
-   // Before: auth.store.ts (300 lines)
+   // Before: authStore.ts (300 lines)
    // After:
-   auth.store.ts        # Main auth state
-   authUI.store.ts      # UI state (modals, forms)
-   authCache.store.ts   # Cached data
+   authStore.ts        # Main auth state
+   authUIStore.ts      # UI state (modals, forms)
+   authCacheStore.ts   # Cached data
    ```
 
 2. **Extract derived state to selectors**
@@ -2080,7 +2118,7 @@ Is it a utility?
    ```
    src/components/Auth/ → features/auth/comps/
    src/pages/AuthPage.tsx → features/auth/pages/authPage/
-   src/services/authService.ts → features/auth/services/auth.service.ts
+   src/services/authService.ts → features/auth/services/authService.ts
    ```
 
 3. **Update imports to absolute paths**

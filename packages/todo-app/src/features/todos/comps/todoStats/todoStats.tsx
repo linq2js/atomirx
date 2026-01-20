@@ -6,8 +6,8 @@
  */
 
 import { useSelector } from "atomirx/react";
-import { todosStore } from "../../stores/todos.store";
-import { syncStore } from "@/features/sync/stores/sync.store";
+import { todosStore } from "../../stores/todosStore";
+import { syncStore } from "@/features/sync/stores/syncStore";
 import { TodoStatsPure, type TodoStatsPureProps } from "./todoStats.pure";
 
 /**
