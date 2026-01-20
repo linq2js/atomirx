@@ -1,5 +1,5 @@
 /**
- * Toast notification component.
+ * Toast notification composed component.
  *
  * @description
  * A simple toast notification system using context and Base UI.

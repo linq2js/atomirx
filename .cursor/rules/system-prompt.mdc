@@ -318,12 +318,15 @@ When task has **3 or more implementation items** OR **impacts 5 or more files**,
 
 1. **IMMEDIATELY** create plan file at `AI_WORKING/<short-description>.md`
 2. **ANNOUNCE** in response: "📋 Creating plan file at `AI_WORKING/xxx.md`"
-3. **UPDATE** task status immediately after completing each item
-4. **NOTE** any deviations from original task description
+3. **UPDATE** task status to `🔄 in-progress` **IMMEDIATELY** when picking a task to work on
+4. **UPDATE** task status to `✅ done` immediately after completing each item
+5. **NOTE** any deviations from original task description
 
 **❌ FORBIDDEN**: Starting implementation with 3+ tasks or 5+ files without plan file
 **❌ FORBIDDEN**: Forgetting to update plan file after completing tasks
+**❌ FORBIDDEN**: Working on a task without first updating its status to `🔄 in-progress`
 **✅ REQUIRED**: Plan file MUST exist before first line of code
+**✅ REQUIRED**: Updated column MUST contain date AND time (format: `YYYY-MM-DD HH:MM`)
 
 **REQUIRED Plan File Format:**
 
@@ -336,13 +339,13 @@ When task has **3 or more implementation items** OR **impacts 5 or more files**,
 
 ## Tasks
 
-| #   | Task           | Files | Status         | Dependencies | Updated    |
-| --- | -------------- | ----- | -------------- | ------------ | ---------- |
-| 1   | Setup types    | 2     | ✅ done        | -            | 2024-01-15 |
-| 2   | Implement core | 3     | 🔄 in-progress | 1            | 2024-01-15 |
-| 3   | Add tests      | 2     | ⏳ pending     | 2            | -          |
-| 4   | Update docs    | 1     | ⏳ pending     | 3            | -          |
-|     | **Total**      | **8** |                |              |            |
+| #   | Task           | Files | Status         | Dependencies | Updated          |
+| --- | -------------- | ----- | -------------- | ------------ | ---------------- |
+| 1   | Setup types    | 2     | ✅ done        | -            | 2024-01-15 09:30 |
+| 2   | Implement core | 3     | 🔄 in-progress | 1            | 2024-01-15 10:45 |
+| 3   | Add tests      | 2     | ⏳ pending     | 2            | -                |
+| 4   | Update docs    | 1     | ⏳ pending     | 3            | -                |
+|     | **Total**      | **8** |                |              |                  |
 
 ---
 

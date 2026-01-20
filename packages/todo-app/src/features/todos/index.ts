@@ -20,8 +20,14 @@
  */
 
 // Components with business rules
-export { TodoItem, TodoInput } from "./comps";
-export type { TodoItemProps, TodoInputProps } from "./comps";
+export {
+  TodoItem,
+  TodoInput,
+  StatusBadge,
+  SkeletonTodoItem,
+  SkeletonTodoList,
+} from "./comps";
+export type { TodoItemProps, TodoInputProps, StatusBadgeProps } from "./comps";
 
 // Services
 export {

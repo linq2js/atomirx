@@ -1,16 +1,17 @@
 /**
- * Dialog component.
+ * Dialog composed component.
  *
  * @description
  * A modal dialog component using Base UI with Tailwind CSS.
  * Supports title, description, and action buttons.
+ * Composes primitives: Button.
  */
 
 import { type ReactNode } from "react";
 import { Dialog as BaseDialog } from "@base-ui-components/react/dialog";
 import { X } from "lucide-react";
 import { cn } from "@/shared/utils";
-import { Button } from "./Button";
+import { Button } from "../primitives/Button";
 
 /**
  * Dialog component props.
@@ -31,7 +32,7 @@ export interface DialogProps {
 }
 
 /**
- * Dialog component.
+ * Dialog composed component.
  *
  * @example
  * ```tsx

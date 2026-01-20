@@ -1,3 +1,12 @@
+/**
+ * ErrorBoundary composed component.
+ *
+ * @description
+ * Global error boundary to catch and display runtime errors.
+ * Catches JavaScript errors anywhere in the child component tree,
+ * logs errors, and displays a fallback UI instead of crashing.
+ */
+
 import { Component, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
@@ -12,16 +21,16 @@ interface ErrorBoundaryState {
 }
 
 /**
- * Global error boundary to catch and display runtime errors.
- *
- * @description
- * Catches JavaScript errors anywhere in the child component tree,
- * logs errors, and displays a fallback UI instead of crashing.
+ * ErrorBoundary composed component.
  *
  * @example
  * ```tsx
  * <ErrorBoundary>
  *   <App />
+ * </ErrorBoundary>
+ *
+ * <ErrorBoundary fallback={<CustomErrorUI />}>
+ *   <RiskyComponent />
  * </ErrorBoundary>
  * ```
  */

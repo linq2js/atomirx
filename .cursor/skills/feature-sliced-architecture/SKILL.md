@@ -71,6 +71,57 @@ export function Button() { ... }        // WRONG - move to Button.tsx
 - Avoids circular dependency issues
 - Makes code easier to find and maintain
 
+### One Component Per File (STRICT)
+
+**AI MUST NOT define multiple components in one file.**
+
+Each React component MUST have its own file:
+
+```
+✅ CORRECT:
+   features/auth/pages/
+   ├── AuthPage.tsx          # Only AuthPage
+   ├── RegisterForm.tsx      # Only RegisterForm
+   ├── LoginForm.tsx         # Only LoginForm
+   └── index.ts              # Barrel export
+
+❌ FORBIDDEN:
+   features/auth/pages/
+   └── AuthPage.tsx          # Contains AuthPage + RegisterForm + LoginForm
+```
+
+```typescript
+// ❌ FORBIDDEN - Multiple components in one file
+// AuthPage.tsx
+export function AuthPage() { ... }
+function RegisterForm() { ... }  // WRONG - extract to RegisterForm.tsx
+function LoginForm() { ... }     // WRONG - extract to LoginForm.tsx
+
+// ✅ CORRECT - One component per file
+// AuthPage.tsx
+import { RegisterForm } from "./RegisterForm";
+import { LoginForm } from "./LoginForm";
+export function AuthPage() { ... }
+
+// RegisterForm.tsx
+export function RegisterForm() { ... }
+
+// LoginForm.tsx
+export function LoginForm() { ... }
+```
+
+**Exceptions (allowed in same file):**
+
+- Compound component parts (e.g., `Card`, `CardHeader`, `CardContent` in `Card.tsx`)
+- Tiny internal helpers (< 5 lines, not exported, used only once)
+
+**Why:**
+
+- Easier to find components (file name = component name)
+- Better code splitting and lazy loading
+- Clearer ownership and responsibility
+- Simpler imports and refactoring
+
 ### UI Component Location (STRICT)
 
 **All generic UI components MUST be in `ui/` (top-level).**
@@ -181,6 +232,241 @@ export const TodoItem = ({ todo, currentUser }: TodoItemProps) => {
   // Domain logic with business rules
 };
 ```
+
+## Domain Component Splitting Rules (MANDATORY)
+
+**Principle: Pages and domain components should be thin orchestrators, not UI factories.**
+
+This section applies to components in `features/{domain}/pages/` and `features/{domain}/comps/`.
+
+### Size Limits for Domain Components (STRICT)
+
+| Type | Max JSX Lines | Max Total Lines | Action if exceeded       |
+| ---- | ------------- | --------------- | ------------------------ |
+| Page | 30            | 100             | Extract to comps/        |
+| Comp | 50            | 150             | Split into smaller comps |
+
+### Split Indicators for Domain Components
+
+| Indicator                                   | Example                     | Action                                   |
+| ------------------------------------------- | --------------------------- | ---------------------------------------- |
+| **Conditional render block > 10 JSX lines** | `if (loading) return <...>` | Extract to `LoadingState.tsx`            |
+| **Error/empty state > 5 JSX lines**         | `if (error) return <...>`   | Extract to `ErrorState.tsx` or use `ui/` |
+| **Form section > 20 JSX lines**             | Large form in page          | Extract to `{Name}Form.tsx` in comps/    |
+| **Repeated UI pattern**                     | Alert box used 2+ times     | Extract to `ui/` or local component      |
+| **View-specific JSX**                       | Register vs Login views     | Extract each view to separate component  |
+
+### Example: Splitting a Large Page
+
+```typescript
+// ❌ BAD: Page with too much inline UI (AuthPage.tsx - 377 lines)
+export function AuthPage() {
+  // ... state and hooks ...
+
+  if (view === "checking") {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="animate-spin" />      // 10+ lines of JSX
+        <p>Checking...</p>
+      </div>
+    );
+  }
+
+  if (view === "unsupported") {
+    return (
+      <div className="...">                       // 25+ lines of JSX
+        <AlertCircle />
+        <h1>Browser Not Supported</h1>
+        <p>...</p>
+        <ul>...</ul>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {view === "register" ? (
+        <form>...</form>                          // 80+ lines inline
+      ) : (
+        <div>...</div>                            // 50+ lines inline
+      )}
+    </div>
+  );
+}
+
+// ✅ GOOD: Page as thin orchestrator
+// AuthPage.tsx (< 50 lines)
+export function AuthPage() {
+  const { view, ... } = useAuthPage();  // Extract logic to hook
+
+  if (view === "checking") return <AuthLoadingState />;
+  if (view === "unsupported") return <AuthUnsupportedState />;
+
+  return (
+    <AuthLayout>
+      {view === "register" ? <RegisterForm {...} /> : <LoginForm {...} />}
+    </AuthLayout>
+  );
+}
+```
+
+### File Structure After Splitting
+
+```
+features/auth/
+├── pages/
+│   ├── AuthPage.tsx              # Thin orchestrator (< 50 lines)
+│   ├── AuthLoadingState.tsx      # Loading view
+│   ├── AuthUnsupportedState.tsx  # Unsupported browser view
+│   ├── AuthLayout.tsx            # Shared layout wrapper
+│   └── index.ts
+│
+├── comps/
+│   ├── RegisterForm.tsx          # Registration form with business rules
+│   ├── LoginForm.tsx             # Login form with business rules
+│   ├── PasskeyPrompt.tsx         # Passkey UI overlay
+│   └── index.ts
+```
+
+### Decision Tree: Where to Extract?
+
+```
+Is the extracted component...
+│
+├── Generic UI (no business logic)?
+│   └── YES → ui/primitives/ or ui/composed/
+│       └── Examples: LoadingSpinner, ErrorAlert, EmptyState
+│
+├── View state of current page?
+│   └── YES → Same folder as page (pages/)
+│       └── Examples: AuthLoadingState, AuthUnsupportedState
+│
+├── Reusable within this feature?
+│   └── YES → features/{domain}/comps/
+│       └── Examples: RegisterForm, LoginForm
+│
+└── Shared layout/wrapper?
+    └── YES → pages/ or layouts/ depending on scope
+```
+
+### Component File Structure (Headless Pattern)
+
+**When a domain component has significant logic → Extract to co-located hook file.**
+
+```
+features/articles/comps/
+├── ArticleList/
+│   ├── index.ts                    # Barrel export
+│   ├── ArticleList.tsx             # UI only (renders from hook data)
+│   ├── ArticleList.logic.ts        # useArticleListLogic hook
+│   └── ArticleList.styles.css      # Optional: styles if needed
+│
+├── ArticleCard/
+│   ├── index.ts
+│   ├── ArticleCard.tsx
+│   └── ArticleCard.logic.ts        # useArticleCardLogic hook
+```
+
+**Naming convention:**
+
+| File             | Contains                                  | Naming           |
+| ---------------- | ----------------------------------------- | ---------------- |
+| `XXX.tsx`        | React component (UI only)                 | `function XXX()` |
+| `XXX.logic.ts`   | Component hook (state, handlers, effects) | `useXXXLogic()`  |
+| `XXX.styles.css` | CSS/SCSS styles (optional)                | -                |
+| `XXX.styles.ts`  | CSS-in-JS styles (optional)               | -                |
+
+**Rules:**
+
+1. `useXXXLogic` hook is **ONLY** for its component — **MUST NOT** be reused elsewhere
+2. If logic is reusable → move to `features/{domain}/hooks/` or `shared/hooks/`
+3. Component file should be **UI only** — render what the hook returns
+4. Hook returns everything the component needs: state, handlers, computed values
+
+```typescript
+// ❌ BAD: Logic mixed in component
+// ArticleList.tsx
+export function ArticleList() {
+  const [articles, setArticles] = useState([]);
+  const [filter, setFilter] = useState("all");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => { /* fetch logic */ }, []);
+
+  const handleFilter = (f) => { /* filter logic */ };
+  const handleDelete = (id) => { /* delete logic */ };
+  const filteredArticles = useMemo(() => { /* compute */ }, []);
+
+  return (
+    <div>
+      {/* 50+ lines of JSX */}
+    </div>
+  );
+}
+
+// ✅ GOOD: Logic extracted to hook
+// ArticleList.logic.ts
+export function useArticleListLogic() {
+  const [articles, setArticles] = useState([]);
+  const [filter, setFilter] = useState("all");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => { /* fetch logic */ }, []);
+
+  const handleFilter = useCallback((f) => { /* filter logic */ }, []);
+  const handleDelete = useCallback((id) => { /* delete logic */ }, []);
+  const filteredArticles = useMemo(() => { /* compute */ }, [articles, filter]);
+
+  return {
+    articles: filteredArticles,
+    isLoading,
+    filter,
+    onFilterChange: handleFilter,
+    onDelete: handleDelete,
+  };
+}
+
+// ArticleList.tsx
+import { useArticleListLogic } from "./ArticleList.logic";
+
+export function ArticleList() {
+  const { articles, isLoading, filter, onFilterChange, onDelete } = useArticleListLogic();
+
+  if (isLoading) return <ArticleListSkeleton />;
+
+  return (
+    <div>
+      <FilterBar value={filter} onChange={onFilterChange} />
+      {articles.map(article => (
+        <ArticleCard key={article.id} article={article} onDelete={onDelete} />
+      ))}
+    </div>
+  );
+}
+```
+
+**When to extract to `.logic.ts`:**
+
+| Indicator                          | Action          |
+| ---------------------------------- | --------------- |
+| Component has > 3 useState         | Extract to hook |
+| Component has useEffect with logic | Extract to hook |
+| Component has > 2 event handlers   | Extract to hook |
+| Component has useMemo/useCallback  | Extract to hook |
+| Logic lines > JSX lines            | Extract to hook |
+
+### Checklist: Before Writing Page/Domain Component
+
+- [ ] Total lines < 100 (page) or < 150 (comp)?
+- [ ] JSX lines < 30 (page) or < 50 (comp)?
+- [ ] No conditional render blocks > 10 JSX lines?
+- [ ] No inline forms > 20 JSX lines?
+- [ ] Repeated patterns extracted?
+- [ ] Page is a thin orchestrator (state + composition)?
+- [ ] Logic extracted to `useXXXLogic` hook if > 3 useState or complex effects?
+- [ ] Component file is mostly UI, hook file is mostly logic?
+
+**If ANY check FAILS → Extract first, then implement.**
 
 ## Generic UI Component Splitting Rules (MANDATORY)
 

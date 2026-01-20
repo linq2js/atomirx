@@ -20,11 +20,11 @@
  * - Empty input on save: cancels edit, keeps original content
  */
 
-import { useState, useRef, useEffect, useCallback } from "react";
 import { Check, Circle, Trash2, Edit2, X, Loader2 } from "lucide-react";
 import type { Todo } from "../types";
-import { StatusBadge } from "@/features/ui";
+import { StatusBadge } from "./StatusBadge";
 import { cn } from "@/shared/utils";
+import { useTodoItemLogic } from "./TodoItem.logic";
 
 /**
  * Todo item props.
@@ -59,99 +59,19 @@ export function TodoItem({
   onUpdate,
   onDelete,
 }: TodoItemProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editContent, setEditContent] = useState(todo.content);
-  const [isLoading, setIsLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Focus input when editing starts
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [isEditing]);
-
-  // Update local state when todo changes
-  useEffect(() => {
-    setEditContent(todo.content);
-  }, [todo.content]);
-
-  /**
-   * Handle toggle click.
-   */
-  const handleToggle = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      await onToggle(todo.id);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [onToggle, todo.id]);
-
-  /**
-   * Handle delete click.
-   */
-  const handleDelete = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      await onDelete(todo.id);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [onDelete, todo.id]);
-
-  /**
-   * Start editing.
-   */
-  const startEditing = useCallback(() => {
-    setIsEditing(true);
-    setEditContent(todo.content);
-  }, [todo.content]);
-
-  /**
-   * Cancel editing.
-   */
-  const cancelEditing = useCallback(() => {
-    setIsEditing(false);
-    setEditContent(todo.content);
-  }, [todo.content]);
-
-  /**
-   * Save edited content.
-   */
-  const saveEdit = useCallback(async () => {
-    const trimmed = editContent.trim();
-    if (!trimmed || trimmed === todo.content) {
-      cancelEditing();
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await onUpdate(todo.id, trimmed);
-      setIsEditing(false);
-    } catch {
-      // Keep editing on error
-    } finally {
-      setIsLoading(false);
-    }
-  }, [editContent, todo.content, todo.id, onUpdate, cancelEditing]);
-
-  /**
-   * Handle key press in edit mode.
-   */
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        saveEdit();
-      } else if (e.key === "Escape") {
-        cancelEditing();
-      }
-    },
-    [saveEdit, cancelEditing]
-  );
+  const {
+    isEditing,
+    editContent,
+    isLoading,
+    inputRef,
+    setEditContent,
+    handleToggle,
+    handleDelete,
+    startEditing,
+    cancelEditing,
+    saveEdit,
+    handleKeyDown,
+  } = useTodoItemLogic({ todo, onToggle, onUpdate, onDelete });
 
   return (
     <div

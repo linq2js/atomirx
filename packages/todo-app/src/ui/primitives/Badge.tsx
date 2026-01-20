@@ -1,8 +1,9 @@
 /**
- * Badge component.
+ * Badge primitive component.
  *
  * @description
  * A small status indicator badge with multiple variants.
+ * This is a primitive component - for domain-specific badges, see features.
  */
 
 import { type ReactNode, type HTMLAttributes } from "react";
@@ -72,7 +73,7 @@ const sizeStyles: Record<BadgeSize, string> = {
 };
 
 /**
- * Badge component.
+ * Badge primitive component.
  *
  * @example
  * ```tsx
@@ -115,47 +116,5 @@ export function Badge({
       {icon}
       {children}
     </span>
-  );
-}
-
-/**
- * Status badge component.
- * Pre-configured badges for common sync statuses.
- */
-export interface StatusBadgeProps {
-  /** Sync status */
-  status: "synced" | "pending" | "syncing" | "error" | "offline";
-  /** Additional class names */
-  className?: string;
-}
-
-const statusConfig: Record<
-  StatusBadgeProps["status"],
-  { variant: BadgeVariant; label: string; dot: boolean }
-> = {
-  synced: { variant: "success", label: "Synced", dot: true },
-  pending: { variant: "warning", label: "Pending", dot: true },
-  syncing: { variant: "info", label: "Syncing...", dot: true },
-  error: { variant: "error", label: "Error", dot: true },
-  offline: { variant: "secondary", label: "Offline", dot: true },
-};
-
-/**
- * Pre-built status badge.
- *
- * @example
- * ```tsx
- * <StatusBadge status="synced" />
- * <StatusBadge status="pending" />
- * <StatusBadge status="offline" />
- * ```
- */
-export function StatusBadge({ status, className }: StatusBadgeProps) {
-  const config = statusConfig[status];
-
-  return (
-    <Badge variant={config.variant} dot={config.dot} className={className}>
-      {config.label}
-    </Badge>
   );
 }

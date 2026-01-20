@@ -20,7 +20,6 @@
  * - Large backup file: No size limit, but may be slow
  */
 
-import { useState, useCallback, useRef } from "react";
 import {
   Download,
   Upload,
@@ -28,9 +27,9 @@ import {
   AlertCircle,
   CheckCircle2,
 } from "lucide-react";
-import { Dialog, Button } from "@/features/ui";
-import { getBackupService, downloadBlob } from "../services";
+import { Dialog, Button } from "@/ui";
 import { cn } from "@/shared/utils";
+import { useBackupDialogLogic } from "./BackupDialog.logic";
 
 /**
  * Backup dialog props.
@@ -54,142 +53,21 @@ export interface BackupDialogProps {
  * ```
  */
 export function BackupDialog({ open, onOpenChange }: BackupDialogProps) {
-  const [activeTab, setActiveTab] = useState<"export" | "import">("export");
-  const [isExporting, setIsExporting] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
-  const [importResult, setImportResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [fileValidation, setFileValidation] = useState<{
-    valid: boolean;
-    message: string;
-  } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const backupService = getBackupService();
-
-  /**
-   * Handle export.
-   */
-  const handleExport = useCallback(async () => {
-    setIsExporting(true);
-    setExportResult(null);
-
-    try {
-      const result = await backupService.exportBackup();
-
-      if (result.success) {
-        downloadBlob(result.data, result.filename);
-        setExportResult({
-          success: true,
-          message: `Exported ${result.todoCount} todos to ${result.filename}`,
-        });
-      } else {
-        setExportResult({
-          success: false,
-          message: result.error,
-        });
-      }
-    } catch (error) {
-      setExportResult({
-        success: false,
-        message: error instanceof Error ? error.message : "Export failed",
-      });
-    } finally {
-      setIsExporting(false);
-    }
-  }, [backupService]);
-
-  /**
-   * Handle file selection.
-   */
-  const handleFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      setSelectedFile(file);
-      setFileValidation(null);
-      setImportResult(null);
-
-      // Validate file
-      const validation = await backupService.validateBackup(file);
-      if (validation.valid) {
-        setFileValidation({
-          valid: true,
-          message: `Valid backup with ${validation.todoCount} todos`,
-        });
-      } else {
-        setFileValidation({
-          valid: false,
-          message: validation.error,
-        });
-      }
-    },
-    [backupService]
-  );
-
-  /**
-   * Handle import.
-   */
-  const handleImport = useCallback(async () => {
-    if (!selectedFile || !fileValidation?.valid) return;
-
-    setIsImporting(true);
-    setImportResult(null);
-
-    try {
-      const result = await backupService.importBackup(selectedFile);
-
-      if (result.success) {
-        setImportResult({
-          success: true,
-          message: `Imported ${result.todoCount} todos (${result.skippedCount} skipped)`,
-        });
-        // Reset file selection
-        setSelectedFile(null);
-        setFileValidation(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-      } else {
-        setImportResult({
-          success: false,
-          message: result.error,
-        });
-      }
-    } catch (error) {
-      setImportResult({
-        success: false,
-        message: error instanceof Error ? error.message : "Import failed",
-      });
-    } finally {
-      setIsImporting(false);
-    }
-  }, [selectedFile, fileValidation, backupService]);
-
-  /**
-   * Reset state when dialog closes.
-   */
-  const handleOpenChange = useCallback(
-    (newOpen: boolean) => {
-      if (!newOpen) {
-        // Reset state
-        setExportResult(null);
-        setImportResult(null);
-        setSelectedFile(null);
-        setFileValidation(null);
-      }
-      onOpenChange(newOpen);
-    },
-    [onOpenChange]
-  );
+  const {
+    activeTab,
+    setActiveTab,
+    isExporting,
+    isImporting,
+    exportResult,
+    importResult,
+    selectedFile,
+    fileValidation,
+    fileInputRef,
+    handleExport,
+    handleFileSelect,
+    handleImport,
+    handleOpenChange,
+  } = useBackupDialogLogic(onOpenChange);
 
   return (
     <Dialog
@@ -259,23 +137,11 @@ export function BackupDialog({ open, onOpenChange }: BackupDialogProps) {
             </Button>
           </div>
 
-          {/* Export result */}
           {exportResult && (
-            <div
-              className={cn(
-                "flex items-start gap-2 p-3 rounded-lg",
-                exportResult.success
-                  ? "bg-green-50 text-green-800"
-                  : "bg-red-50 text-red-800"
-              )}
-            >
-              {exportResult.success ? (
-                <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-              )}
-              <span className="text-sm">{exportResult.message}</span>
-            </div>
+            <ResultMessage
+              success={exportResult.success}
+              message={exportResult.message}
+            />
           )}
         </div>
       )}
@@ -290,7 +156,6 @@ export function BackupDialog({ open, onOpenChange }: BackupDialogProps) {
               same passkey that created the backup.
             </p>
 
-            {/* File input */}
             <div className="space-y-3">
               <label
                 className={cn(
@@ -316,21 +181,11 @@ export function BackupDialog({ open, onOpenChange }: BackupDialogProps) {
                 />
               </label>
 
-              {/* File validation */}
               {fileValidation && (
-                <div
-                  className={cn(
-                    "flex items-center gap-2 text-sm",
-                    fileValidation.valid ? "text-green-600" : "text-red-600"
-                  )}
-                >
-                  {fileValidation.valid ? (
-                    <CheckCircle2 className="h-4 w-4" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4" />
-                  )}
-                  {fileValidation.message}
-                </div>
+                <ValidationMessage
+                  valid={fileValidation.valid}
+                  message={fileValidation.message}
+                />
               )}
 
               <Button
@@ -345,26 +200,13 @@ export function BackupDialog({ open, onOpenChange }: BackupDialogProps) {
             </div>
           </div>
 
-          {/* Import result */}
           {importResult && (
-            <div
-              className={cn(
-                "flex items-start gap-2 p-3 rounded-lg",
-                importResult.success
-                  ? "bg-green-50 text-green-800"
-                  : "bg-red-50 text-red-800"
-              )}
-            >
-              {importResult.success ? (
-                <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-              )}
-              <span className="text-sm">{importResult.message}</span>
-            </div>
+            <ResultMessage
+              success={importResult.success}
+              message={importResult.message}
+            />
           )}
 
-          {/* Warning */}
           <div className="flex items-start gap-2 p-3 bg-yellow-50 text-yellow-800 rounded-lg">
             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
             <span className="text-sm">
@@ -375,5 +217,59 @@ export function BackupDialog({ open, onOpenChange }: BackupDialogProps) {
         </div>
       )}
     </Dialog>
+  );
+}
+
+/**
+ * Result message component.
+ */
+function ResultMessage({
+  success,
+  message,
+}: {
+  success: boolean;
+  message: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-2 p-3 rounded-lg",
+        success ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
+      )}
+    >
+      {success ? (
+        <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
+      ) : (
+        <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+      )}
+      <span className="text-sm">{message}</span>
+    </div>
+  );
+}
+
+/**
+ * Validation message component.
+ */
+function ValidationMessage({
+  valid,
+  message,
+}: {
+  valid: boolean;
+  message: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 text-sm",
+        valid ? "text-green-600" : "text-red-600"
+      )}
+    >
+      {valid ? (
+        <CheckCircle2 className="h-4 w-4" />
+      ) : (
+        <AlertCircle className="h-4 w-4" />
+      )}
+      {message}
+    </div>
   );
 }
