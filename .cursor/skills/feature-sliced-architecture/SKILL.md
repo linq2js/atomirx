@@ -967,14 +967,12 @@ export function AuthScreen() {
 // ✅ GOOD: Screen as thin orchestrator
 // authScreen.tsx (< 50 lines)
 export function AuthScreen() {
-  const { view, ... } = useAuthScreen();  // Extract logic to hook
+  const pureProps = useAuthScreenLogic();  // Extract logic to hook
 
-  if (view === "checking") return <AuthScreenLoading />;
-  if (view === "unsupported") return <AuthScreenUnsupported />;
-
+  // Container strictly renders the Pure component
   return (
     <AuthLayout>
-      {view === "register" ? <RegisterForm {...} /> : <LoginForm {...} />}
+      <AuthScreenPure {...pureProps} />
     </AuthLayout>
   );
 }
