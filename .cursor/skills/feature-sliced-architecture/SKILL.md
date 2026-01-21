@@ -401,6 +401,51 @@ features/
 - Creates documentation as a side effect
 - Reduces wasted implementation effort
 
+**Verify Dependent Features (MANDATORY):**
+
+When changing README.md (business rules, API contracts, types), AI **MUST** verify dependent features align with the changes:
+
+1. **Search** for features that import from the changed feature
+2. **Check** if changes break dependent features (API changes, removed exports, changed behavior)
+3. **List** affected features and required updates
+4. **Update** dependent features' README.md if their usage needs to change
+
+```
+Feature A README.md changed?
+│
+├── Search: Which features import from Feature A?
+│   └── rg "from.*features/featureA" --type ts
+│
+├── For each dependent feature:
+│   ├── Does the change affect them?
+│   │   ├── YES → Add to update list
+│   │   └── NO → Skip
+│   │
+│   └── Is their README.md outdated?
+│       └── YES → Update their README.md too
+│
+└── Present full impact to user before implementing
+```
+
+**Example:**
+
+```
+## Impact Analysis
+
+Changing: features/auth/README.md
+- Modified: `AuthResult` type (added `expiresAt` field)
+- Modified: `authService.login()` return type
+
+Dependent features found:
+1. features/todos/stores/todosStore.ts — imports AuthResult ⚠️ NEEDS UPDATE
+2. features/settings/comps/accountInfo/ — uses login result ⚠️ NEEDS UPDATE
+3. features/analytics/services/ — imports authService ✅ No impact (doesn't use login)
+
+Recommend updating:
+- [ ] features/todos/README.md — note new AuthResult.expiresAt handling
+- [ ] features/settings/README.md — note login flow changes
+```
+
 ### No Barrel Exports for Top-Level Feature Dirs (STRICT)
 
 **AI MUST NOT create `index.ts` in feature directories.**
