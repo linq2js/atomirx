@@ -300,9 +300,8 @@ export function pool<T, P = unknown>(
       const found = findEntry(params);
 
       if (!found) {
-        // Entry doesn't exist, create entry first for safety
-        const newEntry = getOrCreateEntry(params);
-        return newEntry.disposeEmitter.on(listener);
+        // Entry doesn't exist, nothing to clean up - return no-op
+        return () => {};
       }
 
       return found.entry.disposeEmitter.on(listener);
