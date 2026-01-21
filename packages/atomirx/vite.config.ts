@@ -23,11 +23,14 @@ export default defineConfig({
       formats: ["es", "cjs"],
     },
     rollupOptions: {
-      external: ["react", "react-dom"],
+      // Use regex to externalize all react-related imports including jsx-runtime
+      external: [/^react($|\/)/, /^react-dom($|\/)/],
       output: {
         globals: {
           react: "React",
           "react-dom": "ReactDOM",
+          "react/jsx-runtime": "React",
+          "react/jsx-dev-runtime": "React",
         },
       },
     },

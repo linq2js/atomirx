@@ -70,10 +70,11 @@ src/
 │   ├── index.tsx                # Route definitions
 │   └── layouts/                 # Layout components
 │
-└── shared/                      # Cross-cutting concerns (NO ui/ or comps/)
-    ├── hooks/                   # Shared hooks
-    ├── utils/                   # Shared utilities
-    └── types/                   # Shared types
+└── shared/                      # Cross-cutting concerns (NO ui/, NO comps/, NO business logic)
+    ├── hooks/                   # Generic hooks (useDebounce, useLocalStorage)
+    ├── utils/                   # Pure utilities (formatDate, deepClone)
+    ├── types/                   # Generic types (Nullable, DeepPartial)
+    └── stores/                  # App-wide state only (currentUser, theme, locale)
 ```
 
 ### Allowed Feature Subdirectories (STRICT — NO EXCEPTIONS)
@@ -704,7 +705,7 @@ export function LoginForm() { ... }
 1. `ui/` — Generic components only, NO business logic
 2. `features/{domain}/comps/` — Business components that **compose** from `ui/`
 3. `features/{domain}/` — **MUST NOT** have `ui/` folder
-4. `shared/` — **MUST NOT** have `ui/` or `comps/` (only hooks, utils, types)
+4. `shared/` — **MUST NOT** have `ui/` or `comps/`, NO business logic (only generic hooks, utils, types, app-wide stores)
 
 **Why:**
 
@@ -822,18 +823,128 @@ features/{domain}/services/
 └── myService.types.ts     # Optional: callback interfaces, types
 ```
 
+### Shared Rules (STRICT — NO Business Logic)
+
+**`shared/` is for generic, domain-agnostic code ONLY. It MUST NOT contain business logic.**
+
+```
+shared/
+├── hooks/      # Generic hooks (useDebounce, useLocalStorage, useMediaQuery)
+├── utils/      # Pure utilities (formatDate, deepClone, debounce, cn)
+├── types/      # Generic types (Nullable, DeepPartial, AsyncState)
+└── stores/     # App-wide state ONLY (currentUser, theme, locale)
+```
+
+**❌ FORBIDDEN in `shared/`:**
+
+```typescript
+// ❌ FORBIDDEN: Business logic in shared
+// shared/utils/calculateTodoScore.ts
+export function calculateTodoScore(todo: Todo): number {
+  // Business rule: priority + overdue penalty
+  const priorityScore = todo.priority * 10;
+  const overdueMultiplier = todo.isOverdue ? 1.5 : 1;
+  return priorityScore * overdueMultiplier;
+}
+// → Move to: features/todos/utils/calculateTodoScore.ts
+
+// ❌ FORBIDDEN: Domain-specific hook in shared
+// shared/hooks/useTodoFilters.ts
+export function useTodoFilters() {
+  // Business rule: filter logic for todos
+  const [filter, setFilter] = useState<TodoFilter>("all");
+  // ...
+}
+// → Move to: features/todos/hooks/useTodoFilters.ts (or inline in store/component)
+
+// ❌ FORBIDDEN: Domain types in shared
+// shared/types/todo.types.ts
+export interface Todo {
+  id: string;
+  title: string;
+  completed: boolean;
+  priority: "low" | "medium" | "high";
+}
+// → Move to: features/todos/types/todo.types.ts
+
+// ❌ FORBIDDEN: Feature-specific store in shared
+// shared/stores/todoStore.ts
+export const todoStore = define(() => {
+  /* ... */
+});
+// → Move to: features/todos/stores/todoStore.ts
+```
+
+**✅ ALLOWED in `shared/`:**
+
+```typescript
+// ✅ GOOD: Generic utility (no domain knowledge)
+// shared/utils/formatDate.ts
+export function formatDate(date: Date, format: string): string {
+  // Pure formatting, works for any date in any context
+}
+
+// ✅ GOOD: Generic hook (no domain knowledge)
+// shared/hooks/useDebounce.ts
+export function useDebounce<T>(value: T, delay: number): T {
+  // Generic debouncing, works for any value
+}
+
+// ✅ GOOD: Generic type (no domain knowledge)
+// shared/types/async.types.ts
+export type AsyncState<T> =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: T }
+  | { status: "error"; error: Error };
+
+// ✅ GOOD: App-wide store (truly cross-cutting)
+// shared/stores/userStore.ts
+export const userStore = define(() => {
+  const currentUser$ = atom<User | null>(null); // Used by 5+ features
+  const preferences$ = atom<Preferences>(defaultPreferences);
+  return { currentUser$, preferences$ };
+});
+```
+
+**Decision: `shared/` vs `features/{domain}/`**
+
+```
+Is the code domain-specific?
+│
+├── YES (mentions Todo, Auth, Order, etc.)
+│   └── → features/{domain}/utils|hooks|types/
+│
+└── NO (generic, could be in a utility library)
+    │
+    ├── Used by 3+ features?
+    │   └── YES → shared/
+    │
+    └── Used by 1-2 features?
+        └── → Keep in features/{domain}/ (avoid premature abstraction)
+```
+
+**Why strict enforcement:**
+
+| Anti-pattern                | Problem                                    | Solution                             |
+| --------------------------- | ------------------------------------------ | ------------------------------------ |
+| Business logic in `shared/` | No clear ownership, hard to find           | Move to feature that owns the domain |
+| Domain types in `shared/`   | Types evolve with feature, causes coupling | Keep types with their feature        |
+| "Shared" because used twice | Premature abstraction, harder to change    | Wait until 3+ features need it       |
+| Feature store in `shared/`  | Breaks feature boundaries                  | Only app-wide state in shared stores |
+
 ## Path-Based Detection Rules
 
-| Path Pattern                   | Contains          | Business Rules | AI Action                      |
-| ------------------------------ | ----------------- | -------------- | ------------------------------ |
-| `ui/*`                         | Generic UI        | **NO**         | Implement without domain logic |
-| `features/{domain}/comps/*`    | Domain components | **YES**        | Check JSDoc `@businessRules`   |
-| `features/{domain}/services/*` | Business logic    | **YES**        | Check JSDoc for rules          |
-| `features/{domain}/stores/*`   | State + rules     | **YES**        | Check JSDoc for rules          |
-| `features/{domain}/screens/*`  | Compositions      | **MAYBE**      | Check if complex logic exists  |
-| `features/{domain}/utils/*`    | Utilities         | **NO**         | Pure functions only            |
-| `routes/*`                     | Route definitions | **NO**         | Composition only               |
-| `shared/*`                     | Cross-cutting     | **NO**         | Hooks, utils, types only       |
+| Path Pattern                   | Contains          | Business Rules | AI Action                                   |
+| ------------------------------ | ----------------- | -------------- | ------------------------------------------- |
+| `ui/*`                         | Generic UI        | **NO**         | Implement without domain logic              |
+| `features/{domain}/comps/*`    | Domain components | **YES**        | Check JSDoc `@businessRules`                |
+| `features/{domain}/services/*` | Business logic    | **YES**        | Check JSDoc for rules                       |
+| `features/{domain}/stores/*`   | State + rules     | **YES**        | Check JSDoc for rules                       |
+| `features/{domain}/screens/*`  | Compositions      | **MAYBE**      | Check if complex logic exists               |
+| `features/{domain}/utils/*`    | Utilities         | **MAYBE**      | Feature-specific helpers, may have rules    |
+| `routes/*`                     | Route definitions | **NO**         | Composition only                            |
+| `shared/*`                     | Cross-cutting     | **NO**         | Generic only — NO domain logic, NO business |
 
 ## Component Classification
 
@@ -1250,6 +1361,145 @@ componentName/
 4. **Storybook** uses `XxxPure` directly with mock props
 5. **Tests** can test hook and UI separately
 
+### React Component Implementation (STRICT)
+
+**All React components MUST use `FC<Props>` with arrow functions and `displayName`.**
+
+**❌ FORBIDDEN:**
+
+```typescript
+// ❌ FORBIDDEN: Class components
+class MyComponent extends React.Component<Props> {
+  render() {
+    return <div>...</div>;
+  }
+}
+
+// ❌ FORBIDDEN: Function declaration without FC type
+function MyComponent(props: Props) {
+  return <div>...</div>;
+}
+
+// ❌ FORBIDDEN: Arrow function without displayName
+export const MyComponent: FC<Props> = (props) => {
+  return <div>...</div>;
+};
+// Missing displayName!
+```
+
+**✅ REQUIRED Pattern:**
+
+```typescript
+import { FC } from "react";
+
+export interface MyComponentProps {
+  /** Description of prop */
+  title: string;
+  /** Optional callback */
+  onClick?: () => void;
+}
+
+/**
+ * Brief description of what this component does.
+ */
+export const MyComponent: FC<MyComponentProps> = (props) => {
+  const { title, onClick } = props;
+
+  return (
+    <div onClick={onClick}>
+      <h1>{title}</h1>
+    </div>
+  );
+};
+
+MyComponent.displayName = "MyComponent";
+```
+
+**displayName Rules:**
+
+| Component Type | File | displayName |
+| -------------- | ---- | ----------- |
+| Regular component | `myComponent.tsx` | `"MyComponent"` |
+| Pure component | `myComponent.pure.tsx` | `"MyComponent.pure"` |
+| Loading state | `myComponent.loading.tsx` | `"MyComponent.loading"` |
+| Error state | `myComponent.error.tsx` | `"MyComponent.error"` |
+| Empty state | `myComponent.empty.tsx` | `"MyComponent.empty"` |
+| Custom state | `myComponent.{state}.tsx` | `"MyComponent.{state}"` |
+
+**State File Example:**
+
+```typescript
+// todoList.loading.tsx
+import { FC } from "react";
+
+export interface TodoListLoadingProps {
+  /** Number of skeleton items to show */
+  count?: number;
+}
+
+/**
+ * Loading skeleton for TodoList.
+ */
+export const TodoListLoading: FC<TodoListLoadingProps> = ({ count = 5 }) => {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="h-12 bg-gray-200 animate-pulse rounded" />
+      ))}
+    </div>
+  );
+};
+
+TodoListLoading.displayName = "TodoList.loading";
+```
+
+**Pure Component Example:**
+
+```typescript
+// loginForm.pure.tsx
+import { FC } from "react";
+
+export interface LoginFormPureProps {
+  isLoading: boolean;
+  error: string | null;
+  onSubmit: () => void;
+}
+
+/**
+ * Presentation component for LoginForm.
+ */
+export const LoginFormPure: FC<LoginFormPureProps> = ({
+  isLoading,
+  error,
+  onSubmit,
+}) => {
+  return (
+    <form onSubmit={onSubmit}>
+      {error && <p className="text-red-500">{error}</p>}
+      <Button type="submit" disabled={isLoading}>
+        {isLoading ? "Loading..." : "Submit"}
+      </Button>
+    </form>
+  );
+};
+
+LoginFormPure.displayName = "LoginForm.pure";
+```
+
+**Why displayName:**
+
+- React DevTools shows component names for easier debugging
+- Error stack traces are more readable
+- Minified production builds lose function names — displayName preserves them
+- State files use dot notation (`"TodoList.loading"`) to show parent-child relationship in DevTools
+
+**Why FC<Props> over function declarations:**
+
+- Explicit typing — props type is clear at definition
+- Consistent pattern — all components look the same
+- Easier to add displayName — no need for separate assignment syntax
+- Works better with React.memo, forwardRef when needed
+
 ### Component Pattern (MANDATORY)
 
 **This pattern applies to domain components (screens, comps) and stateful generic UI.**
@@ -1283,6 +1533,7 @@ componentName/
 ```typescript
 // loginForm.pure.tsx
 // Pure presentation, no state, no hooks — perfect for Storybook
+import { FC } from "react";
 
 export interface LoginFormPureProps {
   /** Current loading state */
@@ -1298,12 +1549,12 @@ export interface LoginFormPureProps {
 /**
  * Presentation component for LoginForm.
  */
-export function LoginFormPure({
+export const LoginFormPure: FC<LoginFormPureProps> = ({
   isLoading,
   error,
   onSubmit,
   onSwitchToRegister,
-}: LoginFormPureProps) {
+}) => {
   return (
     <div className="space-y-6">
       <h2>Welcome Back</h2>
@@ -1314,18 +1565,19 @@ export function LoginFormPure({
         Sign in with Passkey
       </Button>
 
-      <button onClick={onSwitchToRegister}>
-        Create a new account
-      </button>
+      <button onClick={onSwitchToRegister}>Create a new account</button>
     </div>
   );
-}
+};
+
+LoginFormPure.displayName = "LoginForm.pure";
 ```
 
 **File: `componentName.tsx` — Logic Hook + Container**
 
 ```typescript
 // loginForm.tsx
+import { FC } from "react";
 import { LoginFormPure, LoginFormPureProps } from "./loginForm.pure";
 
 export interface LoginFormProps {
@@ -1369,10 +1621,12 @@ export function useLoginFormLogic(props: LoginFormProps): LoginFormPureProps {
  * Container component — connects logic to UI.
  * Use this at runtime in the app.
  */
-export function LoginForm(props: LoginFormProps) {
+export const LoginForm: FC<LoginFormProps> = (props) => {
   const pureProps = useLoginFormLogic(props);
   return <LoginFormPure {...pureProps} />;
-}
+};
+
+LoginForm.displayName = "LoginForm";
 ```
 
 **File: `index.ts` — Barrel Export**
@@ -1470,6 +1724,8 @@ features/auth/screens/authScreen/
 
 ```typescript
 // authScreen.pure.tsx
+import { FC } from "react";
+
 export interface AuthScreenPureProps {
   view: "checking" | "register" | "login" | "unsupported";
   username: string;
@@ -1483,7 +1739,7 @@ export interface AuthScreenPureProps {
   onSwitchToLogin: () => void;
 }
 
-export function AuthScreenPure(props: AuthScreenPureProps) {
+export const AuthScreenPure: FC<AuthScreenPureProps> = (props) => {
   const { view, ...rest } = props;
 
   if (view === "checking") return <AuthScreenLoading />;
@@ -1491,17 +1747,16 @@ export function AuthScreenPure(props: AuthScreenPureProps) {
 
   return (
     <AuthLayout>
-      {view === "register" ? (
-        <RegisterForm {...rest} />
-      ) : (
-        <LoginForm {...rest} />
-      )}
+      {view === "register" ? <RegisterForm {...rest} /> : <LoginForm {...rest} />}
       {props.showPasskeyPrompt && <PasskeyPrompt />}
     </AuthLayout>
   );
-}
+};
+
+AuthScreenPure.displayName = "AuthScreen.pure";
 
 // authScreen.tsx
+import { FC } from "react";
 import { AuthScreenPure, AuthScreenPureProps } from "./authScreen.pure";
 
 export interface AuthScreenProps {}
@@ -1510,10 +1765,12 @@ export function useAuthScreenLogic(props: AuthScreenProps): AuthScreenPureProps 
   // ... all logic here, returns AuthScreenPureProps
 }
 
-export function AuthScreen(props: AuthScreenProps) {
+export const AuthScreen: FC<AuthScreenProps> = (props) => {
   const pureProps = useAuthScreenLogic(props);
   return <AuthScreenPure {...pureProps} />;
-}
+};
+
+AuthScreen.displayName = "AuthScreen";
 ```
 
 ### Checklist: Before Writing Component/Screen (MANDATORY)
@@ -1526,6 +1783,8 @@ export function AuthScreen(props: AuthScreenProps) {
 - Putting hooks/state in `.pure.tsx` files
 - Returning type different from `XxxPureProps` in `useXxxLogic`
 - Creating `.logic.ts` files (use `.tsx` for logic + container)
+- Class components (use `FC<Props>` with arrow functions)
+- Components without `displayName` assignment
 
 **✅ REQUIRED (every component/screen MUST have):**
 
@@ -1536,6 +1795,8 @@ export function AuthScreen(props: AuthScreenProps) {
 - [ ] `useXxxLogic` returns exactly `XxxPureProps`
 - [ ] `XxxPure` has no hooks, no state — only props
 - [ ] Total lines < 100 (screen) or < 150 (comp)
+- [ ] All components use `FC<Props>` pattern (no class components)
+- [ ] All components have `displayName` assigned (use dot notation for state files)
 
 **If ANY check FAILS → Fix structure first, then implement.**
 
@@ -2234,21 +2495,19 @@ Is it a React component?
 │       └── YES → routes/layouts/
 └── NO
     ├── Is it state management?
-    │   └── YES → features/{domain}/stores/
+    │   ├── Feature-specific? → features/{domain}/stores/
+    │   └── App-wide (user, theme)? → shared/stores/
     ├── Is it business logic / API?
     │   └── YES → features/{domain}/services/
     ├── Is it a hook?
-    │   ├── Feature-specific?
-    │   │   ├── YES → features/{domain}/hooks/ or inline
-    │   │   └── NO → shared/hooks/
+    │   ├── Has domain/business logic? → features/{domain}/hooks/ or inline
+    │   └── Generic (useDebounce, useLocalStorage)? → shared/hooks/
     ├── Is it a utility function?
-    │   ├── Feature-specific?
-    │   │   ├── YES → features/{domain}/utils/
-    │   │   └── NO → shared/utils/
+    │   ├── Has domain/business logic? → features/{domain}/utils/
+    │   └── Generic (formatDate, cn)? → shared/utils/
     └── Is it a type definition?
-        ├── Feature-specific?
-        │   ├── YES → features/{domain}/types/
-        │   └── NO → shared/types/
+        ├── Domain-specific (Todo, Order)? → features/{domain}/types/
+        └── Generic (AsyncState, Nullable)? → shared/types/
 ```
 
 ## Cross-Feature Dependencies
@@ -2670,6 +2929,9 @@ For each legacy component/feature:
 - [ ] Has `index.ts` — barrel exports
 - [ ] Has `componentName.tsx` — logic hook + container
 - [ ] Has `componentName.pure.tsx` — presentation component (Storybook-ready)
+- [ ] All components use `FC<Props>` pattern (no class components, no function declarations)
+- [ ] All components have `displayName` assigned
+- [ ] State files use dot notation displayName (e.g., `"MyComponent.loading"`)
 
 ### 2. Location Check
 
