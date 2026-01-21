@@ -1,6 +1,6 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import { ReactiveSelector, select } from "../core/select";
-import { Atom, Equality } from "../core/types";
+import { Atom, Equality, Pool } from "../core/types";
 import { resolveEquality } from "../core/equality";
 import { isAtom } from "../core/isAtom";
 
@@ -200,6 +200,9 @@ export function useSelector<T>(
   // Track current dependencies and their unsubscribe functions
   const subscriptionsRef = useRef<Map<Atom<unknown>, VoidFunction>>(new Map());
   const dependenciesRef = useRef<Set<Atom<unknown>>>(new Set());
+  // Track pool dependencies and their cleanup functions
+  const poolCleanupsRef = useRef<VoidFunction[]>([]);
+  const poolDependenciesRef = useRef<Map<Pool<any, any>, Set<any>>>(new Map());
 
   // Cache the last snapshot
   const snapshotRef = useRef<{ value: T; initialized: boolean }>({
@@ -214,7 +217,8 @@ export function useSelector<T>(
     const { result } = select(selectorRef.current);
 
     // Update dependencies
-    dependenciesRef.current = result.dependencies;
+    dependenciesRef.current = result._atomDeps;
+    poolDependenciesRef.current = result._poolDeps;
 
     // Handle Suspense-style states
     if (result.promise !== undefined) {
@@ -246,8 +250,18 @@ export function useSelector<T>(
   const subscribe = useCallback((onStoreChange: () => void) => {
     const subscriptions = subscriptionsRef.current;
 
+    // Common handler for dependency changes
+    const handleChange = () => {
+      const { result } = select(selectorRef.current);
+      dependenciesRef.current = result._atomDeps;
+      poolDependenciesRef.current = result._poolDeps;
+      updateSubscriptions();
+      onStoreChange();
+    };
+
     const updateSubscriptions = () => {
       const currentDeps = dependenciesRef.current;
+      const currentPoolDeps = poolDependenciesRef.current;
 
       // Unsubscribe from atoms no longer dependencies
       for (const [atom, unsubscribe] of subscriptions) {
@@ -257,21 +271,23 @@ export function useSelector<T>(
         }
       }
 
-      // Subscribe to new dependencies
+      // Subscribe to new atom dependencies
       for (const atom of currentDeps) {
         if (!subscriptions.has(atom)) {
-          const unsubscribe = atom.on(() => {
-            // Re-run selector to update dependencies
-            const { result } = select(selectorRef.current);
-            dependenciesRef.current = result.dependencies;
+          subscriptions.set(atom, atom.on(handleChange));
+        }
+      }
 
-            // Update subscriptions if dependencies changed
-            updateSubscriptions();
+      // Clean up old pool removal subscriptions
+      for (const cleanup of poolCleanupsRef.current) {
+        cleanup();
+      }
+      poolCleanupsRef.current = [];
 
-            // Notify React
-            onStoreChange();
-          });
-          subscriptions.set(atom, unsubscribe);
+      // Subscribe to pool entry removals
+      for (const [pool, paramsSet] of currentPoolDeps) {
+        for (const params of paramsSet) {
+          poolCleanupsRef.current.push(pool._onRemove(params, handleChange));
         }
       }
     };
@@ -285,6 +301,10 @@ export function useSelector<T>(
         unsubscribe();
       }
       subscriptions.clear();
+      for (const cleanup of poolCleanupsRef.current) {
+        cleanup();
+      }
+      poolCleanupsRef.current = [];
     };
   }, []);
 

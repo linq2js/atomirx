@@ -299,77 +299,62 @@ export function derived<T>(
       currentPromise.catch(() => {});
     }
 
-    // Run select to compute value and track dependencies
-    const attemptCompute = () => {
-      const { result } = select((context) => fn(context.use(withReady())));
+    // Async computation loop - simpler than recursive attemptCompute
+    (async () => {
+      while (true) {
+        // Check if superseded by newer computation
+        if (version !== computeVersion) return;
 
-      // Update subscriptions based on accessed deps
-      updateSubscriptions(result);
+        const { result } = select((context) => fn(context.use(withReady())));
+        updateSubscriptions(result);
 
-      if (result.promise) {
-        // Notify subscribers that we're now in loading state
-        // This allows downstream derived atoms and useSelector to suspend
-        if (!silent) notify();
-        // Promise thrown - wait for it and retry
-        // Note: For never-resolving promises (from ready()), this .then() will never fire.
-        // But when a dependency changes, compute() is called again via subscription,
-        // and the new computation will run (with a new version).
-        result.promise.then(
-          () => {
-            // Check if we're still the current computation
+        if (result.promise) {
+          if (!silent) notify();
+          try {
+            await result.promise;
             if (version !== computeVersion) return;
-            attemptCompute();
-          },
-          (error) => {
-            // Check if we're still the current computation
+            continue;
+          } catch (error) {
             if (version !== computeVersion) return;
             isLoading = false;
             lastError = error;
             rejectPromise?.(error);
-            // Clear resolve/reject so next computation creates new promise
             resolvePromise = null;
             rejectPromise = null;
-            // Invoke error handlers
             handleError(error);
-            // Always notify when promise rejects - subscribers need to know
-            // state changed from loading to error
             notify();
+            return;
           }
-        );
-      } else if (result.error !== undefined) {
-        // Error thrown
-        isLoading = false;
-        lastError = result.error;
-        rejectPromise?.(result.error);
-        // Clear resolve/reject so next computation creates new promise
-        resolvePromise = null;
-        rejectPromise = null;
-        // Invoke error handlers
-        handleError(result.error);
-        if (!silent) notify();
-      } else {
-        // Success - update lastResolved and resolve
+        }
+
+        if (result.error !== undefined) {
+          isLoading = false;
+          lastError = result.error;
+          rejectPromise?.(result.error);
+          resolvePromise = null;
+          rejectPromise = null;
+          handleError(result.error);
+          if (!silent) notify();
+          return;
+        }
+
+        // Success
         const newValue = result.value as T;
         const wasFirstResolve = !lastResolved;
         isLoading = false;
         lastError = undefined;
 
-        // Only update and notify if value changed
         if (!lastResolved || !eq(newValue, lastResolved.value)) {
           lastResolved = { value: newValue };
-          // Always notify on first resolve (loading → ready transition)
-          // even if silent, because subscribers need to know state changed
           if (wasFirstResolve || !silent) notify();
         }
 
         resolvePromise?.(newValue);
-        // Clear resolve/reject so next computation creates new promise
         resolvePromise = null;
         rejectPromise = null;
+        return;
       }
-    };
-
-    attemptCompute();
+    })();
 
     return currentPromise!;
   };

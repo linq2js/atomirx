@@ -75,7 +75,7 @@ export function ShowcaseHeaderPure({
           {/* Desktop Links */}
           <nav className="hidden md:flex items-center gap-4">
             <a
-              href="https://github.com/user/atomirx"
+              href="https://github.com/phatnguyen138/atomirx"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 text-surface-400 hover:text-surface-100 transition-colors cursor-pointer"

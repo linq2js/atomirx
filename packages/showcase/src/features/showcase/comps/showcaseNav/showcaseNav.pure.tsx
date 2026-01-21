@@ -8,6 +8,7 @@ export type DemoId =
   | "todo-list"
   | "derived"
   | "batch"
+  | "pool"
   | "use-action"
   | "use-selector"
   | "async-utils";

@@ -12,6 +12,7 @@ import { EventLogPanel } from "../../comps/eventLogPanel";
 import { BasicAtomDemo } from "../../comps/basicAtomDemo";
 import { DerivedAtomDemo } from "../../comps/derivedAtomDemo";
 import { BatchDemo } from "../../comps/batchDemo";
+import { PoolDemo } from "../../comps/poolDemo";
 import { TodoListDemo } from "../../comps/todoListDemo";
 import { AsyncUtilitiesDemo } from "../../comps/asyncUtilitiesDemo";
 import { UseActionDemo } from "../../comps/useActionDemo";
@@ -29,6 +30,7 @@ const demoComponents: Record<DemoId, ComponentType> = {
   "todo-list": TodoListDemo,
   derived: DerivedAtomDemo,
   batch: BatchDemo,
+  pool: PoolDemo,
   "use-action": UseActionDemo,
   "use-selector": UseSelectorDemo,
   "async-utils": AsyncUtilitiesDemo,

@@ -3,6 +3,7 @@ import {
   Zap,
   GitBranch,
   Layers,
+  Database,
   Play,
   MousePointer,
   Workflow,
@@ -38,6 +39,11 @@ export const navItems: NavItem[] = [
     id: "batch",
     label: "Batch",
     icon: <Layers className="w-4 h-4" />,
+  },
+  {
+    id: "pool",
+    label: "Pool",
+    icon: <Database className="w-4 h-4" />,
   },
   {
     id: "use-action",
