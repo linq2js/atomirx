@@ -183,7 +183,21 @@ export const todosStore = define(() => {
 
   /**
    * Load todos from storage.
-   * Should be called after auth is complete.
+   *
+   * @description
+   * Fetches all todos from encrypted storage and populates the todos$ atom.
+   * Should be called after authentication is complete.
+   * Sorts todos by createdAt descending (newest first).
+   *
+   * @returns Promise that resolves when loading is complete
+   * @throws Sets error$ if loading fails (does not throw)
+   *
+   * @example
+   * ```ts
+   * const todos = todosStore();
+   * await todos.loadTodos();
+   * // todos.todos$ now contains all todos
+   * ```
    */
   async function loadTodos(): Promise<void> {
     error$.set(null);
@@ -211,8 +225,20 @@ export const todosStore = define(() => {
   /**
    * Add a new todo.
    *
-   * @param content - Todo content (will be encrypted)
-   * @returns Created todo or null on error
+   * @description
+   * Creates a new todo with encrypted content. Updates todos$ optimistically
+   * by prepending the new todo to the list.
+   *
+   * @param content - Todo content (will be encrypted). Trimmed before saving.
+   * @returns Created todo or null if content is empty or on error
+   *
+   * @example
+   * ```ts
+   * const todo = await todos.addTodo("Buy groceries");
+   * if (todo) {
+   *   console.log("Created:", todo.id);
+   * }
+   * ```
    */
   async function addTodo(content: string): Promise<Todo | null> {
     error$.set(null);
@@ -246,8 +272,18 @@ export const todosStore = define(() => {
   /**
    * Toggle todo completion status.
    *
-   * @param id - Todo ID
-   * @returns Updated todo or null on error
+   * @description
+   * Optimistically updates the UI, then persists to storage.
+   * Rolls back on error.
+   *
+   * @param id - Todo UUID to toggle
+   * @returns Updated todo or null if not found or on error
+   *
+   * @example
+   * ```ts
+   * const updated = await todos.toggleTodo(todo.id);
+   * // todo.completed is now inverted
+   * ```
    */
   async function toggleTodo(id: string): Promise<Todo | null> {
     error$.set(null);
@@ -308,9 +344,18 @@ export const todosStore = define(() => {
   /**
    * Update todo content.
    *
-   * @param id - Todo ID
-   * @param content - New content
-   * @returns Updated todo or null on error
+   * @description
+   * Optimistically updates the UI, then persists to storage.
+   * Rolls back on error. Empty content is rejected.
+   *
+   * @param id - Todo UUID to update
+   * @param content - New content (trimmed before saving)
+   * @returns Updated todo or null if not found, empty content, or on error
+   *
+   * @example
+   * ```ts
+   * const updated = await todos.updateTodoContent(todo.id, "Updated text");
+   * ```
    */
   async function updateTodoContent(
     id: string,
@@ -380,8 +425,20 @@ export const todosStore = define(() => {
   /**
    * Delete a todo (soft delete).
    *
-   * @param id - Todo ID
-   * @returns Whether deletion was successful
+   * @description
+   * Optimistically removes from UI, then soft-deletes in storage.
+   * Rolls back on error. Soft-deleted todos are kept until synced.
+   *
+   * @param id - Todo UUID to delete
+   * @returns true if deleted successfully, false if not found or on error
+   *
+   * @example
+   * ```ts
+   * const deleted = await todos.deleteTodo(todo.id);
+   * if (deleted) {
+   *   showToast("Todo deleted");
+   * }
+   * ```
    */
   async function deleteTodo(id: string): Promise<boolean> {
     error$.set(null);
@@ -437,7 +494,12 @@ export const todosStore = define(() => {
   /**
    * Set the filter for displayed todos.
    *
-   * @param newFilter - Filter to apply
+   * @param newFilter - Filter to apply ("all", "active", or "completed")
+   *
+   * @example
+   * ```ts
+   * todos.setFilter("active"); // Show only incomplete todos
+   * ```
    */
   function setFilter(newFilter: TodoFilterType): void {
     filter$.set(newFilter);
@@ -446,7 +508,17 @@ export const todosStore = define(() => {
   /**
    * Clear all completed todos.
    *
-   * @returns Number of todos cleared
+   * @description
+   * Soft-deletes all completed todos. Optimistically removes from UI.
+   * On partial failure, reloads from storage to reconcile state.
+   *
+   * @returns Number of todos successfully cleared
+   *
+   * @example
+   * ```ts
+   * const count = await todos.clearCompleted();
+   * showToast(`Cleared ${count} completed todos`);
+   * ```
    */
   async function clearCompleted(): Promise<number> {
     error$.set(null);
@@ -497,6 +569,11 @@ export const todosStore = define(() => {
 
   /**
    * Clear the error state.
+   *
+   * @example
+   * ```ts
+   * todos.clearError();
+   * ```
    */
   function clearError(): void {
     error$.set(null);
@@ -504,6 +581,16 @@ export const todosStore = define(() => {
 
   /**
    * Reset todos state (for logout).
+   *
+   * @description
+   * Clears all state: todos, filter, error, and loading flag.
+   * Does NOT clear storage - use storage.clearAllData() for that.
+   *
+   * @example
+   * ```ts
+   * // On logout
+   * todos.reset();
+   * ```
    */
   function reset(): void {
     batch(() => {

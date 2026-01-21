@@ -108,10 +108,9 @@ export const eventLogStore = define(() => {
   /**
    * Number of log entries.
    */
-  const logCount$ = derived(
-    ({ read }) => read(logs$).length,
-    { meta: { key: "eventLog.logCount" } }
-  );
+  const logCount$ = derived(({ read }) => read(logs$).length, {
+    meta: { key: "eventLog.logCount" },
+  });
 
   // ─────────────────────────────────────────────────────────────
   // Actions
@@ -147,9 +146,14 @@ export const eventLogStore = define(() => {
   /**
    * Clear all log entries.
    *
+   * @description
+   * Removes all entries from the log. Resets to empty array.
+   * Does not reset the ID counter.
+   *
    * @example
    * ```ts
    * eventLog.clear();
+   * // logs$ is now []
    * ```
    */
   function clear(): void {

@@ -90,7 +90,24 @@ function mapErrorCode(error: unknown): AuthErrorCode {
  */
 export const authService = define((): AuthService => {
   /**
-   * Check what WebAuthn features are supported.
+   * Check what WebAuthn features are supported in the current browser.
+   *
+   * @description
+   * Detects support for WebAuthn, platform authenticator (Face ID, Touch ID, Windows Hello),
+   * PRF extension (for key derivation), and conditional mediation (autofill).
+   *
+   * @returns AuthSupport object with feature flags
+   *
+   * @example
+   * ```ts
+   * const support = await auth.checkSupport();
+   * if (!support.webauthn) {
+   *   showError("WebAuthn not supported");
+   * }
+   * if (!support.platformAuthenticator) {
+   *   showWarning("No biometric available");
+   * }
+   * ```
    */
   async function checkSupport(): Promise<AuthSupport> {
     // Check if WebAuthn is available
@@ -140,7 +157,29 @@ export const authService = define((): AuthService => {
   }
 
   /**
-   * Register a new passkey.
+   * Register a new passkey for the user.
+   *
+   * @description
+   * Creates a new WebAuthn credential using the platform authenticator.
+   * If PRF extension is supported, returns PRF output for key derivation.
+   *
+   * @param options - Registration options
+   * @param options.username - Display name for the credential
+   * @param options.requireBiometric - Require biometric verification (default: false)
+   * @returns RegisterResult on success with credential data, RegisterError on failure
+   *
+   * @example
+   * ```ts
+   * const result = await auth.register({ username: "user@example.com" });
+   * if (result.success) {
+   *   // Store credential and derive encryption key from PRF output
+   *   const key = await crypto.deriveKeyFromPRF(result.prfOutput, {
+   *     salt: result.prfSalt,
+   *   });
+   * } else {
+   *   showError(result.message);
+   * }
+   * ```
    */
   async function register(
     options: RegisterOptions
@@ -258,6 +297,29 @@ export const authService = define((): AuthService => {
 
   /**
    * Authenticate with an existing passkey.
+   *
+   * @description
+   * Prompts user to authenticate with a stored passkey using biometric
+   * or PIN verification. Returns PRF output if extension was used during registration.
+   *
+   * @param options - Authentication options
+   * @param options.requireBiometric - Require biometric verification (default: false)
+   * @param options.allowCredentials - Array of credential IDs to allow (optional)
+   * @returns AuthenticateResult on success with credential ID and PRF output,
+   *          AuthenticateError on failure
+   *
+   * @example
+   * ```ts
+   * const result = await auth.authenticate({
+   *   allowCredentials: storedCredentialIds,
+   * });
+   * if (result.success) {
+   *   const credential = findCredential(result.credentialId);
+   *   const key = await crypto.deriveKeyFromPRF(result.prfOutput, {
+   *     salt: credential.prfSalt,
+   *   });
+   * }
+   * ```
    */
   async function authenticate(
     options?: AuthenticateOptions
@@ -344,6 +406,18 @@ export const authService = define((): AuthService => {
    * @description
    * This checks local storage/IndexedDB for stored credential metadata.
    * Note: This doesn't verify the credential is still valid with the authenticator.
+   *
+   * @returns true if credentials exist locally, false otherwise
+   *
+   * @example
+   * ```ts
+   * const hasExisting = await auth.hasCredentials();
+   * if (hasExisting) {
+   *   showLoginButton();
+   * } else {
+   *   showRegisterButton();
+   * }
+   * ```
    */
   async function hasCredentials(): Promise<boolean> {
     // TODO: Implement when storage service is ready

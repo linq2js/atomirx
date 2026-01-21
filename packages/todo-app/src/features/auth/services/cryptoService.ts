@@ -89,6 +89,15 @@ export const cryptoService = define((): CryptoService => {
 
   /**
    * Generate random bytes for salt or IV.
+   *
+   * @param length - Number of random bytes to generate (default: 16)
+   * @returns Uint8Array containing cryptographically random bytes
+   *
+   * @example
+   * ```ts
+   * const salt = crypto.generateSalt(16);  // 16-byte salt
+   * const iv = crypto.generateSalt(12);    // 12-byte IV for AES-GCM
+   * ```
    */
   function generateSalt(length: number = DEFAULT_SALT_LENGTH): Uint8Array {
     const salt = new Uint8Array(length);
@@ -98,6 +107,15 @@ export const cryptoService = define((): CryptoService => {
 
   /**
    * Generate a new random AES-256-GCM key.
+   *
+   * @returns A new extractable CryptoKey for AES-256-GCM encryption/decryption
+   *
+   * @example
+   * ```ts
+   * const key = await crypto.generateKey();
+   * // Use key for encryption
+   * const encrypted = await crypto.encrypt(key, "secret");
+   * ```
    */
   async function generateKey(): Promise<CryptoKey> {
     return subtle.generateKey(
@@ -117,6 +135,20 @@ export const cryptoService = define((): CryptoService => {
    * Uses HKDF (HMAC-based Key Derivation Function) to derive a key from
    * the PRF extension output. HKDF is preferred over PBKDF2 here because
    * the PRF output is already high-entropy.
+   *
+   * @param prfOutput - Raw PRF output from WebAuthn authenticator
+   * @param config - Key derivation configuration
+   * @param config.salt - Salt bytes for HKDF (should be stored with credential)
+   * @param config.info - Optional domain separation string (default: encryption key info)
+   * @param config.keyLength - Optional key length in bits (default: 256)
+   * @returns Derived AES-256-GCM CryptoKey
+   *
+   * @example
+   * ```ts
+   * const key = await crypto.deriveKeyFromPRF(prfOutput, {
+   *   salt: storedCredential.prfSalt,
+   * });
+   * ```
    */
   async function deriveKeyFromPRF(
     prfOutput: ArrayBuffer,
@@ -160,6 +192,18 @@ export const cryptoService = define((): CryptoService => {
    * @description
    * Used as fallback when PRF extension is not supported.
    * Uses high iteration count to slow down brute-force attacks.
+   *
+   * @param password - User-provided password
+   * @param salt - Random salt bytes (should be stored for key recovery)
+   * @param iterations - PBKDF2 iteration count (default: 100,000)
+   * @returns Derived AES-256-GCM CryptoKey with wrap/unwrap permissions
+   *
+   * @example
+   * ```ts
+   * const salt = crypto.generateSalt(16);
+   * const kek = await crypto.deriveKeyFromPassword("user-password", salt);
+   * // Store salt securely for later key recovery
+   * ```
    */
   async function deriveKeyFromPassword(
     password: string,
@@ -198,7 +242,17 @@ export const cryptoService = define((): CryptoService => {
    *
    * @description
    * Generates a fresh IV for each encryption to ensure security.
-   * The IV is prepended to the ciphertext in the output.
+   * The IV is stored separately in the output for decryption.
+   *
+   * @param key - AES-256-GCM CryptoKey for encryption
+   * @param plaintext - UTF-8 string to encrypt
+   * @returns EncryptedField containing base64-encoded ciphertext and IV
+   *
+   * @example
+   * ```ts
+   * const encrypted = await crypto.encrypt(key, "secret data");
+   * // Store encrypted.ciphertext and encrypted.iv together
+   * ```
    */
   async function encrypt(
     key: CryptoKey,
@@ -225,7 +279,21 @@ export const cryptoService = define((): CryptoService => {
   /**
    * Decrypt ciphertext using AES-256-GCM.
    *
-   * @throws CryptoError if decryption fails (wrong key or tampered data)
+   * @param key - AES-256-GCM CryptoKey used for original encryption
+   * @param encrypted - EncryptedField containing ciphertext and IV
+   * @returns Decrypted UTF-8 plaintext string
+   * @throws {CryptoError} If decryption fails (wrong key or tampered data)
+   *
+   * @example
+   * ```ts
+   * try {
+   *   const plaintext = await crypto.decrypt(key, encrypted);
+   * } catch (error) {
+   *   if (error instanceof CryptoError) {
+   *     console.error("Decryption failed:", error.message);
+   *   }
+   * }
+   * ```
    */
   async function decrypt(
     key: CryptoKey,
@@ -259,6 +327,18 @@ export const cryptoService = define((): CryptoService => {
    * @description
    * Uses AES-GCM key wrapping. The wrapped key can be safely stored
    * and later unwrapped using the same KEK.
+   *
+   * @param kek - Key Encryption Key (derived from password or PRF)
+   * @param dek - Data Encryption Key to wrap (the key used for encrypting data)
+   * @returns WrappedKey containing encrypted key material, IV, and salt
+   *
+   * @example
+   * ```ts
+   * const dek = await crypto.generateKey();
+   * const kek = await crypto.deriveKeyFromPassword("password", salt);
+   * const wrapped = await crypto.wrapKey(kek, dek);
+   * // Store wrapped key - can be recovered with same password + salt
+   * ```
    */
   async function wrapKey(kek: CryptoKey, dek: CryptoKey): Promise<WrappedKey> {
     const iv = generateSalt(AES_IV_LENGTH);
@@ -290,7 +370,23 @@ export const cryptoService = define((): CryptoService => {
   /**
    * Unwrap (decrypt) a data encryption key using a key encryption key.
    *
-   * @throws CryptoError if unwrapping fails (wrong KEK)
+   * @param kek - Key Encryption Key (must match the one used for wrapping)
+   * @param wrapped - WrappedKey containing encrypted key material
+   * @returns The original Data Encryption Key
+   * @throws {CryptoError} If unwrapping fails (wrong KEK or tampered data)
+   *
+   * @example
+   * ```ts
+   * try {
+   *   const kek = await crypto.deriveKeyFromPassword("password", storedSalt);
+   *   const dek = await crypto.unwrapKey(kek, storedWrappedKey);
+   *   // Use dek for decryption
+   * } catch (error) {
+   *   if (error instanceof CryptoError) {
+   *     console.error("Wrong password or corrupted key");
+   *   }
+   * }
+   * ```
    */
   async function unwrapKey(
     kek: CryptoKey,

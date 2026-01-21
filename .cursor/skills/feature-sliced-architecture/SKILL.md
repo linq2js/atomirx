@@ -2,7 +2,7 @@
 
 Guide for working with feature-sliced architecture in this project. Use when implementing components, screens, services, or stores within the `features/` directory structure.
 
-> **Mobile-First Approach**: This skill uses `screens` (not `pages`) as the term for full-view compositions. This terminology aligns with mobile development conventions (React Native, Flutter) and works well for cross-platform projects. For web-only projects, `screens` maps to route-level components.
+> **Mobile-First Terminology (STRICT)**: This project uses `screens` for full-view compositions. The term `page` is **FORBIDDEN**. This aligns with mobile development conventions (React Native, Flutter) and works for cross-platform projects. For web, `screens` maps to route-level components.
 
 ## Table of Contents
 
@@ -16,6 +16,7 @@ Guide for working with feature-sliced architecture in this project. Use when imp
   - [Index Files](#index-files-strict)
   - [One Component Per File](#one-component-per-file-strict)
   - [UI Component Location](#ui-component-location-strict)
+  - [Service Rules](#service-rules-strict)
 - [Path-Based Detection Rules](#path-based-detection-rules)
 - [Component Classification](#component-classification)
 - [Component Splitting Rules by Type](#component-splitting-rules-by-type)
@@ -358,6 +359,53 @@ import { LoginForm } from "../comps/loginForm"; // Loads: only LoginForm + its P
 - `README.md` — documentation
 - Config files (`tsconfig.json`, `vite.config.ts`, etc.)
 
+### Screen Naming Convention (STRICT)
+
+**Screen files and folders MUST use `Screen` suffix:**
+
+```
+features/{featureName}/screens/{screenName}Screen/
+├── index.ts
+├── {screenName}Screen.tsx
+├── {screenName}Screen.pure.tsx
+└── {screenName}Screen.{state}.tsx    # Optional state files
+```
+
+**Examples:**
+
+```
+✅ CORRECT:
+   features/auth/screens/authScreen/
+   ├── authScreen.tsx
+   ├── authScreen.pure.tsx
+   └── authScreen.loading.tsx
+
+   features/todos/screens/todosScreen/
+   ├── todosScreen.tsx
+   └── todosScreen.pure.tsx
+
+   features/userProfile/screens/profileScreen/
+   ├── profileScreen.tsx
+   └── profileScreen.pure.tsx
+
+❌ FORBIDDEN (using "page" terminology):
+   features/auth/pages/                    # ❌ NO "pages" folder
+   features/auth/screens/authPage/         # ❌ NO "Page" in name
+   authPage.tsx                            # ❌ NO "page" in filename
+   AuthPagePure                            # ❌ NO "Page" in component name
+```
+
+**Import pattern:**
+
+```typescript
+// ✅ CORRECT
+import { AuthScreen } from "@/features/auth/screens/authScreen";
+import { TodosScreen } from "@/features/todos/screens/todosScreen";
+
+// ❌ FORBIDDEN
+import { AuthPage } from "@/features/auth/pages/authPage";
+```
+
 **Why:**
 
 - Consistent with common JS/TS conventions
@@ -471,6 +519,116 @@ export function LoginForm() { ... }
 - Forces reuse — no duplicate UI components per feature
 - Single source of truth — one place for all generic UI
 - Clear mental model — `ui/` = generic, `comps/` = business
+
+### Service Rules (STRICT)
+
+**Services MUST NOT import or use reactive entities (stores, atoms, selectors).**
+
+Services are pure business logic. If a service needs data from stores or needs to update stores, the **caller must pass callbacks**.
+
+```typescript
+// ❌ FORBIDDEN - Service importing store/reactive entity
+// features/upload/services/uploadService.ts
+import { uploadStore } from "../stores/uploadStore"; // ❌ FORBIDDEN
+import { authStore } from "@/features/auth/stores/authStore"; // ❌ FORBIDDEN
+
+export function uploadService() {
+  const upload = uploadStore(); // ❌ FORBIDDEN - using store in service
+  const auth = authStore(); // ❌ FORBIDDEN
+
+  return {
+    startUpload: async (file: File) => {
+      const token = auth.token$(); // ❌ FORBIDDEN - reading from store
+      upload.setProgress(0); // ❌ FORBIDDEN - writing to store
+      // ... upload logic
+    },
+  };
+}
+
+// ✅ CORRECT - Service receives callbacks from caller (store)
+// features/upload/services/uploadService.ts
+export interface UploadCallbacks {
+  getAuthToken: () => string;
+  onProgress: (progress: number) => void;
+  onComplete: (result: UploadResult) => void;
+  onError: (error: Error) => void;
+}
+
+export function uploadService() {
+  return {
+    startUpload: async (file: File, callbacks: UploadCallbacks) => {
+      const token = callbacks.getAuthToken(); // ✅ Data passed via callback
+      callbacks.onProgress(0); // ✅ Updates via callback
+
+      try {
+        const result = await doUpload(file, token, (progress) => {
+          callbacks.onProgress(progress); // ✅ Progress via callback
+        });
+        callbacks.onComplete(result); // ✅ Completion via callback
+      } catch (error) {
+        callbacks.onError(error); // ✅ Error via callback
+      }
+    },
+  };
+}
+
+// ✅ CORRECT - Store orchestrates and passes callbacks to service
+// features/upload/stores/uploadStore.ts
+import { uploadService } from "../services/uploadService";
+import { authStore } from "@/features/auth/stores/authStore";
+
+export const uploadStore = define(() => {
+  const progress$ = atom(0);
+  const result$ = atom<UploadResult | null>(null);
+  const error$ = atom<Error | null>(null);
+
+  const upload = uploadService();
+  const auth = authStore();
+
+  return {
+    progress$,
+    result$,
+    error$,
+
+    startUpload: (file: File) => {
+      // Store orchestrates by passing callbacks to service
+      upload.startUpload(file, {
+        getAuthToken: () => auth.token$(), // ✅ Store provides data
+        onProgress: (p) => progress$(p), // ✅ Store handles updates
+        onComplete: (r) => result$(r), // ✅ Store handles result
+        onError: (e) => error$(e), // ✅ Store handles error
+      });
+    },
+  };
+});
+```
+
+**Why this pattern:**
+
+| Concern        | Service              | Store                        |
+| -------------- | -------------------- | ---------------------------- |
+| Business logic | ✅ YES               | ❌ NO (delegates to service) |
+| Reactive state | ❌ NO                | ✅ YES                       |
+| Store imports  | ❌ FORBIDDEN         | ✅ OK                        |
+| Testability    | Pure, easy to mock   | Needs reactive testing       |
+| Reusability    | Can be used anywhere | Tied to reactive system      |
+
+**Benefits:**
+
+1. **Testable** — Services are pure functions, easy to unit test without mocking stores
+2. **Reusable** — Services can be used in non-reactive contexts (CLI, workers, etc.)
+3. **Clear boundaries** — Services = logic, Stores = state
+4. **Dependency inversion** — Service doesn't know about reactive system
+5. **No circular deps** — Service never imports store that imports same service
+
+**Service file structure:**
+
+```
+features/{domain}/services/
+├── myService.ts           # Service implementation
+├── myService.test.ts      # Pure unit tests (no store mocking needed)
+└── myService.types.ts     # Optional: callback interfaces, types
+```
 
 ## Path-Based Detection Rules
 
@@ -949,7 +1107,6 @@ export interface LoginFormPureProps {
 
 /**
  * Presentation component for LoginForm.
- * Use this in Storybook to test all visual states.
  */
 export function LoginFormPure({
   isLoading,
@@ -1935,21 +2092,22 @@ import { FilterBar } from "@/features/todos-filtering";
 
 **Allowed cross-feature imports:**
 
-| From        | Can Import From Other Features                    |
-| ----------- | ------------------------------------------------- |
-| `routes/`   | ONLY features' `screens/` — nothing else          |
-| `screens/`  | Other features' `comps/`, `stores/` (read-only)   |
-| `comps/`    | Other features' `stores/` (read-only)             |
-| `stores/`   | ❌ FORBIDDEN — stores must be independent         |
-| `services/` | Other features' `services/` (carefully)           |
+| From        | Can Import                                      | Cannot Import             |
+| ----------- | ----------------------------------------------- | ------------------------- |
+| `routes/`   | ONLY features' `screens/`                       | comps, services, stores   |
+| `screens/`  | Other features' `comps/`, `stores/` (read-only) | -                         |
+| `comps/`    | Other features' `stores/` (read-only)           | -                         |
+| `stores/`   | Other features' `services/` only                | ❌ Other stores FORBIDDEN |
+| `services/` | Other features' `services/` (carefully)         | ❌ ANY stores FORBIDDEN   |
 
 **Rules:**
 
 1. **Routes are thin** — Routes ONLY import screens, never comps/services/stores directly
 2. **Stores are isolated** — A feature's store MUST NOT import another feature's store directly
-3. **Services can compose** — Services may call other features' services for orchestration
-4. **Components can read** — Components may read (not write) other features' stores
-5. **Screens orchestrate** — Screens can import from multiple features to compose views
+3. **Services are pure** — Services MUST NOT import ANY stores (use callbacks instead)
+4. **Services can compose** — Services may call other features' services for orchestration
+5. **Components can read** — Components may read (not write) other features' stores
+6. **Screens orchestrate** — Screens can import from multiple features to compose views
 
 **When cross-feature dependency grows:**
 
@@ -2234,11 +2392,11 @@ Is it a utility?
    // features/auth/selectors/auth.selectors.ts
    ```
 
-## Migration from Legacy Code
+## Adopting FSA from Non-FSA Code
 
-### Phase 1: Structure Migration (Non-Breaking)
+### Phase 1: Structure Setup
 
-**Goal:** Move files to FSA structure without changing behavior.
+**Goal:** Move non-FSA files into FSA structure.
 
 1. **Create feature folders**
 
@@ -2250,9 +2408,11 @@ Is it a utility?
 
    ```
    src/components/Auth/ → features/auth/comps/
-   src/pages/AuthPage.tsx → features/auth/screens/authScreen/
+   src/views/Auth.tsx → features/auth/screens/authScreen/authScreen.tsx
    src/services/authService.ts → features/auth/services/authService.ts
    ```
+
+   > **Note:** Non-FSA code may use terms like "pages", "views", or "routes". When adopting FSA, always rename to `screens/` with `Screen` suffix.
 
 3. **Update imports to absolute paths**
 

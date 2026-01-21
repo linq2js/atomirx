@@ -21,6 +21,10 @@ const timestamp$ = atom(() => Date.now(), { meta: { key: "timestamp" } });
 /**
  * Demo component showing basic atom operations.
  *
+ * @description
+ * Demonstrates fundamental atom operations: get/set, lazy initialization,
+ * reset, and the $ suffix naming convention for reactive state.
+ *
  * @example
  * ```tsx
  * <BasicAtomDemo />

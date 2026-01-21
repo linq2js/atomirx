@@ -47,6 +47,11 @@ const userId$ = atom(1, { meta: { key: "userId" } });
 /**
  * Demo component showing useAction hook capabilities.
  *
+ * @description
+ * Demonstrates how useAction provides automatic state management for
+ * async operations including loading states, error handling, abort
+ * support, and auto-dispatch with atom dependencies.
+ *
  * @example
  * ```tsx
  * <UseActionDemo />

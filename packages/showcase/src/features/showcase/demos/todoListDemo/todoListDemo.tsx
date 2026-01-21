@@ -177,8 +177,15 @@ function TodoItem({
 
 /**
  * Todo list component - uses useSelector with derived atom.
- * Suspends while loading, throws on error.
- * MUST be wrapped with Suspense and ErrorBoundary.
+ *
+ * @description
+ * Subscribes to filteredTodos$ derived atom via useSelector.
+ * Suspends while loading, throws on error. MUST be wrapped with
+ * Suspense and ErrorBoundary.
+ *
+ * @param filteredTodos$ - Derived atom providing filtered todos
+ * @param onSuccess - Callback when data loads successfully
+ * @param onToggle - Callback when a todo is toggled
  */
 function TodoList({
   filteredTodos$,
@@ -647,7 +654,18 @@ Module.invalidate(); // Reset for next test`}
 }
 
 /**
- * Legacy export for backward compatibility
+ * Legacy export for backward compatibility.
+ *
  * @deprecated Use TodoListDemoModule().render() instead
+ *
+ * @example
+ * ```tsx
+ * // Preferred
+ * const { render } = TodoListDemoModule();
+ * return render();
+ *
+ * // Legacy (deprecated)
+ * return <TodoListDemo />;
+ * ```
  */
 export const TodoListDemo = () => TodoListDemoModule().render();

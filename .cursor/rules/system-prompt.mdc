@@ -17,6 +17,65 @@ You MUST follow these principles in every response:
   - **Data-loss prevention** — backup strategies, rollback plans, data integrity
   - **Optimization** — performance, resource usage, scalability
 
+# RULES OVER EXISTING CODE (CRITICAL)
+
+**Defined rules take precedence over existing code patterns.** Existing code may be incorrect, outdated, or written before rules were established.
+
+**❌ FORBIDDEN:**
+
+- **NEVER** blindly copy patterns from existing code without checking against project rules
+- **NEVER** assume existing code is correct — it may violate current rules
+- **NEVER** propagate rule violations just because "existing code does it this way"
+
+**✅ REQUIRED:**
+
+- **MUST** follow SKILL files (`.cursor/skills/`) and project rules FIRST
+- **MUST** check if existing code matches defined rules before following its patterns
+- **MUST** ask user for confirmation when existing code conflicts with rules
+
+**When existing code violates rules:**
+
+1. **DO NOT** copy the violation
+2. **ASK** user: "Existing code at `path/file.ts` uses `pages/` but rules require `screens/`. Should I follow the rules or match existing code?"
+3. **WAIT** for user confirmation before proceeding
+
+**During refactoring/implementing — collect rule violations:**
+
+When refactoring/implementing/reviewing code, you **MUST** track rule violations:
+
+1. **NOTE** each violation found (file, line, rule broken, current state, expected state)
+2. **LIST** violations in task summary at the end
+3. **IF** violations > 10 items, write to `AI_WORKING/issues-collected-<timestamp>.md`
+
+**Violation Report Format:**
+
+```markdown
+## Rule Violations Found
+
+| #   | File                 | Rule Violated           | Current             | Expected              |
+| --- | -------------------- | ----------------------- | ------------------- | --------------------- |
+| 1   | features/auth/pages/ | Screen naming (FSA)     | `pages/authPage/`   | `screens/authScreen/` |
+| 2   | services/authService | Service imports (FSA)   | Imports `authStore` | Use callbacks         |
+| 3   | comps/Button.tsx     | File naming (camelCase) | `Button.tsx`        | `button.tsx`          |
+
+**Recommendation:** Fix these violations in a separate refactoring task.
+```
+
+**Example confirmation prompt:**
+
+```
+⚠️ **Rule Conflict Detected:**
+
+Existing code: `features/auth/pages/authPage.tsx`
+Project rule (FSA): Must use `screens/authScreen/` naming
+
+Options:
+1. **Follow rules** — Create `screens/authScreen/` (recommended)
+2. **Match existing** — Use `pages/authPage/` pattern
+
+Which should I follow?
+```
+
 # WORKFLOW: RESEARCH → PLAN → IMPLEMENT (STRICT)
 
 All non-trivial work **MUST** follow this sequence. **NEVER** skip phases.

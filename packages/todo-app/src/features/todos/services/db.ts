@@ -123,9 +123,19 @@ export class TodoDatabase extends Dexie {
 let _db: TodoDatabase | null = null;
 
 /**
- * Get the database instance.
+ * Get the database instance (singleton).
  *
- * @returns TodoDatabase instance
+ * @description
+ * Returns the singleton database instance, creating it if needed.
+ * The database is lazily initialized on first access.
+ *
+ * @returns TodoDatabase singleton instance
+ *
+ * @example
+ * ```ts
+ * const db = getDatabase();
+ * const todos = await db.todos.toArray();
+ * ```
  */
 export function getDatabase(): TodoDatabase {
   if (!_db) {
@@ -135,7 +145,21 @@ export function getDatabase(): TodoDatabase {
 }
 
 /**
- * Close and reset the database (useful for tests).
+ * Close and reset the database.
+ *
+ * @description
+ * Deletes all data and closes the database connection.
+ * Used for testing and logout scenarios.
+ *
+ * @returns Promise that resolves when database is deleted
+ *
+ * @example
+ * ```ts
+ * // In tests
+ * afterEach(async () => {
+ *   await resetDatabase();
+ * });
+ * ```
  */
 export async function resetDatabase(): Promise<void> {
   if (_db) {

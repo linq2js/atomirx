@@ -61,6 +61,11 @@ const createFreshAtoms = (): Atoms => ({
 /**
  * Demo component showing async utilities (all, any, race, settled).
  *
+ * @description
+ * Demonstrates Suspense-style utilities for coordinating multiple async
+ * atoms: all() waits for all, any() returns first resolved, race()
+ * returns first settled, and settled() returns all statuses.
+ *
  * @example
  * ```tsx
  * <AsyncUtilitiesDemo />

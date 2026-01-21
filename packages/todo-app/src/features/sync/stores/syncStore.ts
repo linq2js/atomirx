@@ -191,7 +191,18 @@ export const syncStore = define(() => {
 
   /**
    * Load sync metadata from storage.
-   * Should be called after auth.
+   *
+   * @description
+   * Loads lastSyncAt and pendingCount from storage.
+   * Should be called after authentication is complete.
+   *
+   * @returns Promise that resolves when metadata is loaded
+   *
+   * @example
+   * ```ts
+   * await sync.loadSyncMeta();
+   * console.log(sync.pendingCount$.get());
+   * ```
    */
   async function loadSyncMeta(): Promise<void> {
     try {
@@ -210,9 +221,21 @@ export const syncStore = define(() => {
 
   /**
    * Sync pending operations to the server.
-   * Uses jsonplaceholder API for mock sync.
    *
-   * @returns Whether sync was successful
+   * @description
+   * Processes all pending create/update/delete operations in chronological order.
+   * Uses jsonplaceholder API for mock sync. Clears successful operations
+   * and updates sync metadata. Skips if already syncing or offline.
+   *
+   * @returns true if sync completed successfully, false otherwise
+   *
+   * @example
+   * ```ts
+   * const success = await sync.sync();
+   * if (success) {
+   *   showToast("Synced successfully");
+   * }
+   * ```
    */
   async function sync(): Promise<boolean> {
     // Skip if already syncing or offline
@@ -355,13 +378,28 @@ export const syncStore = define(() => {
 
   /**
    * Clear the sync error.
+   *
+   * @example
+   * ```ts
+   * sync.clearSyncError();
+   * ```
    */
   function clearSyncError(): void {
     syncError$.set(null);
   }
 
   /**
-   * Update pending count (called when todos are modified).
+   * Increment pending operation count.
+   *
+   * @description
+   * Called internally when todos are modified.
+   * Typically not called directly by application code.
+   *
+   * @example
+   * ```ts
+   * // Internal use
+   * sync.incrementPendingCount();
+   * ```
    */
   function incrementPendingCount(): void {
     pendingCount$.set((prev) => prev + 1);
@@ -369,6 +407,16 @@ export const syncStore = define(() => {
 
   /**
    * Reset sync state (for logout).
+   *
+   * @description
+   * Clears all sync state: isSyncing, lastSyncAt, pendingCount, and error.
+   * Does NOT clear storage - use storage.clearAllData() for that.
+   *
+   * @example
+   * ```ts
+   * // On logout
+   * sync.reset();
+   * ```
    */
   function reset(): void {
     batch(() => {

@@ -141,6 +141,20 @@ export const backupService = define((): BackupService => {
 
   /**
    * Export all data to a backup file.
+   *
+   * @description
+   * Exports all todos (including deleted), pending operations, and sync metadata
+   * to a JSON file. The exported data remains encrypted with the user's passkey.
+   *
+   * @returns ExportResult with blob and metadata, or ExportError on failure
+   *
+   * @example
+   * ```ts
+   * const result = await backup.exportBackup();
+   * if (result.success) {
+   *   downloadBlob(result.data, result.filename);
+   * }
+   * ```
    */
   async function exportBackup(): Promise<ExportResult | ExportError> {
     try {
@@ -235,7 +249,22 @@ export const backupService = define((): BackupService => {
   }
 
   /**
-   * Validate a backup file.
+   * Validate a backup file without importing.
+   *
+   * @description
+   * Checks backup file version, app ID, and structure without importing data.
+   * Use this to preview a backup before importing.
+   *
+   * @param file - File object from file input
+   * @returns Validation result with todo count or error message
+   *
+   * @example
+   * ```ts
+   * const validation = await backup.validateBackup(file);
+   * if (validation.valid) {
+   *   console.log(`Backup contains ${validation.todoCount} todos`);
+   * }
+   * ```
    */
   async function validateBackup(
     file: File
@@ -280,6 +309,22 @@ export const backupService = define((): BackupService => {
 
   /**
    * Import data from a backup file.
+   *
+   * @description
+   * Imports todos from a backup file. User must be authenticated with the
+   * same passkey used to create the backup. Skips existing todos that are
+   * newer than the backup version.
+   *
+   * @param file - File object from file input
+   * @returns ImportResult with counts, or ImportError on failure
+   *
+   * @example
+   * ```ts
+   * const result = await backup.importBackup(file);
+   * if (result.success) {
+   *   console.log(`Imported ${result.todoCount} todos, skipped ${result.skippedCount}`);
+   * }
+   * ```
    */
   async function importBackup(file: File): Promise<ImportResult | ImportError> {
     try {
@@ -349,6 +394,21 @@ export const backupService = define((): BackupService => {
 
 /**
  * Download a blob as a file.
+ *
+ * @description
+ * Creates a temporary download link and triggers a download.
+ * Cleans up the object URL after download starts.
+ *
+ * @param blob - Blob data to download
+ * @param filename - Name for the downloaded file
+ *
+ * @example
+ * ```ts
+ * const result = await backup.exportBackup();
+ * if (result.success) {
+ *   downloadBlob(result.data, result.filename);
+ * }
+ * ```
  */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);

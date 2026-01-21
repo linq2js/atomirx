@@ -154,17 +154,64 @@ export const storageService = define((): StorageService => {
   // Public API
   // =========================================================================
 
+  /**
+   * Initialize the storage service with an encryption key.
+   *
+   * @description
+   * Must be called before any other operations. The encryption key
+   * is used for all encrypt/decrypt operations on todo content.
+   *
+   * @param key - AES-256-GCM CryptoKey for encryption/decryption
+   *
+   * @example
+   * ```ts
+   * const storage = storageService();
+   * storage.initialize(encryptionKey);
+   * // Now ready for operations
+   * ```
+   */
   function initialize(key: CryptoKey): void {
     console.log(`[Storage:${instanceId}] Initializing with encryption key`);
     encryptionKey = key;
   }
 
+  /**
+   * Check if the storage service is initialized.
+   *
+   * @returns true if initialized with encryption key, false otherwise
+   *
+   * @example
+   * ```ts
+   * if (!storage.isInitialized()) {
+   *   throw new Error("Must login first");
+   * }
+   * ```
+   */
   function isInitialized(): boolean {
     const result = encryptionKey !== null;
     console.log(`[Storage:${instanceId}] isInitialized() = ${result}`);
     return result;
   }
 
+  /**
+   * Get todos from storage with optional filtering.
+   *
+   * @param filter - Optional filter criteria
+   * @param filter.completed - Filter by completion status
+   * @param filter.syncStatus - Filter by sync status
+   * @param filter.includeDeleted - Include soft-deleted todos (default: false)
+   * @returns Array of decrypted todos matching filter
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * // Get all active todos
+   * const active = await storage.getTodos({ completed: false });
+   *
+   * // Get pending sync todos
+   * const pending = await storage.getTodos({ syncStatus: "pending" });
+   * ```
+   */
   async function getTodos(filter?: TodoFilter): Promise<Todo[]> {
     ensureInitialized();
 
@@ -190,6 +237,21 @@ export const storageService = define((): StorageService => {
     return Promise.all(todos.map(toTodo));
   }
 
+  /**
+   * Get a single todo by ID.
+   *
+   * @param id - Todo UUID
+   * @returns Decrypted todo or null if not found
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * const todo = await storage.getTodo("abc-123");
+   * if (todo) {
+   *   console.log(todo.content);
+   * }
+   * ```
+   */
   async function getTodo(id: string): Promise<Todo | null> {
     ensureInitialized();
 
@@ -199,6 +261,24 @@ export const storageService = define((): StorageService => {
     return toTodo(encrypted);
   }
 
+  /**
+   * Create a new todo with encrypted content.
+   *
+   * @param input - Todo creation input
+   * @param input.content - Todo content (will be encrypted)
+   * @param input.completed - Initial completion status (default: false)
+   * @returns Created todo with generated ID and timestamps
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * const todo = await storage.createTodo({
+   *   content: "Buy groceries",
+   *   completed: false,
+   * });
+   * console.log(todo.id); // Generated UUID
+   * ```
+   */
   async function createTodo(input: CreateTodoInput): Promise<Todo> {
     ensureInitialized();
 
@@ -223,6 +303,25 @@ export const storageService = define((): StorageService => {
     return todo;
   }
 
+  /**
+   * Update an existing todo.
+   *
+   * @param id - Todo UUID to update
+   * @param input - Fields to update (partial)
+   * @param input.content - New content (will be encrypted)
+   * @param input.completed - New completion status
+   * @param input.syncStatus - New sync status
+   * @param input.serverId - Server-assigned ID after sync
+   * @returns Updated todo or null if not found
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * const updated = await storage.updateTodo(todo.id, {
+   *   completed: true,
+   * });
+   * ```
+   */
   async function updateTodo(
     id: string,
     input: UpdateTodoInput
@@ -267,6 +366,23 @@ export const storageService = define((): StorageService => {
     return todo;
   }
 
+  /**
+   * Soft delete a todo (marks as deleted for sync).
+   *
+   * @description
+   * Marks the todo as deleted but keeps it in storage until synced.
+   * Use hardDeleteTodo for permanent removal.
+   *
+   * @param id - Todo UUID to delete
+   * @returns true if deleted, false if not found
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * const deleted = await storage.deleteTodo(todo.id);
+   * // Todo still exists with deleted=true until sync
+   * ```
+   */
   async function deleteTodo(id: string): Promise<boolean> {
     ensureInitialized();
 
@@ -286,6 +402,23 @@ export const storageService = define((): StorageService => {
     return true;
   }
 
+  /**
+   * Permanently delete a todo from storage.
+   *
+   * @description
+   * Removes the todo completely from IndexedDB.
+   * Used after successful sync of delete operation.
+   *
+   * @param id - Todo UUID to permanently delete
+   * @returns true if deleted, false if not found
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * // After sync confirms deletion
+   * await storage.hardDeleteTodo(todo.id);
+   * ```
+   */
   async function hardDeleteTodo(id: string): Promise<boolean> {
     ensureInitialized();
 
@@ -296,6 +429,24 @@ export const storageService = define((): StorageService => {
     return true;
   }
 
+  /**
+   * Get all pending operations for sync.
+   *
+   * @description
+   * Returns operations in chronological order for processing.
+   * Each operation represents a create/update/delete that needs syncing.
+   *
+   * @returns Array of pending operations ordered by timestamp
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * const ops = await storage.getPendingOperations();
+   * for (const op of ops) {
+   *   await syncToServer(op);
+   * }
+   * ```
+   */
   async function getPendingOperations(): Promise<StoredOperation[]> {
     ensureInitialized();
 
@@ -309,6 +460,19 @@ export const storageService = define((): StorageService => {
     }));
   }
 
+  /**
+   * Clear completed operations after successful sync.
+   *
+   * @param operationIds - Array of operation IDs to clear
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * const ops = await storage.getPendingOperations();
+   * const syncedIds = await syncBatch(ops);
+   * await storage.clearOperations(syncedIds);
+   * ```
+   */
   async function clearOperations(operationIds: string[]): Promise<void> {
     ensureInitialized();
 
@@ -322,6 +486,28 @@ export const storageService = define((): StorageService => {
     }
   }
 
+  /**
+   * Store a passkey credential for future authentication.
+   *
+   * @param input - Credential data to store
+   * @param input.credentialId - WebAuthn credential ID (base64url)
+   * @param input.publicKey - Public key (base64url)
+   * @param input.displayName - User display name
+   * @param input.prfSalt - Salt for PRF evaluation (base64)
+   * @param input.hasPRF - Whether PRF extension was supported
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * await storage.storeCredential({
+   *   credentialId: result.credentialId,
+   *   publicKey: result.publicKey,
+   *   displayName: "user@example.com",
+   *   prfSalt: arrayBufferToBase64(prfSalt),
+   *   hasPRF: true,
+   * });
+   * ```
+   */
   async function storeCredential(input: StoredCredentialInput): Promise<void> {
     ensureInitialized();
 
@@ -340,6 +526,18 @@ export const storageService = define((): StorageService => {
     await db.credentials.put(credential);
   }
 
+  /**
+   * Get all stored credentials.
+   *
+   * @returns Array of stored credentials
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * const credentials = await storage.getCredentials();
+   * // Show credential picker to user
+   * ```
+   */
   async function getCredentials(): Promise<StoredCredential[]> {
     ensureInitialized();
 
@@ -355,18 +553,57 @@ export const storageService = define((): StorageService => {
     return db.credentials.toArray();
   }
 
+  /**
+   * Update the last used timestamp for a credential.
+   *
+   * @param credentialId - Credential ID to update
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * // After successful authentication
+   * await storage.updateCredentialLastUsed(usedCredentialId);
+   * ```
+   */
   async function updateCredentialLastUsed(credentialId: string): Promise<void> {
     ensureInitialized();
 
     await db.credentials.update(credentialId, { lastUsedAt: now() });
   }
 
+  /**
+   * Delete a stored credential.
+   *
+   * @param credentialId - Credential ID to delete
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * // User revokes a passkey
+   * await storage.deleteCredential(credentialId);
+   * ```
+   */
   async function deleteCredential(credentialId: string): Promise<void> {
     ensureInitialized();
 
     await db.credentials.delete(credentialId);
   }
 
+  /**
+   * Get sync metadata.
+   *
+   * @returns Sync metadata or null if never synced
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * const meta = await storage.getSyncMeta();
+   * if (meta) {
+   *   console.log(`Last sync: ${new Date(meta.lastSyncAt)}`);
+   *   console.log(`Pending: ${meta.pendingCount}`);
+   * }
+   * ```
+   */
   async function getSyncMeta(): Promise<SyncMeta | null> {
     ensureInitialized();
 
@@ -374,6 +611,22 @@ export const storageService = define((): StorageService => {
     return meta ?? null;
   }
 
+  /**
+   * Update sync metadata.
+   *
+   * @param updates - Partial sync metadata to update
+   * @param updates.lastSyncAt - Timestamp of last sync
+   * @param updates.pendingCount - Number of pending operations
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * await storage.updateSyncMeta({
+   *   lastSyncAt: Date.now(),
+   *   pendingCount: 0,
+   * });
+   * ```
+   */
   async function updateSyncMeta(updates: Partial<SyncMeta>): Promise<void> {
     ensureInitialized();
 
@@ -390,6 +643,21 @@ export const storageService = define((): StorageService => {
     }
   }
 
+  /**
+   * Clear all stored data (for logout/reset).
+   *
+   * @description
+   * Removes all todos, credentials, sync metadata, operations, and settings.
+   * This is a destructive operation - data cannot be recovered.
+   *
+   * @throws {StorageNotInitializedError} If service not initialized
+   *
+   * @example
+   * ```ts
+   * // On logout
+   * await storage.clearAllData();
+   * ```
+   */
   async function clearAllData(): Promise<void> {
     ensureInitialized();
 

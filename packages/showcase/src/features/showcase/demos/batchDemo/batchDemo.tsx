@@ -19,6 +19,11 @@ const c$ = atom(0, { meta: { key: "c" } });
 /**
  * Demo component showing batch update operations.
  *
+ * @description
+ * Demonstrates how batch() groups multiple atom updates into a single
+ * notification cycle, and how listeners subscribed to multiple atoms
+ * are deduped within a batch.
+ *
  * @example
  * ```tsx
  * <BatchDemo />

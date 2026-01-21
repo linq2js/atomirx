@@ -117,6 +117,11 @@ const CombinedDisplay = memo(function CombinedDisplay() {
 /**
  * Demo component showing useSelector fine-grained subscriptions.
  *
+ * @description
+ * Demonstrates how useSelector enables fine-grained subscriptions
+ * where components only re-render when their selected data changes,
+ * not when other parts of the same atom change.
+ *
  * @example
  * ```tsx
  * <UseSelectorDemo />

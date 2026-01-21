@@ -75,12 +75,31 @@ export const networkStore = define(() => {
     { meta: { key: "network.setupListeners" } }
   );
 
+  /**
+   * Manually set the online state.
+   *
+   * @description
+   * Primarily used for testing or manual override scenarios.
+   * Normally the state is managed automatically via browser events.
+   *
+   * @param value - true for online, false for offline
+   *
+   * @example
+   * ```ts
+   * // In tests
+   * network.setOnline(false);
+   * expect(network.isOnline$.get()).toBe(false);
+   * ```
+   */
+  function setOnline(value: boolean): void {
+    isOnline$.set(value);
+  }
+
   return {
     // Read-only state (prevents external mutations)
     ...readonly({ isOnline$ }),
 
     // Actions
-    // setOnline(value) - Manually set online state (for testing or manual override)
-    setOnline: (value: boolean) => isOnline$.set(value),
+    setOnline,
   };
 });

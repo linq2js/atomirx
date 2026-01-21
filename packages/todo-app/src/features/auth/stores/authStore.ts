@@ -280,6 +280,20 @@ export const authStore = define(() => {
 
   /**
    * Check WebAuthn/PRF support in current browser.
+   *
+   * @description
+   * Detects browser capabilities and updates authSupport$ atom.
+   * Should be called on app startup.
+   *
+   * @returns AuthSupportInfo with feature flags
+   *
+   * @example
+   * ```ts
+   * const support = await auth.checkSupport();
+   * if (!support.webauthn) {
+   *   showUnsupportedBrowser();
+   * }
+   * ```
    */
   async function checkSupport(): Promise<AuthSupportInfo> {
     const support = await auth.checkSupport();
@@ -290,8 +304,23 @@ export const authStore = define(() => {
   /**
    * Register a new passkey and initialize encryption.
    *
-   * @param username - Display name for the credential
-   * @returns Success with user info or error
+   * @description
+   * Creates a new passkey, derives encryption key from PRF output,
+   * initializes storage, and stores credential for future logins.
+   * On success, user is logged in and ready to use the app.
+   *
+   * @param username - Display name for the credential (e.g., email)
+   * @returns Success with user info, or error with code and message
+   *
+   * @example
+   * ```ts
+   * const result = await auth.register("user@example.com");
+   * if (result.success) {
+   *   navigateTo("/todos");
+   * } else {
+   *   showError(result.error.message);
+   * }
+   * ```
    */
   async function register(
     username: string
@@ -368,7 +397,23 @@ export const authStore = define(() => {
   /**
    * Authenticate with an existing passkey.
    *
-   * @returns Success with user info or error
+   * @description
+   * Prompts user to authenticate with a stored passkey.
+   * Derives encryption key from PRF output and initializes storage.
+   * On success, user is logged in and ready to use the app.
+   *
+   * @returns Success with user info, or error with code and message
+   *
+   * @example
+   * ```ts
+   * const result = await auth.login();
+   * if (result.success) {
+   *   await todos.loadTodos();
+   *   navigateTo("/todos");
+   * } else {
+   *   showError(result.error.message);
+   * }
+   * ```
    */
   async function login(): Promise<
     { success: true; user: User } | { success: false; error: AuthError }
@@ -459,8 +504,18 @@ export const authStore = define(() => {
 
   /**
    * Log out and clear session.
+   *
+   * @description
    * Clears user state and encryption key from memory.
-   * Does NOT clear stored data.
+   * Removes session from sessionStorage.
+   * Does NOT clear stored data (todos, credentials).
+   *
+   * @example
+   * ```ts
+   * auth.logout();
+   * todos.reset();
+   * navigateTo("/login");
+   * ```
    */
   function logout(): void {
     batch(() => {
@@ -473,6 +528,11 @@ export const authStore = define(() => {
 
   /**
    * Clear the last error.
+   *
+   * @example
+   * ```ts
+   * auth.clearError();
+   * ```
    */
   function clearError(): void {
     authError$.set(null);
@@ -480,7 +540,22 @@ export const authStore = define(() => {
 
   /**
    * Check if there are any stored credentials.
+   *
+   * @description
    * Uses getCredentialsForLogin() which doesn't require initialization.
+   * Use this to determine whether to show login or register UI.
+   *
+   * @returns true if credentials exist, false otherwise
+   *
+   * @example
+   * ```ts
+   * const hasCredentials = await auth.hasStoredCredentials();
+   * if (hasCredentials) {
+   *   showLoginButton();
+   * } else {
+   *   showRegisterButton();
+   * }
+   * ```
    */
   async function hasStoredCredentials(): Promise<boolean> {
     try {

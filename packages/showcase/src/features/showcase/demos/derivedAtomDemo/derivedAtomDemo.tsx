@@ -40,6 +40,11 @@ const info$ = derived(({ read }) =>
 /**
  * Demo component showing derived atom operations.
  *
+ * @description
+ * Demonstrates how derived atoms compute values from other atoms with
+ * automatic dependency tracking, including conditional dependencies
+ * where atoms are only subscribed when accessed.
+ *
  * @example
  * ```tsx
  * <DerivedAtomDemo />
