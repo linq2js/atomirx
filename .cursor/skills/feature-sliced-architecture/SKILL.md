@@ -76,6 +76,153 @@ src/
     └── types/                   # Shared types
 ```
 
+### Allowed Feature Subdirectories (STRICT — NO EXCEPTIONS)
+
+**ONLY these subdirectories are allowed inside `features/{domain}/`:**
+
+| Directory   | Purpose                               | Required |
+| ----------- | ------------------------------------- | -------- |
+| `comps/`    | Business components (compose from ui) | Optional |
+| `services/` | Business logic, API calls             | Optional |
+| `stores/`   | State management (atomirx)            | Optional |
+| `screens/`  | Full screen compositions              | Optional |
+| `utils/`    | Feature-specific utilities            | Optional |
+| `types/`    | Feature-specific types                | Optional |
+| `README.md` | Feature overview + business rules     | Required |
+
+**❌ FORBIDDEN — Custom directories are NOT allowed:**
+
+```
+❌ features/showcase/demos/           # NO custom "demos" folder
+❌ features/auth/helpers/             # NO custom "helpers" folder
+❌ features/todos/components/         # NO "components" — use "comps"
+❌ features/auth/pages/               # NO "pages" — use "screens"
+❌ features/upload/api/               # NO "api" — use "services"
+❌ features/settings/state/           # NO "state" — use "stores"
+```
+
+**✅ REQUIRED — Map custom concepts to defined directories:**
+
+| If you need...   | Place it in... | Example                   |
+| ---------------- | -------------- | ------------------------- |
+| Demo components  | `comps/`       | `comps/basicAtomDemo/`    |
+| Helper functions | `utils/`       | `utils/formatHelpers.ts`  |
+| API calls        | `services/`    | `services/apiService.ts`  |
+| State management | `stores/`      | `stores/demoStore.ts`     |
+| Full-page views  | `screens/`     | `screens/showcaseScreen/` |
+
+**Why strict enforcement:**
+
+- Predictable structure — developers always know where to find code
+- No proliferation — prevents arbitrary folder names per developer preference
+- Tooling compatibility — scripts, linters, imports work consistently
+- Onboarding — new team members learn one structure, not variations
+
+### Routes vs Screens (STRICT)
+
+**`routes/`** — App navigation layer (React Router, TanStack Router, Next.js, file-based routing, etc.)
+
+**`features/{domain}/screens/`** — Full-page compositions with business logic
+
+| Aspect             | `routes/`                          | `screens/`                               |
+| ------------------ | ---------------------------------- | ---------------------------------------- |
+| **Purpose**        | Navigation, URL mapping            | Page composition, business orchestration |
+| **Contains**       | Route definitions, layouts         | Full-page components with logic          |
+| **Imports**        | ONLY screens from features         | comps, stores, services from features    |
+| **Business logic** | ❌ NONE                            | ✅ YES — orchestrates feature logic      |
+| **Testable**       | ❌ No unit tests (automation only) | ✅ YES — unit + integration tests        |
+| **Size**           | THIN — minimal code                | Can be complex                           |
+
+**✅ Routes MUST be thin — Why:**
+
+- Routes have NO unit tests — we only test them via automation/E2E
+- Business logic in routes is untestable and hard to maintain
+- Routes should be simple URL-to-screen mappings
+
+**✅ Multiple routes CAN use the same screen (reuse is normal):**
+
+```typescript
+// routes/index.tsx — Multiple routes using same screen
+import { ProductScreen } from "@/features/products/screens/productScreen";
+
+// Same screen, different URL patterns — business rule driven
+<Route path="/products/:id" element={<ProductScreen />} />
+<Route path="/shop/:category/:id" element={<ProductScreen />} />
+<Route path="/deals/:id" element={<ProductScreen />} />
+```
+
+**✅ When route needs components from MANY features — create a new feature:**
+
+```typescript
+// ❌ BAD: Route composing from many features (fat route, untestable)
+// routes/dashboard.tsx
+import { StatsWidget } from "@/features/analytics/comps/statsWidget";
+import { RecentTodos } from "@/features/todos/comps/recentTodos";
+import { UserGreeting } from "@/features/auth/comps/userGreeting";
+import { NotificationBell } from "@/features/notifications/comps/notificationBell";
+
+export function DashboardRoute() {
+  // ❌ Complex composition logic here — UNTESTABLE
+  return (
+    <div>
+      <UserGreeting />
+      <StatsWidget />
+      <RecentTodos />
+      <NotificationBell />
+    </div>
+  );
+}
+
+// ✅ GOOD: Create a dashboard feature, route stays thin
+// features/dashboard/screens/dashboardScreen/dashboardScreen.tsx
+import { StatsWidget } from "@/features/analytics/comps/statsWidget";
+import { RecentTodos } from "@/features/todos/comps/recentTodos";
+import { UserGreeting } from "@/features/auth/comps/userGreeting";
+import { NotificationBell } from "@/features/notifications/comps/notificationBell";
+
+export function DashboardScreen() {
+  // ✅ Composition logic here — TESTABLE
+  return (
+    <div>
+      <UserGreeting />
+      <StatsWidget />
+      <RecentTodos />
+      <NotificationBell />
+    </div>
+  );
+}
+
+// routes/index.tsx — Thin route
+import { DashboardScreen } from "@/features/dashboard/screens/dashboardScreen";
+
+<Route path="/dashboard" element={<DashboardScreen />} />
+```
+
+**Decision guide — When to create a new feature for a route:**
+
+```
+Route needs components from multiple features?
+│
+├── 1-2 features → OK, route can import their screens
+│
+└── 3+ features → Create new feature (e.g., features/home/, features/dashboard/)
+    │
+    ├── Put composition logic in screens/
+    ├── Put shared state in stores/
+    └── Keep route thin — just imports the screen
+```
+
+**Routes structure:**
+
+```
+routes/
+├── README.md           # "Composition only — no business logic"
+├── index.tsx           # Route definitions (thin)
+└── layouts/            # Layout components (header, footer, sidebar)
+    ├── mainLayout.tsx
+    └── authLayout.tsx
+```
+
 ## Sub-Features
 
 Features can have unlimited sub-features using **dash notation** (`-`). Sub-features follow the **same FSA rules** as regular features.
@@ -2102,12 +2249,13 @@ import { FilterBar } from "@/features/todos-filtering";
 
 **Rules:**
 
-1. **Routes are thin** — Routes ONLY import screens, never comps/services/stores directly
+1. **Routes are thin** — Routes ONLY import screens, never comps/services/stores directly. If route needs 3+ features, create a new feature (see [Routes vs Screens](#routes-vs-screens-strict))
 2. **Stores are isolated** — A feature's store MUST NOT import another feature's store directly
 3. **Services are pure** — Services MUST NOT import ANY stores (use callbacks instead)
 4. **Services can compose** — Services may call other features' services for orchestration
 5. **Components can read** — Components may read (not write) other features' stores
 6. **Screens orchestrate** — Screens can import from multiple features to compose views
+7. **Screen reuse is normal** — Multiple routes CAN use the same screen with different route params (business rule driven)
 
 **When cross-feature dependency grows:**
 

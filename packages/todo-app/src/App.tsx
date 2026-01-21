@@ -2,8 +2,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useSelector } from "atomirx/react";
 import { ErrorBoundary, ToastProvider, ToastContainer } from "@/ui";
 import { authStore } from "@/features/auth/stores/authStore";
-import { AuthPage } from "@/features/auth/pages/authPage";
-import { TodosPage } from "@/features/todos/pages/todosPage";
+import { AuthScreen } from "@/features/auth/screens/authScreen";
+import { TodosScreen } from "@/features/todos/screens/todosScreen";
 import { Loader2 } from "lucide-react";
 
 /**
@@ -34,7 +34,7 @@ export function App() {
 
 /**
  * Main app content.
- * Shows AuthPage or TodosPage based on authentication state.
+ * Shows AuthScreen or TodosScreen based on authentication state.
  * Attempts to restore session from sessionStorage on mount.
  */
 function AppContent() {
@@ -59,7 +59,7 @@ function AppContent() {
     return <LoadingScreen />;
   }
 
-  return isAuthenticated ? <TodosPage /> : <AuthPage />;
+  return isAuthenticated ? <TodosScreen /> : <AuthScreen />;
 }
 
 /**

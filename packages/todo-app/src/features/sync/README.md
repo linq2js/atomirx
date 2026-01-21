@@ -24,4 +24,4 @@ Manages synchronization between local IndexedDB storage and a remote server (jso
 
 - Depends on: `@/features/todos` (storage service)
 - Depends on: `@/features/network` (online status)
-- Used by: `@/features/todos/pages/TodosPage` (sync button, status)
+- Used by: `@/features/todos/screens/TodosScreen` (sync button, status)

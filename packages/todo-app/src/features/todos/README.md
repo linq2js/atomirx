@@ -1,18 +1,5 @@
 # Todos Feature
 
-## Proposed Changes <!-- FSA Refactoring -->
-
-- [ ] Merge `todoItem.logic.ts` → `todoItem.tsx`
-- [ ] Merge `todoList.logic.ts` → `todoList.tsx`
-- [ ] Merge `clearCompletedButton.logic.ts` → `clearCompletedButton.tsx`
-- [ ] Merge `todosPage.logic.ts` → `todosPage.tsx`
-- [ ] Convert all comps to folder structure:
-  - `todoItem/`, `todoList/`, `todoInput/`, `filterBar/`, `statusBadge/`
-  - `syncButton/`, `todosHeader/`, `todoStats/`, `clearCompletedButton/`
-  - `skeletonTodoItem/`, `decryptionError/`
-- [ ] Each component gets: `index.ts`, `xxx.tsx`, `xxx.pure.tsx`
-- [ ] Create `todosPage.pure.tsx` with TodosPagePure presentation
-
 ## Purpose
 
 Manages the todo list with encrypted storage, CRUD operations, filtering, and optimistic updates. All todo content is encrypted before storage using the encryption key derived during authentication.
@@ -32,26 +19,23 @@ Manages the todo list with encrypted storage, CRUD operations, filtering, and op
 - `comps/` - Business components (TodoItem, TodoInput, FilterBar, etc.)
 - `services/` - Storage service for encrypted IndexedDB operations
 - `stores/` - Todo state management with atomirx
-- `pages/` - TodosPage composition
+- `screens/` - TodosScreen composition (mobile-first terminology)
 - `types/` - TypeScript interfaces for todos and storage
 
 **Note:** Features MUST NOT have `ui/` folder. Use shared `ui/` components.
+**Note:** FSA uses `screens/` instead of `pages/` for mobile-first compatibility.
 
 ## Key Files
 
-- `comps/todoItem.tsx` - Individual todo with completion toggle, edit, delete
-- `comps/todoItem.logic.ts` - TodoItem logic hook
-- `comps/todoInput.tsx` - New todo input with validation
-- `comps/todoList.tsx` - Filtered todo list display
-- `comps/todoList.logic.ts` - TodoList logic hook
-- `comps/filterBar.tsx` - Filter buttons (all/active/completed)
-- `comps/clearCompletedButton.tsx` - Clear completed todos button
-- `comps/clearCompletedButton.logic.ts` - ClearCompletedButton logic hook
+- `comps/todoItem/` - Individual todo with completion toggle, edit, delete
+- `comps/todoInput/` - New todo input with validation
+- `comps/todoList/` - Filtered todo list display
+- `comps/filterBar/` - Filter buttons (all/active/completed)
+- `comps/clearCompletedButton/` - Clear completed todos button
 - `services/storageService.ts` - Encrypted IndexedDB operations
 - `services/db.ts` - Dexie schema for IndexedDB
 - `stores/todosStore.ts` - Todo state atoms and actions
-- `pages/todosPage/todosPage.tsx` - Main todo list page
-- `pages/todosPage/todosPage.logic.ts` - Page logic hook
+- `screens/todosScreen/todosScreen.tsx` - Main todo list screen with logic hook
 
 ## Dependencies
 
@@ -64,7 +48,7 @@ Manages the todo list with encrypted storage, CRUD operations, filtering, and op
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                        TodosPage                              │
+│                       TodosScreen                              │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │ TodoInput   │  │ FilterBar   │  │     TodoList        │  │
 │  │ (add todo)  │  │ (filter)    │  │  ┌─────────────┐    │  │

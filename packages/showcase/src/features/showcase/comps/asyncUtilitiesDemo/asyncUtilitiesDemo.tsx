@@ -12,7 +12,7 @@ import {
   AllAtomsRejectedError,
 } from "atomirx";
 import { DemoSection, CodeBlock, StatusBadge } from "../../../../ui";
-import { eventLogStore } from "../../stores";
+import { eventLogStore } from "../../stores/eventLogStore";
 import { Workflow, Loader2, CheckCircle, Trophy, Play } from "lucide-react";
 
 // Helper to create delayed promise

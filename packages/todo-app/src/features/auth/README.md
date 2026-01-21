@@ -1,14 +1,5 @@
 # Auth Feature
 
-## Proposed Changes <!-- FSA Refactoring -->
-
-- [ ] Merge `authPage.logic.ts` into `authPage.tsx`
-- [ ] Create `authPage.pure.tsx` with AuthPagePure presentation
-- [ ] Refactor `comps/loginForm.tsx` → `comps/loginForm/` folder structure
-- [ ] Refactor `comps/registerForm.tsx` → `comps/registerForm/` folder structure
-- [ ] Refactor `comps/passkeyPrompt.tsx` → `comps/passkeyPrompt/` folder structure
-- [ ] Each component gets: `index.ts`, `xxx.tsx` (logic+container), `xxx.pure.tsx` (presentation)
-
 ## Purpose
 
 Handles user authentication using WebAuthn/Passkeys with optional PRF extension for encryption key derivation. Provides secure, passwordless authentication with biometric verification.
@@ -26,21 +17,21 @@ Handles user authentication using WebAuthn/Passkeys with optional PRF extension 
 - `comps/` - Business components (PasskeyPrompt, LoginForm, RegisterForm)
 - `services/` - Auth and crypto services for WebAuthn operations
 - `stores/` - Authentication state management with atomirx
-- `pages/` - AuthPage for login/registration flow
+- `screens/` - AuthScreen for login/registration flow (mobile-first terminology)
 - `types/` - TypeScript interfaces for auth operations
 
 **Note:** Features MUST NOT have `ui/` folder. Use shared `ui/` components.
+**Note:** FSA uses `screens/` instead of `pages/` for mobile-first compatibility.
 
 ## Key Files
 
-- `comps/passkeyPrompt.tsx` - Visual prompt during biometric verification
-- `comps/loginForm.tsx` - Login form with passkey sign in
-- `comps/registerForm.tsx` - Registration form for new users
+- `comps/passkeyPrompt/` - Visual prompt during biometric verification
+- `comps/loginForm/` - Login form with passkey sign in
+- `comps/registerForm/` - Registration form for new users
 - `services/authService.ts` - WebAuthn registration/authentication
 - `services/cryptoService.ts` - AES-256-GCM encryption operations
 - `stores/authStore.ts` - Auth state atoms and actions
-- `pages/authPage/authPage.tsx` - Login/register page composition
-- `pages/authPage/authPage.logic.ts` - Page logic hook
+- `screens/authScreen/authScreen.tsx` - Login/register screen with logic hook
 
 ## Dependencies
 
@@ -51,7 +42,7 @@ Handles user authentication using WebAuthn/Passkeys with optional PRF extension 
 
 ```
 ┌──────────────┐    ┌─────────────┐    ┌──────────────┐
-│   AuthPage   │───►│ authStore   │───►│ authService  │
+│ AuthScreen   │───►│ authStore   │───►│ authService  │
 │  (register)  │    │ (state)     │    │ (WebAuthn)   │
 └──────────────┘    └─────────────┘    └──────────────┘
                            │

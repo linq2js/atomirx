@@ -6,7 +6,7 @@
 import { atom } from "atomirx";
 import { useAction, useSelector } from "atomirx/react";
 import { DemoSection, CodeBlock, StatusBadge } from "../../../../ui";
-import { eventLogStore } from "../../stores";
+import { eventLogStore } from "../../stores/eventLogStore";
 import {
   Play,
   Square,

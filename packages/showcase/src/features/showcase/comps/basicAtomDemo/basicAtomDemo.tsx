@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
 import { atom } from "atomirx";
 import { useSelector } from "atomirx/react";
 import { DemoSection, CodeBlock } from "../../../../ui";
-import { eventLogStore } from "../../stores";
+import { eventLogStore } from "../../stores/eventLogStore";
 import { Plus, Minus, RotateCcw, Edit3 } from "lucide-react";
 
 // Create atoms outside component to persist across renders

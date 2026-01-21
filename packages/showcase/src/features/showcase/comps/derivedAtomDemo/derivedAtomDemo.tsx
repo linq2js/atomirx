@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { atom, derived } from "atomirx";
 import { useSelector } from "atomirx/react";
 import { DemoSection, CodeBlock } from "../../../../ui";
-import { eventLogStore } from "../../stores";
+import { eventLogStore } from "../../stores/eventLogStore";
 import { Calculator, ArrowRight, Shuffle } from "lucide-react";
 
 // Source atoms (use $ suffix convention)

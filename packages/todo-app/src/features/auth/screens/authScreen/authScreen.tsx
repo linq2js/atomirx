@@ -1,5 +1,5 @@
 /**
- * Authentication page.
+ * Authentication screen.
  *
  * @description
  * Handles passkey registration and login.
@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { useSelector, useStable } from "atomirx/react";
 import { authStore } from "../../stores/authStore";
-import { AuthPagePure } from "./authPage.pure";
+import { AuthScreenPure } from "./authScreen.pure";
 
 /**
  * Auth view types.
@@ -17,9 +17,9 @@ import { AuthPagePure } from "./authPage.pure";
 export type AuthView = "checking" | "register" | "login" | "unsupported";
 
 /**
- * Auth page logic hook return type.
+ * Auth screen logic hook return type.
  */
-export interface UseAuthPageLogicReturn {
+export interface UseAuthScreenLogicReturn {
   /** Current view state */
   view: AuthView;
   /** Username input value */
@@ -51,10 +51,10 @@ export interface UseAuthPageLogicReturn {
 }
 
 /**
- * Auth page logic hook.
+ * Auth screen logic hook.
  *
  * @description
- * Manages state and handlers for the authentication page.
+ * Manages state and handlers for the authentication screen.
  * Handles view switching, form state, and auth operations.
  *
  * @businessRules
@@ -69,15 +69,15 @@ export interface UseAuthPageLogicReturn {
  * checking → (no credentials) → register
  * register ↔ login (user can switch)
  *
- * @returns Auth page state and handlers
+ * @returns Auth screen state and handlers
  *
  * @example
  * ```tsx
- * const logic = useAuthPageLogic();
- * return <AuthPageUI {...logic} />;
+ * const logic = useAuthScreenLogic();
+ * return <AuthScreenUI {...logic} />;
  * ```
  */
-export function useAuthPageLogic(): UseAuthPageLogicReturn {
+export function useAuthScreenLogic(): UseAuthScreenLogicReturn {
   // 1. External stores
   const auth = authStore();
 
@@ -149,17 +149,17 @@ export function useAuthPageLogic(): UseAuthPageLogicReturn {
 }
 
 /**
- * Authentication page component.
+ * Authentication screen component.
  *
  * @example
  * ```tsx
  * function App() {
  *   const isAuthenticated = useSelector(auth.isAuthenticated$);
- *   return isAuthenticated ? <TodosPage /> : <AuthPage />;
+ *   return isAuthenticated ? <TodosScreen /> : <AuthScreen />;
  * }
  * ```
  */
-export function AuthPage() {
-  const pureProps = useAuthPageLogic();
-  return <AuthPagePure {...pureProps} />;
+export function AuthScreen() {
+  const pureProps = useAuthScreenLogic();
+  return <AuthScreenPure {...pureProps} />;
 }

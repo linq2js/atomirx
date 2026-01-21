@@ -8,7 +8,7 @@ import { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { atom, derived, define, DerivedAtom, onCreateHook } from "atomirx";
 import { useSelector } from "atomirx/react";
 import { DemoSection, CodeBlock, StatusBadge } from "../../../../ui";
-import { eventLogStore } from "../../stores";
+import { eventLogStore } from "../../stores/eventLogStore";
 import { ErrorBoundary } from "../../../../shared/utils";
 import {
   RefreshCw,

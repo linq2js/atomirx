@@ -1,17 +1,17 @@
 /**
- * @module ShowcasePagePure
- * @description Pure presentational component for the showcase page layout.
+ * @module ShowcaseScreenPure
+ * @description Pure presentational component for the showcase screen layout.
  * Receives all state and callbacks as props for testability.
  */
 
 import { ReactNode } from "react";
 import { ScrollText, ChevronDown } from "lucide-react";
-import type { DemoId } from "../../comps";
+import type { DemoId } from "../../comps/showcaseNav";
 
 /**
- * Props for ShowcasePagePure component.
+ * Props for ShowcaseScreenPure component.
  */
-export interface ShowcasePagePureProps {
+export interface ShowcaseScreenPureProps {
   /** Currently active demo ID */
   activeDemo: DemoId;
   /** Whether mobile menu is open */
@@ -33,10 +33,10 @@ export interface ShowcasePagePureProps {
 }
 
 /**
- * Pure presentational component for showcase page layout.
+ * Pure presentational component for showcase screen layout.
  *
  * @description
- * Renders the main showcase page layout with:
+ * Renders the main showcase screen layout with:
  * - Sticky header with navigation
  * - Main content area for demos
  * - Fixed event log panel (desktop) / floating panel (mobile)
@@ -45,7 +45,7 @@ export interface ShowcasePagePureProps {
  *
  * @example
  * ```tsx
- * <ShowcasePagePure
+ * <ShowcaseScreenPure
  *   activeDemo="basic-atom"
  *   mobileMenuOpen={false}
  *   logPanelOpen={true}
@@ -56,10 +56,10 @@ export interface ShowcasePagePureProps {
  *   onToggleLogPanel={toggleLogPanel}
  * >
  *   <BasicAtomDemo />
- * </ShowcasePagePure>
+ * </ShowcaseScreenPure>
  * ```
  */
-export function ShowcasePagePure({
+export function ShowcaseScreenPure({
   mobileMenuOpen,
   logPanelOpen,
   header,
@@ -68,7 +68,7 @@ export function ShowcasePagePure({
   eventLogPanel,
   children,
   onToggleLogPanel,
-}: ShowcasePagePureProps) {
+}: ShowcaseScreenPureProps) {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header with Logo + Feature Tabs */}

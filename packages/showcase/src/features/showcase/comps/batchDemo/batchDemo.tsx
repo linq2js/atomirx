@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from "react";
 import { atom, batch } from "atomirx";
 import { useSelector } from "atomirx/react";
 import { DemoSection, CodeBlock } from "../../../../ui";
-import { eventLogStore } from "../../stores";
+import { eventLogStore } from "../../stores/eventLogStore";
 import { Layers, Zap, ArrowRight, Users } from "lucide-react";
 
 // Create atoms for demo (use $ suffix convention)

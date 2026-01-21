@@ -7,7 +7,7 @@ import { useRef, memo } from "react";
 import { atom } from "atomirx";
 import { useSelector } from "atomirx/react";
 import { DemoSection, CodeBlock } from "../../../../ui";
-import { eventLogStore } from "../../stores";
+import { eventLogStore } from "../../stores/eventLogStore";
 import { Eye, RefreshCw, Layers } from "lucide-react";
 
 // Create atoms for demo (use $ suffix convention)

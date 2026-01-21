@@ -1,26 +1,21 @@
 /**
- * @module ShowcasePage
- * @description Main orchestrating page for the showcase application.
+ * @module ShowcaseScreen
+ * @description Main orchestrating screen for the showcase application.
  * Composes header, navigation, demos, and event log panel.
  */
 
 import { useState, useEffect, ComponentType } from "react";
-import { ShowcasePagePure } from "./showcasePage.pure";
-import {
-  ShowcaseHeader,
-  ShowcaseNav,
-  EventLogPanel,
-  type DemoId,
-} from "../../comps";
-import {
-  BasicAtomDemo,
-  DerivedAtomDemo,
-  BatchDemo,
-  TodoListDemo,
-  AsyncUtilitiesDemo,
-  UseActionDemo,
-  UseSelectorDemo,
-} from "../../demos";
+import { ShowcaseScreenPure } from "./showcaseScreen.pure";
+import { ShowcaseHeader } from "../../comps/showcaseHeader";
+import { ShowcaseNav, type DemoId } from "../../comps/showcaseNav";
+import { EventLogPanel } from "../../comps/eventLogPanel";
+import { BasicAtomDemo } from "../../comps/basicAtomDemo";
+import { DerivedAtomDemo } from "../../comps/derivedAtomDemo";
+import { BatchDemo } from "../../comps/batchDemo";
+import { TodoListDemo } from "../../comps/todoListDemo";
+import { AsyncUtilitiesDemo } from "../../comps/asyncUtilitiesDemo";
+import { UseActionDemo } from "../../comps/useActionDemo";
+import { UseSelectorDemo } from "../../comps/useSelectorDemo";
 
 // ============================================================================
 // Demo Registry
@@ -71,7 +66,7 @@ function getInitialDemo(): DemoId {
 // ============================================================================
 
 /**
- * Main showcase page component.
+ * Main showcase screen component.
  *
  * @description
  * This is the main orchestrating component for the showcase application.
@@ -80,19 +75,19 @@ function getInitialDemo(): DemoId {
  * - Mobile menu state
  * - Event log panel visibility
  *
- * Uses composition pattern to inject components into the page layout.
+ * Uses composition pattern to inject components into the screen layout.
  *
  * @example
  * ```tsx
  * // In App.tsx or main entry
- * import { ShowcasePage } from "./features/showcase/pages";
+ * import { ShowcaseScreen } from "@/features/showcase/screens/showcaseScreen";
  *
  * function App() {
- *   return <ShowcasePage />;
+ *   return <ShowcaseScreen />;
  * }
  * ```
  */
-export function ShowcasePage() {
+export function ShowcaseScreen() {
   // ─────────────────────────────────────────────────────────────
   // State
   // ─────────────────────────────────────────────────────────────
@@ -152,7 +147,7 @@ export function ShowcasePage() {
   const ActiveDemoComponent = demoComponents[activeDemo];
 
   return (
-    <ShowcasePagePure
+    <ShowcaseScreenPure
       activeDemo={activeDemo}
       mobileMenuOpen={mobileMenuOpen}
       logPanelOpen={logPanelOpen}
@@ -182,6 +177,6 @@ export function ShowcasePage() {
       eventLogPanel={<EventLogPanel />}
     >
       <ActiveDemoComponent />
-    </ShowcasePagePure>
+    </ShowcaseScreenPure>
   );
 }

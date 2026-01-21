@@ -1,23 +1,23 @@
 /**
- * AuthPage presentation component.
+ * AuthScreen presentation component.
  *
  * @description
- * Pure presentation component for AuthPage.
+ * Pure presentation component for AuthScreen.
  * Use this in Storybook to test all visual states.
  */
 
 import { PasskeyPrompt } from "../../comps/passkeyPrompt";
 import { RegisterForm } from "../../comps/registerForm";
 import { LoginForm } from "../../comps/loginForm";
-import { AuthLoadingState } from "./authPage.loading";
-import { AuthUnsupportedState } from "./authPage.unsupported";
+import { AuthLoadingState } from "./authScreen.loading";
+import { AuthUnsupportedState } from "./authScreen.unsupported";
 import { AuthLayout } from "./authLayout";
-import type { AuthView } from "./authPage";
+import type { AuthView } from "./authScreen";
 
 /**
- * AuthPage pure component props.
+ * AuthScreen pure component props.
  */
-export interface AuthPagePureProps {
+export interface AuthScreenPureProps {
   /** Current view state */
   view: AuthView;
   /** Username input value */
@@ -49,11 +49,11 @@ export interface AuthPagePureProps {
 }
 
 /**
- * AuthPage pure presentation component.
+ * AuthScreen pure presentation component.
  *
  * @example
  * ```tsx
- * <AuthPagePure
+ * <AuthScreenPure
  *   view="register"
  *   username=""
  *   hasCredentials={false}
@@ -69,7 +69,7 @@ export interface AuthPagePureProps {
  * />
  * ```
  */
-export function AuthPagePure({
+export function AuthScreenPure({
   view,
   username,
   hasCredentials,
@@ -82,7 +82,7 @@ export function AuthPagePure({
   onLogin,
   onSwitchToRegister,
   onSwitchToLogin,
-}: AuthPagePureProps) {
+}: AuthScreenPureProps) {
   if (view === "checking") return <AuthLoadingState />;
   if (view === "unsupported") return <AuthUnsupportedState />;
 
