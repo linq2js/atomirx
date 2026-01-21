@@ -16,7 +16,7 @@
     "url": "https://github.com/linq2js/atomirx"
   },
   "homepage": "https://github.com/linq2js/atomirx",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -49,8 +49,8 @@
     "lodash": "^4.17.21"
   },
   "peerDependencies": {
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {
     "react": {
