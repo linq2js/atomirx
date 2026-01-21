@@ -31,7 +31,7 @@ describe("withReady", () => {
     it("should return value when atom has non-null value", () => {
       const count$ = atom(42);
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(count$);
       });
@@ -44,7 +44,7 @@ describe("withReady", () => {
     it("should return value when atom has zero", () => {
       const count$ = atom(0);
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(count$);
       });
@@ -55,7 +55,7 @@ describe("withReady", () => {
     it("should return value when atom has empty string", () => {
       const str$ = atom("");
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(str$);
       });
@@ -66,7 +66,7 @@ describe("withReady", () => {
     it("should return value when atom has false", () => {
       const bool$ = atom(false);
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(bool$);
       });
@@ -77,7 +77,7 @@ describe("withReady", () => {
     it("should return value when atom has object", () => {
       const obj$ = atom({ name: "test" });
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(obj$);
       });
@@ -90,7 +90,7 @@ describe("withReady", () => {
     it("should throw never-resolve promise when atom value is null", () => {
       const nullable$ = atom<string | null>(null);
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(nullable$);
       });
@@ -103,7 +103,7 @@ describe("withReady", () => {
     it("should throw never-resolve promise when atom value is undefined", () => {
       const undefinedAtom$ = atom<string | undefined>(undefined);
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(undefinedAtom$);
       });
@@ -118,7 +118,7 @@ describe("withReady", () => {
     it("should apply selector and return result when non-null", () => {
       const user$ = atom({ id: 1, name: "John" });
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(user$, (user) => user.name);
       });
@@ -132,7 +132,7 @@ describe("withReady", () => {
         email: null,
       });
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(user$, (user) => user.email);
       });
@@ -144,7 +144,7 @@ describe("withReady", () => {
     it("should throw never-resolve promise when selector returns undefined", () => {
       const data$ = atom<{ value?: string }>({});
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(data$, (data) => data.value);
       });
@@ -156,7 +156,7 @@ describe("withReady", () => {
     it("should return zero from selector", () => {
       const data$ = atom({ count: 0 });
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(data$, (data) => data.count);
       });
@@ -167,7 +167,7 @@ describe("withReady", () => {
     it("should return empty string from selector", () => {
       const data$ = atom({ name: "" });
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(data$, (data) => data.name);
       });
@@ -180,7 +180,7 @@ describe("withReady", () => {
     it("should track atom as dependency", () => {
       const count$ = atom(42);
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(count$);
       });
@@ -191,7 +191,7 @@ describe("withReady", () => {
     it("should track atom as dependency even when throwing promise", () => {
       const nullable$ = atom<string | null>(null);
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(nullable$);
       });
@@ -204,7 +204,7 @@ describe("withReady", () => {
     it("should return a promise that never resolves", async () => {
       const nullable$ = atom<string | null>(null);
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(nullable$);
       });
@@ -222,7 +222,7 @@ describe("withReady", () => {
 
   describe("ready() with function", () => {
     it("should return value when function returns non-null value", () => {
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => 42);
       });
@@ -233,7 +233,7 @@ describe("withReady", () => {
     });
 
     it("should return zero from function", () => {
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => 0);
       });
@@ -242,7 +242,7 @@ describe("withReady", () => {
     });
 
     it("should return false from function", () => {
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => false);
       });
@@ -251,7 +251,7 @@ describe("withReady", () => {
     });
 
     it("should return empty string from function", () => {
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => "");
       });
@@ -260,7 +260,7 @@ describe("withReady", () => {
     });
 
     it("should return object from function", () => {
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => ({ name: "test" }));
       });
@@ -269,7 +269,7 @@ describe("withReady", () => {
     });
 
     it("should throw never-resolve promise when function returns null", () => {
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => null);
       });
@@ -280,7 +280,7 @@ describe("withReady", () => {
     });
 
     it("should throw never-resolve promise when function returns undefined", () => {
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => undefined);
       });
@@ -295,7 +295,7 @@ describe("withReady", () => {
         // Never resolves - stays pending
       });
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => pendingPromise);
       });
@@ -310,7 +310,7 @@ describe("withReady", () => {
     it("should throw error when function returns a resolved promise", () => {
       const resolvedPromise = Promise.resolve("async result");
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => resolvedPromise);
       });
@@ -329,7 +329,7 @@ describe("withReady", () => {
       // Prevent unhandled rejection warning
       rejectedPromise.catch(() => {});
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => rejectedPromise);
       });
@@ -350,7 +350,7 @@ describe("withReady", () => {
         },
       };
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => thenable);
       });
@@ -365,7 +365,7 @@ describe("withReady", () => {
     it("should propagate error when function throws synchronously", () => {
       const testError = new Error("sync error");
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => {
           throw testError;
@@ -381,7 +381,7 @@ describe("withReady", () => {
       const count$ = atom(10);
       const multiplier$ = atom(2);
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(() => {
           const count = ctx.read(count$);
@@ -401,7 +401,7 @@ describe("withReady", () => {
         // Never resolves - stays pending
       });
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(data$, () => pendingPromise);
       });
@@ -427,7 +427,7 @@ describe("withReady", () => {
       await new Promise<void>((r) => queueMicrotask(() => r()));
 
       // Second call - promise should now be fulfilled in cache
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(data$, () => resolvedPromise);
       });
@@ -456,7 +456,7 @@ describe("withReady", () => {
       await new Promise<void>((r) => queueMicrotask(() => r()));
 
       // Second call - promise should now be rejected in cache
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(data$, () => rejectedPromise);
       });
@@ -481,7 +481,7 @@ describe("withReady", () => {
       await new Promise<void>((r) => queueMicrotask(() => r()));
 
       // Second call - promise should now be fulfilled in cache
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(data$, () => resolvedToNull);
       });
@@ -507,7 +507,7 @@ describe("withReady", () => {
       await new Promise<void>((r) => queueMicrotask(() => r()));
 
       // Second call - promise should now be fulfilled in cache
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(data$, () => resolvedToUndefined);
       });
@@ -522,7 +522,7 @@ describe("withReady", () => {
       const data$ = atom({ id: 1 });
       const pendingPromise = new Promise<string>(() => {});
 
-      const result = select((context) => {
+      const { result } = select((context) => {
         const ctx = context.use(withReady());
         return ctx.ready(data$, () => pendingPromise);
       });

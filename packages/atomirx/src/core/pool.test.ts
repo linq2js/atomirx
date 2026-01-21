@@ -1,0 +1,474 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { pool, isPool } from "./pool";
+import { SYMBOL_POOL } from "./types";
+
+describe("pool", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe("basic functionality", () => {
+    it("should create a pool with SYMBOL_POOL marker", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      expect(testPool[SYMBOL_POOL]).toBe(true);
+    });
+
+    it("should get value for params", () => {
+      const testPool = pool((params: { id: string }) => `value-${params.id}`, {
+        gcTime: 1000,
+      });
+      expect(testPool.get({ id: "a" })).toBe("value-a");
+      expect(testPool.get({ id: "b" })).toBe("value-b");
+    });
+
+    it("should return same value on subsequent gets", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { id: string }) => {
+          callCount++;
+          return `value-${params.id}-${callCount}`;
+        },
+        { gcTime: 1000 }
+      );
+
+      const first = testPool.get({ id: "a" });
+      const second = testPool.get({ id: "a" });
+      expect(first).toBe(second);
+      expect(callCount).toBe(1);
+    });
+
+    it("should set value for params", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      testPool.get({ id: "a" }); // Create entry
+      testPool.set({ id: "a" }, 42);
+      expect(testPool.get({ id: "a" })).toBe(42);
+    });
+
+    it("should set value with reducer function", () => {
+      const testPool = pool((_: { id: string }) => 10, { gcTime: 1000 });
+      testPool.get({ id: "a" }); // Create entry
+      testPool.set({ id: "a" }, (prev) => prev * 2);
+      expect(testPool.get({ id: "a" })).toBe(20);
+    });
+
+    it("should check if entry exists with has()", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      expect(testPool.has({ id: "a" })).toBe(false);
+      testPool.get({ id: "a" });
+      expect(testPool.has({ id: "a" })).toBe(true);
+    });
+  });
+
+  describe("remove and clear", () => {
+    it("should remove entry with remove()", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      testPool.get({ id: "a" });
+      expect(testPool.has({ id: "a" })).toBe(true);
+      testPool.remove({ id: "a" });
+      expect(testPool.has({ id: "a" })).toBe(false);
+    });
+
+    it("should clear all entries with clear()", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      testPool.get({ id: "a" });
+      testPool.get({ id: "b" });
+      testPool.get({ id: "c" });
+      expect(testPool.has({ id: "a" })).toBe(true);
+      expect(testPool.has({ id: "b" })).toBe(true);
+      expect(testPool.has({ id: "c" })).toBe(true);
+
+      testPool.clear();
+      expect(testPool.has({ id: "a" })).toBe(false);
+      expect(testPool.has({ id: "b" })).toBe(false);
+      expect(testPool.has({ id: "c" })).toBe(false);
+    });
+
+    it("should recreate entry after removal", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (_: { id: string }) => {
+          callCount++;
+          return callCount;
+        },
+        { gcTime: 1000 }
+      );
+
+      expect(testPool.get({ id: "a" })).toBe(1);
+      testPool.remove({ id: "a" });
+      expect(testPool.get({ id: "a" })).toBe(2);
+    });
+  });
+
+  describe("forEach iteration", () => {
+    it("should iterate over all entries", () => {
+      const testPool = pool((params: { id: string }) => `value-${params.id}`, {
+        gcTime: 1000,
+      });
+      testPool.get({ id: "a" });
+      testPool.get({ id: "b" });
+      testPool.get({ id: "c" });
+
+      const entries: Array<{ value: string; params: { id: string } }> = [];
+      testPool.forEach((value, params) => {
+        entries.push({ value, params });
+      });
+
+      expect(entries).toHaveLength(3);
+      expect(entries).toContainEqual({ value: "value-a", params: { id: "a" } });
+      expect(entries).toContainEqual({ value: "value-b", params: { id: "b" } });
+      expect(entries).toContainEqual({ value: "value-c", params: { id: "c" } });
+    });
+  });
+
+  describe("event subscriptions", () => {
+    it("should notify onChange when value changes", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      const listener = vi.fn();
+      testPool.onChange(listener);
+
+      testPool.get({ id: "a" });
+      testPool.set({ id: "a" }, 42);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith({ id: "a" }, 42);
+    });
+
+    it("should notify onRemove when entry is removed", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      const listener = vi.fn();
+      testPool.onRemove(listener);
+
+      testPool.get({ id: "a" });
+      testPool.set({ id: "a" }, 42);
+      testPool.remove({ id: "a" });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith({ id: "a" }, 42);
+    });
+
+    it("should allow unsubscribing from onChange", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      const listener = vi.fn();
+      const unsub = testPool.onChange(listener);
+
+      testPool.get({ id: "a" });
+      testPool.set({ id: "a" }, 1);
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      unsub();
+      testPool.set({ id: "a" }, 2);
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("should allow unsubscribing from onRemove", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      const listener = vi.fn();
+      const unsub = testPool.onRemove(listener);
+
+      testPool.get({ id: "a" });
+      testPool.get({ id: "b" });
+
+      testPool.remove({ id: "a" });
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      unsub();
+      testPool.remove({ id: "b" });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("GC timer", () => {
+    it("should remove entry after gcTime", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      testPool.get({ id: "a" });
+      expect(testPool.has({ id: "a" })).toBe(true);
+
+      vi.advanceTimersByTime(999);
+      expect(testPool.has({ id: "a" })).toBe(true);
+
+      vi.advanceTimersByTime(1);
+      expect(testPool.has({ id: "a" })).toBe(false);
+    });
+
+    it("should reset GC timer on access", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      testPool.get({ id: "a" });
+
+      vi.advanceTimersByTime(500);
+      testPool.get({ id: "a" }); // Reset timer
+
+      vi.advanceTimersByTime(500);
+      expect(testPool.has({ id: "a" })).toBe(true);
+
+      vi.advanceTimersByTime(500);
+      expect(testPool.has({ id: "a" })).toBe(false);
+    });
+
+    it("should reset GC timer on set", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      testPool.get({ id: "a" });
+
+      vi.advanceTimersByTime(500);
+      testPool.set({ id: "a" }, 42); // Reset timer via set
+
+      vi.advanceTimersByTime(500);
+      expect(testPool.has({ id: "a" })).toBe(true);
+
+      vi.advanceTimersByTime(500);
+      expect(testPool.has({ id: "a" })).toBe(false);
+    });
+
+    it("should reset GC timer on value change via atom subscription", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      testPool.get({ id: "a" });
+
+      vi.advanceTimersByTime(500);
+      testPool.set({ id: "a" }, 42); // Value change resets timer
+
+      vi.advanceTimersByTime(999);
+      expect(testPool.has({ id: "a" })).toBe(true);
+
+      vi.advanceTimersByTime(1);
+      expect(testPool.has({ id: "a" })).toBe(false);
+    });
+
+    it("should notify onRemove when GC removes entry", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      const listener = vi.fn();
+      testPool.onRemove(listener);
+
+      testPool.get({ id: "a" });
+      vi.advanceTimersByTime(1000);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith({ id: "a" }, 0);
+    });
+  });
+
+  describe("promise-aware GC", () => {
+    it("should not GC while promise is pending", async () => {
+      let resolvePromise: (value: string) => void;
+      const testPool = pool(
+        (_: { id: string }) =>
+          new Promise<string>((resolve) => {
+            resolvePromise = resolve;
+          }),
+        { gcTime: 1000 }
+      );
+
+      testPool.get({ id: "a" });
+
+      // Advance past GC time
+      vi.advanceTimersByTime(2000);
+      expect(testPool.has({ id: "a" })).toBe(true); // Still exists because promise pending
+
+      // Resolve promise
+      resolvePromise!("resolved");
+      await Promise.resolve(); // Let promise handlers run
+
+      // Now GC timer should start
+      vi.advanceTimersByTime(999);
+      expect(testPool.has({ id: "a" })).toBe(true);
+
+      vi.advanceTimersByTime(1);
+      expect(testPool.has({ id: "a" })).toBe(false);
+    });
+  });
+
+  describe("params equality (shallow by default)", () => {
+    it("should treat equivalent objects as same entry", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { id: string }) => {
+          callCount++;
+          return params.id;
+        },
+        { gcTime: 1000 }
+      );
+
+      testPool.get({ id: "test" });
+      testPool.get({ id: "test" }); // Same object shape
+      expect(callCount).toBe(1);
+    });
+
+    it("should treat objects with different property order as same entry (shallow equality)", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { a: number; b: number }) => {
+          callCount++;
+          return params.a + params.b;
+        },
+        { gcTime: 1000 }
+      );
+
+      // Different property order but same values
+      testPool.get({ a: 1, b: 2 });
+      testPool.get({ b: 2, a: 1 }); // Should be same entry with shallow equality
+      expect(callCount).toBe(1);
+    });
+
+    it("should handle multi-key object params", () => {
+      const testPool = pool(
+        (params: { a: number; b: number }) => params.a + params.b,
+        { gcTime: 1000 }
+      );
+      expect(testPool.get({ a: 1, b: 2 })).toBe(3);
+      expect(testPool.get({ a: 3, b: 4 })).toBe(7);
+    });
+
+    it("should treat objects with different values as different entries", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { id: string }) => {
+          callCount++;
+          return params.id;
+        },
+        { gcTime: 1000 }
+      );
+
+      testPool.get({ id: "a" });
+      testPool.get({ id: "b" }); // Different value, different entry
+      expect(callCount).toBe(2);
+    });
+  });
+
+  describe("internal _getAtom", () => {
+    it("should return the underlying atom", () => {
+      const testPool = pool((_: { id: string }) => 42, { gcTime: 1000 });
+      testPool.get({ id: "a" });
+
+      const atom = testPool._getAtom({ id: "a" });
+      expect(atom.get()).toBe(42);
+    });
+
+    it("should create entry if not exists", () => {
+      const testPool = pool((_: { id: string }) => 42, { gcTime: 1000 });
+      expect(testPool.has({ id: "a" })).toBe(false);
+
+      const atom = testPool._getAtom({ id: "a" });
+      expect(testPool.has({ id: "a" })).toBe(true);
+      expect(atom.get()).toBe(42);
+    });
+  });
+
+  describe("internal _onRemove", () => {
+    it("should notify specific entry removal listener", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      const listenerA = vi.fn();
+      const listenerB = vi.fn();
+
+      testPool.get({ id: "a" });
+      testPool.get({ id: "b" });
+
+      testPool._onRemove({ id: "a" }, listenerA);
+      testPool._onRemove({ id: "b" }, listenerB);
+
+      testPool.remove({ id: "a" });
+      expect(listenerA).toHaveBeenCalledTimes(1);
+      expect(listenerB).not.toHaveBeenCalled();
+
+      testPool.remove({ id: "b" });
+      expect(listenerB).toHaveBeenCalledTimes(1);
+    });
+
+    it("should allow unsubscribing from specific entry removal", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      const listener = vi.fn();
+
+      testPool.get({ id: "a" });
+      const unsub = testPool._onRemove({ id: "a" }, listener);
+
+      unsub();
+      testPool.remove({ id: "a" });
+      expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("isPool type guard", () => {
+    it("should return true for pool instances", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      expect(isPool(testPool)).toBe(true);
+    });
+
+    it("should return false for non-pool values", () => {
+      expect(isPool(null)).toBe(false);
+      expect(isPool(undefined)).toBe(false);
+      expect(isPool({})).toBe(false);
+      expect(isPool({ [SYMBOL_POOL]: false })).toBe(false);
+      expect(isPool("pool")).toBe(false);
+      expect(isPool(42)).toBe(false);
+    });
+  });
+
+  describe("equals option (params comparison)", () => {
+    it("should use shallow equality by default for params", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { a: number; b: number }) => {
+          callCount++;
+          return params.a + params.b;
+        },
+        { gcTime: 1000 }
+      );
+
+      // Different property order but same values - should be same entry
+      testPool.get({ a: 1, b: 2 });
+      testPool.get({ b: 2, a: 1 });
+      expect(callCount).toBe(1);
+    });
+
+    it("should use strict equality when equals is 'strict'", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { a: number; b: number }) => {
+          callCount++;
+          return params.a + params.b;
+        },
+        { gcTime: 1000, equals: "strict" }
+      );
+
+      // With strict equality, different object references = different entries
+      testPool.get({ a: 1, b: 2 });
+      testPool.get({ a: 1, b: 2 }); // Different object, different entry
+      expect(callCount).toBe(2);
+    });
+
+    it("should use custom equality function for params", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { id: string; timestamp: number }) => {
+          callCount++;
+          return params.id;
+        },
+        {
+          gcTime: 1000,
+          // Only compare by id, ignore timestamp
+          equals: (a, b) => a.id === b.id,
+        }
+      );
+
+      testPool.get({ id: "user-1", timestamp: 100 });
+      testPool.get({ id: "user-1", timestamp: 200 }); // Same id, different timestamp
+      expect(callCount).toBe(1); // Same entry because ids match
+    });
+
+    it("should use deep equality when equals is 'deep'", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { nested: { value: number } }) => {
+          callCount++;
+          return params.nested.value;
+        },
+        { gcTime: 1000, equals: "deep" }
+      );
+
+      testPool.get({ nested: { value: 1 } });
+      testPool.get({ nested: { value: 1 } }); // Deep equal
+      expect(callCount).toBe(1);
+    });
+  });
+});

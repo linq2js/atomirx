@@ -3,7 +3,12 @@ import { emitter } from "./emitter";
 import { resolveEquality } from "./equality";
 import { onErrorHook } from "./onErrorHook";
 import { scheduleNotifyHook } from "./scheduleNotifyHook";
-import { ReactiveSelector, select, SelectContext } from "./select";
+import {
+  ReactiveSelector,
+  select,
+  SelectContext,
+  SelectResult,
+} from "./select";
 import {
   Atom,
   AtomState,
@@ -196,6 +201,8 @@ export function derived<T>(
 
   // Track current subscriptions (atom -> unsubscribe function)
   const subscriptions = new Map<Atom<unknown>, VoidFunction>();
+  // Pool removal subscriptions
+  let poolCleanups: VoidFunction[] = [];
 
   // CreateInfo for this derived - stored for onErrorHook
   // Will be set after derivedAtom is created
@@ -224,9 +231,12 @@ export function derived<T>(
   };
 
   /**
-   * Updates subscriptions based on new dependencies.
+   * Updates subscriptions based on new dependencies from SelectResult.
    */
-  const updateSubscriptions = (newDeps: Set<Atom<unknown>>) => {
+  const updateSubscriptions = (result: SelectResult<T>) => {
+    const newDeps = result._atomDeps;
+    const newPoolDeps = result._poolDeps;
+
     // Unsubscribe from atoms that are no longer accessed
     for (const [atom, unsubscribe] of subscriptions) {
       if (!newDeps.has(atom)) {
@@ -242,6 +252,22 @@ export function derived<T>(
           compute();
         });
         subscriptions.set(atom, unsubscribe);
+      }
+    }
+
+    // Clean up old pool removal subscriptions
+    for (const cleanup of poolCleanups) {
+      cleanup();
+    }
+    poolCleanups = [];
+
+    // Subscribe to pool entry removals
+    for (const [pool, paramsSet] of newPoolDeps) {
+      for (const params of paramsSet) {
+        const cleanup = pool._onRemove(params, () => {
+          compute();
+        });
+        poolCleanups.push(cleanup);
       }
     }
   };
@@ -275,10 +301,10 @@ export function derived<T>(
 
     // Run select to compute value and track dependencies
     const attemptCompute = () => {
-      const result = select((context) => fn(context.use(withReady())));
+      const { result } = select((context) => fn(context.use(withReady())));
 
       // Update subscriptions based on accessed deps
-      updateSubscriptions(result.dependencies);
+      updateSubscriptions(result);
 
       if (result.promise) {
         // Notify subscribers that we're now in loading state

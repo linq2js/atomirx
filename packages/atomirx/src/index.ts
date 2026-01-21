@@ -6,7 +6,8 @@ export { derived, type DerivedContext } from "./core/derived";
 export { effect, type EffectContext } from "./core/effect";
 export { emitter } from "./core/emitter";
 export { isAtom, isDerived } from "./core/isAtom";
-export { select, AllAtomsRejectedError } from "./core/select";
+export { pool, isPool } from "./core/pool";
+export { select, AllAtomsRejectedError, isVirtualAtom } from "./core/select";
 
 // Promise utilities
 export { getAtomState } from "./core/getAtomState";
@@ -37,8 +38,12 @@ export type {
   MutableAtom,
   MutableAtomMeta,
   Pipeable,
+  Pool,
+  PoolMeta,
+  PoolOptions,
   SelectStateResult,
   SettledResult,
+  VirtualAtom,
 } from "./core/types";
 
 export { onCreateHook } from "./core/onCreateHook";
@@ -55,6 +60,7 @@ export type { ErrorInfo } from "./core/onErrorHook";
 
 export type {
   SelectContext,
+  SelectOutput,
   SelectResult,
   ReactiveSelector as ContextSelectorFn,
   SafeResult,

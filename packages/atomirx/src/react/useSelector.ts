@@ -211,7 +211,7 @@ export function useSelector<T>(
    * Get the current snapshot by running the selector.
    */
   const getSnapshot = useCallback(() => {
-    const result = select(selectorRef.current);
+    const { result } = select(selectorRef.current);
 
     // Update dependencies
     dependenciesRef.current = result.dependencies;
@@ -262,7 +262,7 @@ export function useSelector<T>(
         if (!subscriptions.has(atom)) {
           const unsubscribe = atom.on(() => {
             // Re-run selector to update dependencies
-            const result = select(selectorRef.current);
+            const { result } = select(selectorRef.current);
             dependenciesRef.current = result.dependencies;
 
             // Update subscriptions if dependencies changed

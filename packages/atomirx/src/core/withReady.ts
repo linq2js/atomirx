@@ -158,7 +158,7 @@ function waitForValue<T>(value: T): any {
  * @example
  * ```ts
  * // Used internally by derived() - you don't need to call this directly
- * const result = select((context) => fn(context.use(withReady())));
+ * const { result } = select((context) => fn(context.use(withReady())));
  * ```
  */
 export function withReady() {

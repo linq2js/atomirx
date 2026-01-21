@@ -7,7 +7,7 @@ describe("select", () => {
   describe("read()", () => {
     it("should read value from sync atom", () => {
       const count$ = atom(5);
-      const result = select(({ read }) => read(count$));
+      const { result } = select(({ read }) => read(count$));
 
       expect(result.value).toBe(5);
       expect(result.error).toBe(undefined);
@@ -18,7 +18,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      const result = select(({ read }) => read(a$) + read(b$));
+      const { result } = select(({ read }) => read(a$) + read(b$));
 
       expect(result.dependencies.size).toBe(2);
       expect(result.dependencies.has(a$)).toBe(true);
@@ -29,7 +29,7 @@ describe("select", () => {
       const count$ = atom(5);
       const error = new Error("Test error");
 
-      const result = select(({ read }) => {
+      const { result } = select(({ read }) => {
         read(count$);
         throw error;
       });
@@ -46,7 +46,7 @@ describe("select", () => {
       const b$ = atom(2);
       const c$ = atom(3);
 
-      const result = select(({ all }) => all([a$, b$, c$]));
+      const { result } = select(({ all }) => all([a$, b$, c$]));
 
       expect(result.value).toEqual([1, 2, 3]);
     });
@@ -55,7 +55,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(new Promise<number>(() => {}));
 
-      const result = select(({ all }) => all([a$, b$]));
+      const { result } = select(({ all }) => all([a$, b$]));
 
       expect(result.promise).toBeDefined();
       expect(result.value).toBe(undefined);
@@ -81,7 +81,7 @@ describe("select", () => {
       await Promise.resolve();
 
       // Now the promise state should be updated
-      const result = select(({ all }) => all([a$, b$]));
+      const { result } = select(({ all }) => all([a$, b$]));
 
       expect(result.error).toBe(error);
     });
@@ -92,7 +92,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      const result = select(({ race }) => race({ a: a$, b: b$ }));
+      const { result } = select(({ race }) => race({ a: a$, b: b$ }));
 
       expect(result.value).toEqual({ key: "a", value: 1 });
     });
@@ -109,7 +109,7 @@ describe("select", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      const result = select(({ race }) => race({ a: a$, b: b$ }));
+      const { result } = select(({ race }) => race({ a: a$, b: b$ }));
 
       expect(result.error).toBe(error);
     });
@@ -118,7 +118,7 @@ describe("select", () => {
       const a$ = atom(new Promise<number>(() => {}));
       const b$ = atom(new Promise<number>(() => {}));
 
-      const result = select(({ race }) => race({ a: a$, b: b$ }));
+      const { result } = select(({ race }) => race({ a: a$, b: b$ }));
 
       expect(result.promise).toBeDefined();
     });
@@ -129,7 +129,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      const result = select(({ any }) => any({ a: a$, b: b$ }));
+      const { result } = select(({ any }) => any({ a: a$, b: b$ }));
 
       expect(result.value).toEqual({ key: "a", value: 1 });
     });
@@ -146,7 +146,7 @@ describe("select", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      const result = select(({ any }) => any({ a: a$, b: b$ }));
+      const { result } = select(({ any }) => any({ a: a$, b: b$ }));
 
       expect(result.value).toEqual({ key: "b", value: 2 });
     });
@@ -176,7 +176,7 @@ describe("select", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      const result = select(({ any }) => any({ a: a$, b: b$ }));
+      const { result } = select(({ any }) => any({ a: a$, b: b$ }));
 
       expect(result.error).toBeDefined();
       expect((result.error as Error).name).toBe("AggregateError");
@@ -201,7 +201,7 @@ describe("select", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      const result = select(({ settled }) => settled([a$, b$]));
+      const { result } = select(({ settled }) => settled([a$, b$]));
 
       expect(result.value).toEqual([
         { status: "ready", value: 1 },
@@ -213,7 +213,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(new Promise<number>(() => {}));
 
-      const result = select(({ settled }) => settled([a$, b$]));
+      const { result } = select(({ settled }) => settled([a$, b$]));
 
       expect(result.promise).toBeDefined();
     });
@@ -225,7 +225,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      const result = select(({ read }) =>
+      const { result } = select(({ read }) =>
         read(condition$) ? read(a$) : read(b$)
       );
 
@@ -239,7 +239,7 @@ describe("select", () => {
 
   describe("error handling", () => {
     it("should throw error if selector returns a Promise", () => {
-      const result = select(() => Promise.resolve(42));
+      const { result } = select(() => Promise.resolve(42));
 
       expect(result.error).toBeDefined();
       expect(result.error).toBeInstanceOf(Error);
@@ -259,7 +259,7 @@ describe("select", () => {
         },
       };
 
-      const result = select(() => promiseLike);
+      const { result } = select(() => promiseLike);
 
       expect(result.error).toBeDefined();
       expect(result.error).toBeInstanceOf(Error);
@@ -269,7 +269,7 @@ describe("select", () => {
     });
 
     it("should work fine with sync values", () => {
-      const result = select(() => 42);
+      const { result } = select(() => 42);
 
       expect(result.value).toBe(42);
       expect(result.error).toBe(undefined);
@@ -281,7 +281,7 @@ describe("select", () => {
     it("should return [undefined, result] on success", () => {
       const count$ = atom(5);
 
-      const result = select(({ read, safe }) => {
+      const { result } = select(({ read, safe }) => {
         const [err, value] = safe(() => read(count$) * 2);
         return { err, value };
       });
@@ -290,7 +290,7 @@ describe("select", () => {
     });
 
     it("should return [error, undefined] on sync error", () => {
-      const result = select(({ safe }) => {
+      const { result } = select(({ safe }) => {
         const [err, value] = safe(() => {
           throw new Error("Test error");
         });
@@ -305,7 +305,7 @@ describe("select", () => {
     it("should re-throw Promise to preserve Suspense", () => {
       const pending$ = atom(new Promise(() => {})); // Never resolves
 
-      const result = select(({ read, safe }) => {
+      const { result } = select(({ read, safe }) => {
         const [err, value] = safe(() => read(pending$));
         return { err, value };
       });
@@ -318,7 +318,7 @@ describe("select", () => {
     it("should catch JSON.parse errors", () => {
       const raw$ = atom("invalid json");
 
-      const result = select(({ read, safe }) => {
+      const { result } = select(({ read, safe }) => {
         const [err, data] = safe(() => {
           const raw = read(raw$);
           return JSON.parse(raw);
@@ -336,7 +336,7 @@ describe("select", () => {
     it("should allow graceful degradation", () => {
       const user$ = atom({ name: "John" });
 
-      const result = select(({ read, safe }) => {
+      const { result } = select(({ read, safe }) => {
         const [err1, user] = safe(() => read(user$));
         if (err1) return { user: null, posts: [] };
 
@@ -359,7 +359,7 @@ describe("select", () => {
         code = "CUSTOM";
       }
 
-      const result = select(({ safe }) => {
+      const { result } = select(({ safe }) => {
         const [err] = safe(() => {
           throw new CustomError("Custom error");
         });
@@ -469,7 +469,7 @@ describe("select", () => {
     it("should return ready state for sync atom", () => {
       const count$ = atom(5);
 
-      const result = select(({ state }) => state(count$));
+      const { result } = select(({ state }) => state(count$));
 
       expect(result.value).toEqual({ status: "ready", value: 5 });
     });
@@ -478,7 +478,7 @@ describe("select", () => {
       const promise = new Promise<number>(() => {});
       const async$ = atom(promise);
 
-      const result = select(({ state }) => state(async$));
+      const { result } = select(({ state }) => state(async$));
 
       expect(result.value).toEqual({
         status: "loading",
@@ -498,7 +498,7 @@ describe("select", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      const result = select(({ state }) => state(async$));
+      const { result } = select(({ state }) => state(async$));
 
       expect(result.value).toEqual({ status: "error", error });
     });
@@ -507,7 +507,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      const result = select(({ state }) => {
+      const { result } = select(({ state }) => {
         state(a$);
         state(b$);
         return "done";
@@ -522,7 +522,7 @@ describe("select", () => {
       const a$ = atom(10);
       const b$ = atom(20);
 
-      const result = select(({ read, state }) =>
+      const { result } = select(({ read, state }) =>
         state(() => read(a$) + read(b$))
       );
 
@@ -532,7 +532,7 @@ describe("select", () => {
     it("should wrap selector function and return loading state when promise thrown", () => {
       const async$ = atom(new Promise<number>(() => {}));
 
-      const result = select(({ read, state }) => state(() => read(async$)));
+      const { result } = select(({ read, state }) => state(() => read(async$)));
 
       expect(result.value).toEqual({
         status: "loading",
@@ -542,7 +542,7 @@ describe("select", () => {
     });
 
     it("should wrap selector function and return error state when error thrown", () => {
-      const result = select(({ state }) =>
+      const { result } = select(({ state }) =>
         state(() => {
           throw new Error("Test error");
         })
@@ -558,7 +558,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(2);
 
-      const result = select(({ all, state }) => state(() => all([a$, b$])));
+      const { result } = select(({ all, state }) => state(() => all([a$, b$])));
 
       expect(result.value).toEqual({
         status: "ready",
@@ -571,7 +571,7 @@ describe("select", () => {
       const a$ = atom(1);
       const b$ = atom(new Promise<number>(() => {}));
 
-      const result = select(({ all, state }) => state(() => all([a$, b$])));
+      const { result } = select(({ all, state }) => state(() => all([a$, b$])));
 
       expect(result.value?.status).toBe("loading");
     });
@@ -580,7 +580,7 @@ describe("select", () => {
       const user$ = atom({ name: "John" });
       const posts$ = atom(new Promise<string[]>(() => {})); // Loading
 
-      const result = select(({ state }) => {
+      const { result } = select(({ state }) => {
         const userState = state(user$);
         const postsState = state(posts$);
 
@@ -629,7 +629,7 @@ describe("select", () => {
       const b$ = atom(p2);
 
       // First call should throw a combined promise
-      const result1 = select(({ all }) => all([a$, b$]));
+      const { result: result1 } = select(({ all }) => all([a$, b$]));
       expect(result1.promise).toBeDefined();
 
       // Resolve promises in reverse order
@@ -637,7 +637,7 @@ describe("select", () => {
       await Promise.resolve();
 
       // Still loading (a$ not resolved yet)
-      const result2 = select(({ all }) => all([a$, b$]));
+      const { result: result2 } = select(({ all }) => all([a$, b$]));
       expect(result2.promise).toBeDefined();
 
       // Resolve first promise
@@ -646,7 +646,7 @@ describe("select", () => {
       await Promise.resolve();
 
       // Now should be ready with both values
-      const result3 = select(({ all }) => all([a$, b$]));
+      const { result: result3 } = select(({ all }) => all([a$, b$]));
       expect(result3.value).toEqual([10, 20]);
     });
 
@@ -657,11 +657,11 @@ describe("select", () => {
       const b$ = atom(p2);
 
       // Get promise from first call
-      const result1 = select(({ all }) => all([a$, b$]));
+      const { result: result1 } = select(({ all }) => all([a$, b$]));
       const promise1 = result1.promise;
 
       // Second call should return equivalent promise (same source promises)
-      const result2 = select(({ all }) => all([a$, b$]));
+      const { result: result2 } = select(({ all }) => all([a$, b$]));
       const promise2 = result2.promise;
 
       // Promises are equivalent via metadata comparison
@@ -681,7 +681,7 @@ describe("select", () => {
       const b$ = atom(p2);
 
       // First call should throw a combined promise
-      const result1 = select(({ race }) => race({ a: a$, b: b$ }));
+      const { result: result1 } = select(({ race }) => race({ a: a$, b: b$ }));
       expect(result1.promise).toBeDefined();
 
       // Resolve second promise first (it should win the race)
@@ -690,7 +690,7 @@ describe("select", () => {
       await Promise.resolve();
 
       // Race should return second value (first to resolve) with key
-      const result2 = select(({ race }) => race({ a: a$, b: b$ }));
+      const { result: result2 } = select(({ race }) => race({ a: a$, b: b$ }));
       expect(result2.value).toEqual({ key: "b", value: 20 });
 
       // Clean up: resolve first promise
@@ -703,10 +703,10 @@ describe("select", () => {
       const a$ = atom(p1);
       const b$ = atom(p2);
 
-      const result1 = select(({ race }) => race({ a: a$, b: b$ }));
+      const { result: result1 } = select(({ race }) => race({ a: a$, b: b$ }));
       const promise1 = result1.promise;
 
-      const result2 = select(({ race }) => race({ a: a$, b: b$ }));
+      const { result: result2 } = select(({ race }) => race({ a: a$, b: b$ }));
       const promise2 = result2.promise;
 
       // Promises are equivalent via metadata comparison
@@ -726,7 +726,7 @@ describe("select", () => {
       const b$ = atom(p2);
 
       // First call should throw combined race promise
-      const result1 = select(({ any }) => any({ a: a$, b: b$ }));
+      const { result: result1 } = select(({ any }) => any({ a: a$, b: b$ }));
       expect(result1.promise).toBeDefined();
 
       // Resolve second promise first
@@ -735,7 +735,7 @@ describe("select", () => {
       await Promise.resolve();
 
       // any() should return second value (first to resolve) with key
-      const result2 = select(({ any }) => any({ a: a$, b: b$ }));
+      const { result: result2 } = select(({ any }) => any({ a: a$, b: b$ }));
       expect(result2.value).toEqual({ key: "b", value: 20 });
 
       // Clean up
@@ -756,7 +756,7 @@ describe("select", () => {
       const b$ = atom(p2);
 
       // First call should throw combined promise
-      const result1 = select(({ settled }) => settled([a$, b$]));
+      const { result: result1 } = select(({ settled }) => settled([a$, b$]));
       expect(result1.promise).toBeDefined();
 
       // Settle promises in any order
@@ -764,7 +764,7 @@ describe("select", () => {
       await Promise.resolve();
 
       // Still loading (a$ not settled yet)
-      const result2 = select(({ settled }) => settled([a$, b$]));
+      const { result: result2 } = select(({ settled }) => settled([a$, b$]));
       expect(result2.promise).toBeDefined();
 
       // Settle first
@@ -773,7 +773,7 @@ describe("select", () => {
       await Promise.resolve();
 
       // Now should have settled results
-      const result3 = select(({ settled }) => settled([a$, b$]));
+      const { result: result3 } = select(({ settled }) => settled([a$, b$]));
       expect(result3.value).toEqual([
         { status: "ready", value: 10 },
         { status: "error", error: expect.any(Error) },
@@ -786,10 +786,10 @@ describe("select", () => {
       const a$ = atom(p1);
       const b$ = atom(p2);
 
-      const result1 = select(({ settled }) => settled([a$, b$]));
+      const { result: result1 } = select(({ settled }) => settled([a$, b$]));
       const promise1 = result1.promise;
 
-      const result2 = select(({ settled }) => settled([a$, b$]));
+      const { result: result2 } = select(({ settled }) => settled([a$, b$]));
       const promise2 = result2.promise;
 
       // Promises are equivalent via metadata comparison

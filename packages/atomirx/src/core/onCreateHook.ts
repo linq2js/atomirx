@@ -7,6 +7,8 @@ import {
   DerivedAtom,
   ModuleMeta,
   EffectMeta,
+  PoolMeta,
+  Pool,
 } from "./types";
 
 /**
@@ -54,7 +56,7 @@ export interface EffectInfo {
 /**
  * Union type for atom/derived/effect creation info.
  */
-export type CreateInfo = MutableInfo | DerivedInfo | EffectInfo;
+export type CreateInfo = MutableInfo | DerivedInfo | EffectInfo | PoolInfo;
 
 /**
  * Information provided when a module (via define()) is created.
@@ -70,6 +72,20 @@ export interface ModuleInfo {
   instance: unknown;
 }
 
+/**
+ * Information provided when a pool is created.
+ */
+export interface PoolInfo {
+  /** Discriminator for pools */
+  type: "pool";
+  /** Optional key from pool options (for debugging/devtools) */
+  key: string | undefined;
+
+  /** Optional metadata from pool options */
+  meta: PoolMeta | undefined;
+  /** The created pool instance */
+  instance: Pool<any, any>;
+}
 /**
  * Global hook that fires whenever an atom or module is created.
  *
