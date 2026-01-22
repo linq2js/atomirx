@@ -105,6 +105,9 @@ export function atom<T>(
   let abortController: AbortController | null = null;
   const cleanupEmitter = emitter();
 
+  // Track if atom has been disposed
+  let isDisposed = false;
+
   /**
    * Aborts the current signal and calls all registered cleanup functions.
    */
@@ -158,6 +161,9 @@ export function atom<T>(
    * @param newValue - New value or reducer function (prev) => newValue
    */
   const set = (newValue: T | ((prev: T) => T)) => {
+    // Ignore updates after disposal
+    if (isDisposed) return;
+
     let nextValue: T;
 
     if (typeof newValue === "function") {
@@ -185,6 +191,9 @@ export function atom<T>(
    * Resets the atom to its initial value and clears dirty flag.
    */
   const reset = () => {
+    // Ignore reset after disposal
+    if (isDisposed) return;
+
     // Abort previous signal and run cleanups before resetting
     abortAndCleanup("reset");
 
@@ -214,6 +223,29 @@ export function atom<T>(
     return isDirty;
   };
 
+  /**
+   * Dispose the atom, aborting any pending operations and running cleanup functions.
+   * After disposal, set/reset are no-ops and new subscriptions return no-op unsubscribe.
+   * @internal - Used by pool when removing entries.
+   */
+  const dispose = (): void => {
+    if (isDisposed) return;
+    isDisposed = true;
+    abortAndCleanup("disposed");
+    changeEmitter.clear();
+  };
+
+  const noop = () => {};
+
+  /**
+   * Subscribe to value changes.
+   * Returns no-op unsubscribe if atom is disposed.
+   */
+  const on = (listener: VoidFunction): VoidFunction => {
+    if (isDisposed) return noop;
+    return changeEmitter.on(listener);
+  };
+
   // Create the atom object
   const a = withUse({
     [SYMBOL_ATOM]: true as const,
@@ -229,10 +261,8 @@ export function atom<T>(
     set,
     reset,
     dirty,
-    /**
-     * Subscribe to value changes.
-     */
-    on: changeEmitter.on,
+    _dispose: dispose,
+    on,
   }) as Pipeable & MutableAtom<T>;
 
   // Notify devtools/plugins of atom creation

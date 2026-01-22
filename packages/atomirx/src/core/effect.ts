@@ -4,13 +4,15 @@ import { emitter } from "./emitter";
 import { EffectInfo, onCreateHook } from "./onCreateHook";
 import { ReactiveSelector, SelectContext } from "./select";
 import { EffectMeta, EffectOptions } from "./types";
-import { WithReadySelectContext } from "./withReady";
+import { withAbort, WithAbortContext } from "./withAbort";
+import { WithReadyContext } from "./withReady";
 
 /**
  * Context object passed to effect functions.
  * Extends `SelectContext` with cleanup utilities.
  */
-export interface EffectContext extends SelectContext, WithReadySelectContext {
+export interface EffectContext
+  extends SelectContext, WithReadyContext, WithAbortContext {
   /**
    * Register a cleanup function that runs before the next execution or on dispose.
    * Multiple cleanup functions can be registered; they run in FIFO order.
@@ -165,9 +167,11 @@ export function effect(
 
       // Run effect in a batch - multiple atom updates will only notify once
       // Cast to EffectContext since we're adding onCleanup to the DerivedContext
+      const onCleanup = cleanupEmitter.on;
       const effectContext = {
         ...context,
-        onCleanup: cleanupEmitter.on,
+        onCleanup,
+        ...withAbort(onCleanup)(context),
       } as unknown as EffectContext;
       batch(() => fn(effectContext));
     },

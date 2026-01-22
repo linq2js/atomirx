@@ -7,7 +7,7 @@ import { AnyFunc, Atom } from "./types";
  * Extension interface that adds `ready()` method to SelectContext.
  * Used in derived atoms and effects to wait for non-null values.
  */
-export interface WithReadySelectContext {
+export interface WithReadyContext {
   /**
    * Wait for an atom to have a non-null/non-undefined value.
    *
@@ -164,7 +164,7 @@ function waitForValue<T>(value: T): any {
 export function withReady() {
   return <TContext extends SelectContext>(
     context: TContext
-  ): TContext & WithReadySelectContext => {
+  ): TContext & WithReadyContext => {
     return {
       ...context,
       ready: (

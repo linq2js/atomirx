@@ -388,6 +388,64 @@ describe("pool", () => {
     });
   });
 
+  describe("atom disposal on remove", () => {
+    it("should abort signal when entry is removed", () => {
+      let capturedSignal: AbortSignal | null = null;
+
+      const testPool = pool(
+        (_: { id: string }, context) => {
+          capturedSignal = context.signal;
+          return 0;
+        },
+        { gcTime: 1000 }
+      );
+
+      testPool.get({ id: "a" });
+      expect(capturedSignal).not.toBeNull();
+      expect(capturedSignal!.aborted).toBe(false);
+
+      testPool.remove({ id: "a" });
+      expect(capturedSignal!.aborted).toBe(true);
+    });
+
+    it("should call onCleanup when entry is removed", () => {
+      const cleanup = vi.fn();
+
+      const testPool = pool(
+        (_: { id: string }, context) => {
+          context.onCleanup(cleanup);
+          return 0;
+        },
+        { gcTime: 1000 }
+      );
+
+      testPool.get({ id: "a" });
+      expect(cleanup).not.toHaveBeenCalled();
+
+      testPool.remove({ id: "a" });
+      expect(cleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it("should abort signal when entry is GC'd", () => {
+      let capturedSignal: AbortSignal | null = null;
+
+      const testPool = pool(
+        (_: { id: string }, context) => {
+          capturedSignal = context.signal;
+          return 0;
+        },
+        { gcTime: 1000 }
+      );
+
+      testPool.get({ id: "a" });
+      expect(capturedSignal!.aborted).toBe(false);
+
+      // Advance time to trigger GC
+      vi.advanceTimersByTime(1001);
+      expect(capturedSignal!.aborted).toBe(true);
+    });
+  });
+
   describe("isPool type guard", () => {
     it("should return true for pool instances", () => {
       const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
@@ -468,6 +526,97 @@ describe("pool", () => {
 
       testPool.get({ nested: { value: 1 } });
       testPool.get({ nested: { value: 1 } }); // Deep equal
+      expect(callCount).toBe(1);
+    });
+  });
+
+  describe("reference cache optimization", () => {
+    it("should use cached entry for same object reference", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { id: string }) => {
+          callCount++;
+          return params.id;
+        },
+        { gcTime: 1000 }
+      );
+
+      const params = { id: "test" };
+
+      // First call - creates entry
+      testPool.get(params);
+      expect(callCount).toBe(1);
+
+      // Same reference - should use cache, no equality check needed
+      testPool.get(params);
+      testPool.get(params);
+      testPool.get(params);
+      expect(callCount).toBe(1); // Still 1, entry reused
+    });
+
+    it("should invalidate cache when entry is removed", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { id: string }) => {
+          callCount++;
+          return params.id;
+        },
+        { gcTime: 1000 }
+      );
+
+      const params = { id: "test" };
+
+      testPool.get(params);
+      expect(callCount).toBe(1);
+
+      // Remove entry
+      testPool.remove(params);
+
+      // Same reference but entry was removed - should create new
+      testPool.get(params);
+      expect(callCount).toBe(2);
+    });
+
+    it("should work with different references that are equal", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (params: { id: string }) => {
+          callCount++;
+          return params.id;
+        },
+        { gcTime: 1000 }
+      );
+
+      const params1 = { id: "test" };
+      const params2 = { id: "test" }; // Different reference, same value
+
+      testPool.get(params1);
+      expect(callCount).toBe(1);
+
+      // Different reference but same value (shallow equal) - should reuse entry
+      testPool.get(params2);
+      expect(callCount).toBe(1);
+
+      // Now params2 should also be cached
+      testPool.get(params2);
+      expect(callCount).toBe(1);
+    });
+
+    it("should handle primitive params (no cache, equality only)", () => {
+      let callCount = 0;
+      const testPool = pool(
+        (id: string) => {
+          callCount++;
+          return id;
+        },
+        { gcTime: 1000 }
+      );
+
+      testPool.get("user-1");
+      expect(callCount).toBe(1);
+
+      // Same primitive - uses equality comparison
+      testPool.get("user-1");
       expect(callCount).toBe(1);
     });
   });

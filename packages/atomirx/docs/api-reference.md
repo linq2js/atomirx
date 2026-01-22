@@ -159,6 +159,8 @@ Extends SelectContext with:
 | Property | Type | Description |
 |----------|------|-------------|
 | `onCleanup` | `(fn) => void` | Register cleanup function |
+| `signal` | `AbortSignal` | Aborted on re-run or dispose |
+| `abort` | `() => void` | Manually trigger abort |
 
 #### Effect
 
@@ -174,6 +176,14 @@ const dispose = effect(({ read, onCleanup }) => {
   const count = read(count$); // Read synchronously
   console.log("Count changed:", count);
   onCleanup(() => console.log("Cleanup"));
+});
+
+// With AbortSignal for fetch cancellation
+effect(({ read, signal }) => {
+  const id = read(userId$);
+  fetch(`/api/users/${id}`, { signal })
+    .then(r => r.json())
+    .then(user => user$.set(user));
 });
 ```
 

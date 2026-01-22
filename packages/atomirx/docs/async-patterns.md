@@ -410,7 +410,36 @@ const dashboard$ = derived(({ all, read }) => {
 
 ### Race Conditions
 
-Use AbortSignal to handle race conditions:
+Use AbortSignal to handle race conditions and cancel stale requests.
+
+#### In Effects
+
+Effects provide a built-in `signal` that aborts when the effect re-runs:
+
+```ts
+const searchQuery$ = atom("");
+const searchResults$ = atom<SearchResult[]>([]);
+
+effect(({ read, signal }) => {
+  const query = read(searchQuery$);
+  if (!query) {
+    searchResults$.set([]);
+    return;
+  }
+
+  // Previous fetch is automatically cancelled when query changes
+  fetch(`/api/search?q=${query}`, { signal })
+    .then(r => r.json())
+    .then(results => searchResults$.set(results))
+    .catch(err => {
+      if (err.name !== 'AbortError') throw err;
+    });
+});
+```
+
+#### In Atoms
+
+Use atom context's signal for cancellation:
 
 ```ts
 const searchQuery$ = atom("");
@@ -419,7 +448,7 @@ const searchResults$ = derived(({ read }) => {
   const query = read(searchQuery$);
   if (!query) return [];
 
-  // Create a new atom with AbortSignal support
+  // Create atom with AbortSignal support
   const results$ = atom((ctx) => searchApi(query, { signal: ctx.signal }));
 
   return read(results$);

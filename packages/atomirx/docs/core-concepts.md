@@ -264,6 +264,39 @@ effect(({ read, onCleanup }) => {
 });
 ```
 
+### AbortSignal
+
+Effects provide a `signal` for cancelling async operations. The signal is automatically aborted when the effect re-runs or is disposed:
+
+```ts
+effect(({ read, signal }) => {
+  const userId = read(userId$);
+  
+  // Fetch is cancelled if userId changes or effect disposes
+  fetch(`/api/users/${userId}`, { signal })
+    .then(r => r.json())
+    .then(user => user$.set(user))
+    .catch(err => {
+      // Ignore abort errors
+      if (err.name !== 'AbortError') throw err;
+    });
+});
+```
+
+You can also manually abort using the `abort()` method:
+
+```ts
+effect(({ read, signal, abort }) => {
+  const shouldCancel = read(shouldCancel$);
+  if (shouldCancel) {
+    abort();
+    return;
+  }
+  
+  fetch('/api/data', { signal });
+});
+```
+
 ### Error Handling
 
 ```ts

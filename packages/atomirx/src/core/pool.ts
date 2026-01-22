@@ -102,19 +102,76 @@ export function pool<T, P = unknown>(
   // Entry cache - use array for equality-based lookup
   const cache: PoolEntry<P, T>[] = [];
 
+  // Reference cache for O(1) lookup when same object reference is passed
+  // Helps avoid expensive equality checks on repeated lookups with same params object
+  const refCache = new WeakMap<WeakKey, PoolEntry<P, T>>();
+
   // Global event emitters
   const changeEmitter = emitter<{ params: P; value: T }>();
   const removeEmitter = emitter<{ params: P; value: T }>();
 
   /**
+   * Check if params can be used as WeakMap key (non-null object or function).
+   */
+  const isWeakKey = (params: P): params is P & WeakKey =>
+    params !== null &&
+    (typeof params === "object" || typeof params === "function");
+
+  /**
    * Find an entry by params using equality comparison.
+   * Uses reference cache for O(1) lookup when same object reference is passed.
    * Returns the entry and its index, or undefined if not found.
+   *
+   * ## Lookup Flow
+   *
+   * ```
+   * findEntry(params)
+   *        │
+   *        ▼
+   *   Is params object?
+   *        │
+   *   ┌────┴────┐
+   *   │Yes      │No (primitive)
+   *   ▼         ▼
+   * WeakMap    Equality search O(n)
+   * lookup
+   *   │
+   * ┌─┴──┐
+   * │Hit │Miss
+   * ▼    ▼
+   * Validate   Equality search O(n)
+   * entry      + cache result
+   * exists?
+   *   │
+   * Return O(1)
+   * ```
+   *
+   * @param params - The params to search for
+   * @returns Entry and index if found, undefined otherwise
    */
   const findEntry = (
     params: P
   ): { entry: PoolEntry<P, T>; index: number } | undefined => {
+    // Fast path: same object reference (common in React re-renders)
+    if (isWeakKey(params)) {
+      const cached = refCache.get(params);
+      if (cached) {
+        const index = cache.indexOf(cached);
+        if (index !== -1) {
+          return { entry: cached, index };
+        }
+        // Entry was removed, clean up stale cache
+        refCache.delete(params);
+      }
+    }
+
+    // Slow path: equality-based search
     for (let i = 0; i < cache.length; i++) {
       if (paramsEqual(cache[i].params, params)) {
+        // Cache for future same-reference lookups
+        if (isWeakKey(params)) {
+          refCache.set(params, cache[i]);
+        }
         return { entry: cache[i], index: i };
       }
     }
@@ -221,7 +278,10 @@ export function pool<T, P = unknown>(
 
     const { entry, index } = found;
 
-    // Cleanup resources
+    // Dispose atom (abort signals, run cleanup functions)
+    entry.atom._dispose();
+
+    // Cleanup resources (GC timer, atom subscription)
     entry.cleanup();
 
     // Get last value before removing
@@ -261,12 +321,6 @@ export function pool<T, P = unknown>(
 
     remove(params: P): void {
       removeEntry(params);
-    },
-
-    reset(params: P): void {
-      const entry = getOrCreateEntry(params);
-      entry.resetGC();
-      entry.atom.reset();
     },
 
     clear(): void {

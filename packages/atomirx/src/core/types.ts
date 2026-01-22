@@ -138,6 +138,12 @@ export interface MutableAtom<T> extends Atom<T>, Pipeable {
    * ```
    */
   dirty(): boolean;
+
+  /**
+   * Dispose the atom, aborting any pending operations and running cleanup functions.
+   * @internal - Used by pool when removing entries.
+   */
+  _dispose(): void;
 }
 
 /**
@@ -182,6 +188,12 @@ export interface DerivedAtom<T, F extends boolean = false> extends Atom<
    * - With fallback: T (guaranteed)
    */
   readonly staleValue: F extends true ? T : T | undefined;
+
+  /**
+   * Dispose the derived atom, cleaning up all subscriptions.
+   * @internal - Reserved for future use.
+   */
+  _dispose(): void;
 }
 
 /**
@@ -585,12 +597,6 @@ export interface Pool<P, T> {
    * @returns Unsubscribe function
    */
   onRemove(listener: (params: P, value: T) => void): VoidFunction;
-
-  /**
-   * Reset the value for params.
-   * @param params - The params to reset
-   */
-  reset(params: P): void;
 
   /**
    * Get the underlying atom for params.

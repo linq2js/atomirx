@@ -233,6 +233,24 @@ effect(({ read, onCleanup }) => {
 });
 ```
 
+#### Effect with AbortSignal
+
+Effects provide a `signal` for cancelling async operations:
+
+```ts
+effect(({ read, signal }) => {
+  const userId = read(userId$);
+  
+  // Signal is automatically aborted when effect re-runs or disposes
+  fetch(`/api/users/${userId}`, { signal })
+    .then(r => r.json())
+    .then(user => user$.set(user))
+    .catch(err => {
+      if (err.name !== 'AbortError') throw err;
+    });
+});
+```
+
 ### Pools
 
 Pools are parameterized collections of atoms with automatic garbage collection.

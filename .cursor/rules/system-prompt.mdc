@@ -251,6 +251,53 @@ Before ANY change, you **MUST** analyze:
 - Edge cases and special behaviors
 - User intent / design decisions
 
+**Visual Flow Diagrams (STRONGLY RECOMMENDED for complex logic):**
+
+For functions with branching logic, caching, or multi-step algorithms, include ASCII flow diagrams in JSDoc:
+
+````typescript
+/**
+ * Finds entry by params with reference caching for performance.
+ *
+ * ## Lookup Flow
+ *
+ * ```
+ * findEntry(params)
+ *        │
+ *        ▼
+ *   Is params object?
+ *        │
+ *   ┌────┴────┐
+ *   │Yes      │No (primitive)
+ *   ▼         ▼
+ * WeakMap    Equality search O(n)
+ * lookup
+ *   │
+ * ┌─┴──┐
+ * │Hit │Miss
+ * ▼    ▼
+ * Validate   Equality search O(n)
+ * entry      + cache result
+ * exists?
+ *   │
+ * Return O(1)
+ * ```
+ *
+ * @param params - The params to search for
+ * @returns Entry and index if found, undefined otherwise
+ */
+````
+
+**When to include flow diagrams:**
+
+- Functions with 3+ branches or decision points
+- Caching/memoization logic
+- State machines or multi-step processes
+- Algorithms with performance implications (show Big-O)
+- Disposal/cleanup sequences
+
+**Standard JSDoc example:**
+
 ```typescript
 /**
  * Fetches user by ID with caching support.
@@ -389,7 +436,7 @@ When task has **3 or more implementation items** OR **impacts 5 or more files**,
 
 **REQUIRED Plan File Format:**
 
-```markdown
+````markdown
 # Plan: [Short Description]
 
 ## Context
@@ -481,7 +528,9 @@ fi
 
 echo "✅ All tasks completed"
 ```
-```
+````
+
+````
 
 ## 3. Multi-Agent Orchestration (for parallel execution)
 
@@ -527,7 +576,7 @@ run_task() {
   local task_num=$1
   echo "Running task #${task_num}..."
   # COMMAND TO RUN AGENT HERE
-  
+
   # Retry once if task not marked done
   if ! grep -q "| ${task_num}.*✅ done" "$PLAN_FILE"; then
     echo "⚠️  Task #${task_num} incomplete. Retrying..."
@@ -552,7 +601,7 @@ done
 wait
 
 echo "✅ All tasks completed"
-```
+````
 
 **Required Prompt Format After Plan File:**
 Provide Option A (Multi-Agent/Parallel) and Option B (Single Agent Sequential).
@@ -597,7 +646,6 @@ graph LR
 **✅ REQUIRED**: Write script to BOTH chat message AND plan file `## Execution Script` section
 **✅ REQUIRED**: Begin implementation immediately when user says START
 **✅ REQUIRED**: Include retry logic in generated scripts
-
 
 ## 4. Incremental Commits (REQUIRED for safety)
 

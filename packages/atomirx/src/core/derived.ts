@@ -18,7 +18,7 @@ import {
   SYMBOL_ATOM,
   SYMBOL_DERIVED,
 } from "./types";
-import { withReady, WithReadySelectContext } from "./withReady";
+import { withReady, WithReadyContext } from "./withReady";
 
 /**
  * Internal options for derived atoms.
@@ -40,7 +40,7 @@ export interface DerivedInternalOptions {
  * Currently identical to `SelectContext`, but defined separately to allow
  * future derived-specific extensions without breaking changes.
  */
-export interface DerivedContext extends SelectContext, WithReadySelectContext {}
+export interface DerivedContext extends SelectContext, WithReadyContext {}
 
 /**
  * Creates a derived (computed) atom from source atom(s).
@@ -193,6 +193,7 @@ export function derived<T>(
   let currentPromise: Promise<T> | null = null;
   let isInitialized = false;
   let isLoading = false;
+  let isDisposed = false;
   let version = 0;
 
   // Store resolve/reject to allow reusing the same promise across recomputations
@@ -430,6 +431,7 @@ export function derived<T>(
      * Re-run the computation.
      */
     refresh(): void {
+      if (isDisposed) return;
       if (!isInitialized) {
         init();
       } else {
@@ -439,10 +441,37 @@ export function derived<T>(
 
     /**
      * Subscribe to value changes.
+     * Returns no-op unsubscribe if atom is disposed.
      */
     on(listener: VoidFunction): VoidFunction {
+      if (isDisposed) return () => {};
       init();
       return changeEmitter.on(listener);
+    },
+
+    /**
+     * Dispose the derived atom, cleaning up all subscriptions.
+     * After disposal, refresh is a no-op and new subscriptions return no-op unsubscribe.
+     * @internal - Reserved for future use.
+     */
+    _dispose(): void {
+      if (isDisposed) return;
+      isDisposed = true;
+
+      // Unsubscribe from all atom dependencies
+      for (const unsubscribe of subscriptions.values()) {
+        unsubscribe();
+      }
+      subscriptions.clear();
+
+      // Clean up pool removal subscriptions
+      for (const cleanup of poolCleanups) {
+        cleanup();
+      }
+      poolCleanups = [];
+
+      // Clear all change listeners
+      changeEmitter.clear();
     },
   };
 
