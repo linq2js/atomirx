@@ -216,8 +216,7 @@ function pool<T, P = unknown>(
 | `get(params)` | `T` | Get value (creates if needed) |
 | `set(params, value)` | `void` | Set value |
 | `has(params)` | `boolean` | Check existence |
-| `remove(params)` | `void` | Remove entry |
-| `reset(params)` | `void` | Reset entry to initial |
+| `remove(params)` | `void` | Remove entry (aborts signal, runs cleanup) |
 | `clear()` | `void` | Remove all entries |
 | `forEach(callback)` | `void` | Iterate entries |
 | `onChange(listener)` | `() => void` | Subscribe to changes |
@@ -329,12 +328,83 @@ function select<T>(
 |--------|------|-------------|
 | `read(atom)` | `Awaited<T>` | Read atom value |
 | `from(pool, params)` | `VirtualAtom<T>` | Get pool entry |
-| `all(...atoms)` | `Awaited<T>[]` | Wait for all |
-| `race(...atoms)` | `Awaited<T>` | First settled |
-| `any(...atoms)` | `Awaited<T>` | First success |
-| `settled(...atoms)` | `SettledResult<T>[]` | All with status |
+| `all(atoms)` | `Awaited<T>[]` | Wait for all |
+| `race(atoms)` | `KeyedResult` | First settled |
+| `any(atoms)` | `KeyedResult` | First success |
+| `settled(atoms)` | `SettledResult<T>[]` | All with status |
 | `safe(fn)` | `[Error?, T?]` | Safe error handling |
-| `ready(atom)` | `boolean` | Check if ready |
+| `state(atom)` | `SelectStateResult<T>` | Get atom state |
+| `and(conditions)` | `boolean` | Logical AND |
+| `or(conditions)` | `boolean` | Logical OR |
+
+#### and() / or() - Boolean Operators
+
+Logical AND and OR operators with short-circuit evaluation. Accept an array of conditions.
+
+```ts
+type Condition =
+  | boolean                         // Static value (no subscription)
+  | Atom<unknown>                   // Always read & subscribed
+  | (() => boolean | Atom<unknown>) // Lazy (only evaluated if needed)
+```
+
+##### and()
+
+Returns `true` if ALL conditions are truthy. Short-circuits on first falsy value.
+
+```ts
+// All must be truthy
+const canAccess = and([isLoggedIn$, hasPermission$, isActive$]);
+
+// With lazy evaluation (only check permission if logged in)
+const canDelete = and([
+  isLoggedIn$,           // Always checked
+  () => hasDeleteRole$,  // Only checked if logged in
+]);
+
+// With static config
+const enabled = and([FEATURE_FLAG, isLoggedIn$, () => hasLicense$]);
+```
+
+##### or()
+
+Returns `true` if ANY condition is truthy. Short-circuits on first truthy value.
+
+```ts
+// Any truthy is enough
+const hasData = or([cacheData$, apiData$, fallbackData$]);
+
+// With lazy fallback chain
+const result = or([
+  () => primarySource$,   // Try primary first
+  () => secondarySource$, // Only if primary is falsy
+  () => fallbackSource$,  // Last resort
+]);
+```
+
+##### Composition
+
+Since `and()` and `or()` return booleans, they can be nested:
+
+```ts
+// (A && B) || C
+const result1 = or([and([a$, b$]), c$]);
+
+// A || (B && C)
+const result2 = or([a$, and([b$, c$])]);
+
+// Complex: feature && logged in && (has permission || is admin)
+const canAccess = and([
+  FEATURE_ENABLED,
+  isLoggedIn$,
+  or([hasPermission$, isAdmin$]),
+]);
+
+// With lazy branches
+const result = and([
+  quickCheck$,
+  () => or([cachedResult$, () => expensiveCheck$]),
+]);
 
 ---
 
@@ -632,4 +702,15 @@ interface AtomMeta {
   key?: string;
   [key: string]: unknown;
 }
+```
+
+### Condition
+
+Input type for `and()` / `or()` boolean operators.
+
+```ts
+type Condition =
+  | boolean                         // Static value (no subscription)
+  | Atom<unknown>                   // Always read & subscribed
+  | (() => boolean | Atom<unknown>) // Lazy evaluation
 ```

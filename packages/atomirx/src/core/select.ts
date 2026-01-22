@@ -71,6 +71,19 @@ export type SafeResult<T> =
   | [error: unknown, result: undefined];
 
 /**
+ * Condition input type for and()/or() operators.
+ *
+ * Supports three forms:
+ * - `boolean` - Static value, no subscription
+ * - `Atom<unknown>` - Always read and subscribed
+ * - `() => boolean | Atom<unknown>` - Lazy evaluation, only called if needed
+ */
+export type Condition =
+  | boolean
+  | Atom<unknown>
+  | (() => boolean | Atom<unknown>);
+
+/**
  * Context object passed to selector functions.
  * Provides utilities for reading atoms and handling async operations.
  */
@@ -294,6 +307,115 @@ export interface SelectContext extends Pipeable {
    * ```
    */
   state<T>(selector: () => T): SelectStateResult<T>;
+
+  /**
+   * Logical AND - returns true if ALL conditions are truthy.
+   * Short-circuits on first falsy value (lazy conditions after that are not evaluated).
+   *
+   * ## Condition Types
+   *
+   * - `boolean` - Static value, no subscription
+   * - `Atom<T>` - Always read and subscribed
+   * - `() => boolean | Atom<T>` - Lazy, only called if previous conditions are truthy
+   *
+   * ## Evaluation Flow
+   *
+   * ```
+   * and([a, b, () => c, () => d])
+   *      │
+   *      ▼
+   *   a truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   b truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   call () => c
+   *   c truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   call () => d
+   *   d truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   return true
+   * ```
+   *
+   * @param conditions - Array of conditions (booleans, atoms, or lazy functions)
+   * @returns true if all conditions are truthy, false otherwise
+   *
+   * @example
+   * ```ts
+   * // Simple: all atoms must be truthy
+   * const canAccess = and([isLoggedIn$, hasPermission$]);
+   *
+   * // With static value
+   * const canEdit = and([FEATURE_ENABLED, isLoggedIn$, hasEditRole$]);
+   *
+   * // With lazy evaluation (only check permission if logged in)
+   * const canDelete = and([
+   *   isLoggedIn$,
+   *   () => hasDeletePermission$,  // Only read if logged in
+   * ]);
+   *
+   * // Nested: (A && B) || C
+   * const result = or([and([a$, b$]), c$]);
+   * ```
+   */
+  and(conditions: Condition[]): boolean;
+
+  /**
+   * Logical OR - returns true if ANY condition is truthy.
+   * Short-circuits on first truthy value (lazy conditions after that are not evaluated).
+   *
+   * ## Condition Types
+   *
+   * - `boolean` - Static value, no subscription
+   * - `Atom<T>` - Always read and subscribed
+   * - `() => boolean | Atom<T>` - Lazy, only called if previous conditions are falsy
+   *
+   * ## Evaluation Flow
+   *
+   * ```
+   * or([a, b, () => c, () => d])
+   *     │
+   *     ▼
+   *  a truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  b truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  call () => c
+   *  c truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  call () => d
+   *  d truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  return false
+   * ```
+   *
+   * @param conditions - Array of conditions (booleans, atoms, or lazy functions)
+   * @returns true if any condition is truthy, false otherwise
+   *
+   * @example
+   * ```ts
+   * // Simple: any atom truthy
+   * const hasData = or([cacheData$, apiData$]);
+   *
+   * // With lazy fallback chain
+   * const data = or([
+   *   () => primaryData$,   // Try primary first
+   *   () => fallbackData$,  // Only if primary is falsy
+   * ]);
+   *
+   * // Nested: A || (B && C)
+   * const result = or([a$, and([b$, c$])]);
+   * ```
+   */
+  or(conditions: Condition[]): boolean;
 }
 
 /**
@@ -794,6 +916,97 @@ export function select<T>(
     }
   }
 
+  /**
+   * Evaluates a single condition and returns its boolean value.
+   * Handles boolean, atom, and lazy function inputs.
+   *
+   * @param cond - The condition to evaluate
+   * @returns The boolean value of the condition
+   */
+  const evaluateCondition = (cond: Condition): boolean => {
+    if (typeof cond === "boolean") {
+      return cond;
+    }
+
+    if (typeof cond === "function") {
+      const result = cond();
+      if (typeof result === "boolean") {
+        return result;
+      }
+      // It's an atom returned from the function
+      return Boolean(read(result));
+    }
+
+    // It's an atom
+    return Boolean(read(cond));
+  };
+
+  /**
+   * and() - Logical AND with short-circuit evaluation
+   *
+   * ## Evaluation Flow
+   *
+   * ```
+   * and([a, b, () => c])
+   *      │
+   *      ▼
+   *   a truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   b truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   call () => c
+   *   c truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   return true
+   * ```
+   */
+  const and = (conditions: Condition[]): boolean => {
+    assertSelecting("and");
+
+    for (const cond of conditions) {
+      if (!evaluateCondition(cond)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  /**
+   * or() - Logical OR with short-circuit evaluation
+   *
+   * ## Evaluation Flow
+   *
+   * ```
+   * or([a, b, () => c])
+   *     │
+   *     ▼
+   *  a truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  b truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  call () => c
+   *  c truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  return false
+   * ```
+   */
+  const or = (conditions: Condition[]): boolean => {
+    assertSelecting("or");
+
+    for (const cond of conditions) {
+      if (evaluateCondition(cond)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Create the context
   const context: SelectContext = withUse({
     read,
@@ -805,6 +1018,8 @@ export function select<T>(
     settled,
     safe,
     state,
+    and,
+    or,
   });
 
   // Execute the selector function and build result

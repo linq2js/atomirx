@@ -226,6 +226,52 @@ const content$ = derived(({ read }) => {
 });
 ```
 
+### Boolean Operators: and() / or()
+
+Use `and()` and `or()` for composable boolean logic with short-circuit evaluation:
+
+```ts
+// and() - all must be truthy
+const canAccess$ = derived(({ and }) => 
+  and([isLoggedIn$, hasPermission$, isActive$])
+);
+
+// or() - any truthy is enough
+const hasData$ = derived(({ or }) => 
+  or([cacheData$, apiData$, fallbackData$])
+);
+```
+
+**Condition types:**
+- `boolean` - Static value (no subscription)
+- `Atom<T>` - Always read and subscribed
+- `() => boolean | Atom<T>` - Lazy, only evaluated if needed
+
+**Lazy evaluation for performance:**
+
+```ts
+const canDelete$ = derived(({ and }) => 
+  and([
+    isLoggedIn$,           // Always checked first
+    () => hasDeleteRole$,  // Only checked if logged in
+    () => canDeleteItem$,  // Only checked if has role
+  ])
+);
+```
+
+**Nested composition:**
+
+```ts
+// Complex: feature && loggedIn && (hasPermission || isAdmin)
+const canAccess$ = derived(({ and, or }) => 
+  and([
+    FEATURE_ENABLED,       // Static config
+    isLoggedIn$,
+    or([hasPermission$, isAdmin$]),
+  ])
+);
+```
+
 ---
 
 ## Effects

@@ -7,7 +7,12 @@ export { effect, type EffectContext } from "./core/effect";
 export { emitter } from "./core/emitter";
 export { isAtom, isDerived } from "./core/isAtom";
 export { pool, isPool } from "./core/pool";
-export { select, AllAtomsRejectedError, isVirtualAtom } from "./core/select";
+export {
+  select,
+  AllAtomsRejectedError,
+  isVirtualAtom,
+  type Condition,
+} from "./core/select";
 
 // Promise utilities
 export { getAtomState } from "./core/getAtomState";
