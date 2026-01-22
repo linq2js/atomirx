@@ -81,98 +81,101 @@ const MAX_LOG_ENTRIES = 100;
  * eventLog.clear();
  * ```
  */
-export const eventLogStore = define(() => {
-  // ─────────────────────────────────────────────────────────────
-  // Internal State
-  // ─────────────────────────────────────────────────────────────
+export const eventLogStore = define(
+  () => {
+    // ─────────────────────────────────────────────────────────────
+    // Internal State
+    // ─────────────────────────────────────────────────────────────
 
-  /** Counter for generating unique log IDs */
-  let nextId = 0;
+    /** Counter for generating unique log IDs */
+    let nextId = 0;
 
-  // ─────────────────────────────────────────────────────────────
-  // Atoms
-  // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    // Atoms
+    // ─────────────────────────────────────────────────────────────
 
-  /**
-   * All log entries.
-   * Capped at MAX_LOG_ENTRIES to prevent memory issues.
-   */
-  const logs$ = atom<LogEntry[]>([], {
-    meta: { key: "eventLog.logs" },
-  });
+    /**
+     * All log entries.
+     * Capped at MAX_LOG_ENTRIES to prevent memory issues.
+     */
+    const logs$ = atom<LogEntry[]>([], {
+      meta: { key: "eventLog.logs" },
+    });
 
-  // ─────────────────────────────────────────────────────────────
-  // Derived
-  // ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    // Derived
+    // ─────────────────────────────────────────────────────────────
 
-  /**
-   * Number of log entries.
-   */
-  const logCount$ = derived(({ read }) => read(logs$).length, {
-    meta: { key: "eventLog.logCount" },
-  });
+    /**
+     * Number of log entries.
+     */
+    const logCount$ = derived(({ read }) => read(logs$).length, {
+      meta: { key: "eventLog.logCount" },
+    });
 
-  // ─────────────────────────────────────────────────────────────
-  // Actions
-  // ─────────────────────────────────────────────────────────────
-
-  /**
-   * Add a new log entry.
-   *
-   * @param message - The message to log
-   * @param type - The type of log entry (default: "info")
-   * @returns The created log entry
-   *
-   * @example
-   * ```ts
-   * eventLog.log("User clicked button");
-   * eventLog.log("Saved successfully", "success");
-   * eventLog.log("Failed to save", "error");
-   * ```
-   */
-  function log(message: string, type: LogEntryType = "info"): LogEntry {
-    const entry: LogEntry = {
-      id: ++nextId,
-      message,
-      timestamp: new Date(),
-      type,
-    };
-
-    logs$.set((prev) => [...prev, entry].slice(-MAX_LOG_ENTRIES));
-
-    return entry;
-  }
-
-  /**
-   * Clear all log entries.
-   *
-   * @description
-   * Removes all entries from the log. Resets to empty array.
-   * Does not reset the ID counter.
-   *
-   * @example
-   * ```ts
-   * eventLog.clear();
-   * // logs$ is now []
-   * ```
-   */
-  function clear(): void {
-    logs$.set([]);
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // Return Public API
-  // ─────────────────────────────────────────────────────────────
-
-  return {
-    // Read-only state (prevents external mutations)
-    ...readonly({ logs$ }),
-
-    // Derived state (already read-only by nature)
-    logCount$,
-
+    // ─────────────────────────────────────────────────────────────
     // Actions
-    log,
-    clear,
-  };
-});
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Add a new log entry.
+     *
+     * @param message - The message to log
+     * @param type - The type of log entry (default: "info")
+     * @returns The created log entry
+     *
+     * @example
+     * ```ts
+     * eventLog.log("User clicked button");
+     * eventLog.log("Saved successfully", "success");
+     * eventLog.log("Failed to save", "error");
+     * ```
+     */
+    function log(message: string, type: LogEntryType = "info"): LogEntry {
+      const entry: LogEntry = {
+        id: ++nextId,
+        message,
+        timestamp: new Date(),
+        type,
+      };
+
+      logs$.set((prev) => [...prev, entry].slice(-MAX_LOG_ENTRIES));
+
+      return entry;
+    }
+
+    /**
+     * Clear all log entries.
+     *
+     * @description
+     * Removes all entries from the log. Resets to empty array.
+     * Does not reset the ID counter.
+     *
+     * @example
+     * ```ts
+     * eventLog.clear();
+     * // logs$ is now []
+     * ```
+     */
+    function clear(): void {
+      logs$.set([]);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Return Public API
+    // ─────────────────────────────────────────────────────────────
+
+    return {
+      // Read-only state (prevents external mutations)
+      ...readonly({ logs$ }),
+
+      // Derived state (already read-only by nature)
+      logCount$,
+
+      // Actions
+      log,
+      clear,
+    };
+  },
+  { key: "eventLogStore" }
+);

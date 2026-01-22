@@ -125,59 +125,84 @@ describe("pool", () => {
   });
 
   describe("event subscriptions", () => {
-    it("should notify onChange when value changes", () => {
+    it("should emit create event when entry is created", () => {
       const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
       const listener = vi.fn();
-      testPool.onChange(listener);
+      testPool.on(listener);
 
       testPool.get({ id: "a" });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith({
+        type: "create",
+        params: { id: "a" },
+        value: 0,
+      });
+    });
+
+    it("should emit change event when value changes", () => {
+      const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
+      const listener = vi.fn();
+
+      testPool.get({ id: "a" }); // create
+      testPool.on(listener);
       testPool.set({ id: "a" }, 42);
 
       expect(listener).toHaveBeenCalledTimes(1);
-      expect(listener).toHaveBeenCalledWith({ id: "a" }, 42);
+      expect(listener).toHaveBeenCalledWith({
+        type: "change",
+        params: { id: "a" },
+        value: 42,
+      });
     });
 
-    it("should notify onRemove when entry is removed", () => {
+    it("should emit remove event when entry is removed", () => {
       const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
       const listener = vi.fn();
-      testPool.onRemove(listener);
+      testPool.on(listener);
 
       testPool.get({ id: "a" });
       testPool.set({ id: "a" }, 42);
       testPool.remove({ id: "a" });
 
-      expect(listener).toHaveBeenCalledTimes(1);
-      expect(listener).toHaveBeenCalledWith({ id: "a" }, 42);
+      expect(listener).toHaveBeenCalledTimes(3); // create, change, remove
+      expect(listener).toHaveBeenLastCalledWith({
+        type: "remove",
+        params: { id: "a" },
+        value: 42,
+      });
     });
 
-    it("should allow unsubscribing from onChange", () => {
+    it("should allow unsubscribing", () => {
       const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
       const listener = vi.fn();
-      const unsub = testPool.onChange(listener);
 
-      testPool.get({ id: "a" });
+      testPool.get({ id: "a" }); // create entry first
+      const unsub = testPool.on(listener);
+
       testPool.set({ id: "a" }, 1);
       expect(listener).toHaveBeenCalledTimes(1);
 
       unsub();
       testPool.set({ id: "a" }, 2);
-      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledTimes(1); // no new calls
     });
 
-    it("should allow unsubscribing from onRemove", () => {
+    it("should allow filtering by event type", () => {
       const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
-      const listener = vi.fn();
-      const unsub = testPool.onRemove(listener);
+      const removeEvents: unknown[] = [];
+      testPool.on((event) => {
+        if (event.type === "remove") {
+          removeEvents.push(event);
+        }
+      });
 
       testPool.get({ id: "a" });
       testPool.get({ id: "b" });
-
       testPool.remove({ id: "a" });
-      expect(listener).toHaveBeenCalledTimes(1);
-
-      unsub();
       testPool.remove({ id: "b" });
-      expect(listener).toHaveBeenCalledTimes(1);
+
+      expect(removeEvents).toHaveLength(2);
     });
   });
 
@@ -236,16 +261,24 @@ describe("pool", () => {
       expect(testPool.has({ id: "a" })).toBe(false);
     });
 
-    it("should notify onRemove when GC removes entry", () => {
+    it("should emit remove event when GC removes entry", () => {
       const testPool = pool((_: { id: string }) => 0, { gcTime: 1000 });
-      const listener = vi.fn();
-      testPool.onRemove(listener);
+      const removeEvents: unknown[] = [];
+      testPool.on((event) => {
+        if (event.type === "remove") {
+          removeEvents.push(event);
+        }
+      });
 
       testPool.get({ id: "a" });
       vi.advanceTimersByTime(1000);
 
-      expect(listener).toHaveBeenCalledTimes(1);
-      expect(listener).toHaveBeenCalledWith({ id: "a" }, 0);
+      expect(removeEvents).toHaveLength(1);
+      expect(removeEvents[0]).toEqual({
+        type: "remove",
+        params: { id: "a" },
+        value: 0,
+      });
     });
   });
 

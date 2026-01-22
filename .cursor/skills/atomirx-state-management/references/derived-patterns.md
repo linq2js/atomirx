@@ -2,6 +2,47 @@
 
 The `derived()` function creates a computed atom that automatically recomputes when dependencies change.
 
+## IMPORTANT: Derived Value is Always a Promise
+
+**The `.get()` method of a derived atom ALWAYS returns a `Promise<T>`**, even for synchronous computations. This is by design:
+
+- **Unified async handling** - Derived atoms seamlessly handle both sync and async dependency atoms
+- **Reactive composition** - Use `derived()` when you need to reactively combine multiple atoms regardless of whether they're sync or async
+- **Suspense integration** - The Promise-based API enables React Suspense support
+
+```typescript
+const count$ = atom(5); // Sync atom
+const user$ = atom(fetchUser()); // Async atom
+
+// Both dependencies handled uniformly
+const summary$ = derived(({ read }) => {
+  const count = read(count$); // Works for sync
+  const user = read(user$); // Works for async (suspends until resolved)
+  return `${user.name} has ${count} items`;
+});
+
+// .get() ALWAYS returns Promise
+const value = await summary$.get(); // "John has 5 items"
+```
+
+## When to Use Derived
+
+**Use `derived()` for reactive computation with multiple atoms:**
+
+- Combining/transforming values from multiple atoms
+- Computing derived values that update automatically
+- Handling both sync and async dependency atoms uniformly
+- Creating computed properties that others can subscribe to
+
+**Do NOT use `derived()` for:**
+
+- **Updating/mutating atoms** - NEVER call `.set()` inside derived (use `effect()` instead)
+- Side effects (use `effect()` instead)
+- User-triggered actions (write plain functions that call `.set()`)
+- Operations that need to mutate atoms (use `effect()` or plain functions)
+
+See [When to Use What](#when-to-use-what) for detailed decision rules.
+
 ## Overview
 
 ```typescript
@@ -29,6 +70,49 @@ const user$ = derived(({ read }) => read(userData$), { meta: { key: "user" } });
 5. **Suspense-like async** - `read()` throws Promise if loading
 
 ## Selector Rules (CRITICAL)
+
+### NEVER Update Atoms Inside Derived
+
+**Derived is for pure computation only.** Never call `.set()` on any atom inside a derived selector:
+
+```typescript
+// ❌ FORBIDDEN - Don't update atoms in derived
+derived(({ read }) => {
+  const items = read(cartItems$);
+  const total = items.reduce((sum, i) => sum + i.price, 0);
+  cartTotal$.set(total); // ❌ NEVER DO THIS
+  return total;
+});
+
+// ❌ FORBIDDEN - Don't trigger side effects that modify state
+derived(({ read }) => {
+  const user = read(user$);
+  lastAccessedUser$.set(user.id); // ❌ NEVER DO THIS
+  return user.name;
+});
+
+// ✅ CORRECT - Use effect() when you need to update atoms reactively
+effect(
+  ({ read }) => {
+    const items = read(cartItems$);
+    const total = items.reduce((sum, i) => sum + i.price, 0);
+    cartTotal$.set(total); // ✅ OK in effect
+  },
+  { meta: { key: "compute.cartTotal" } }
+);
+
+// ✅ CORRECT - Derived is pure computation only
+const cartTotal$ = derived(({ read }) => {
+  const items = read(cartItems$);
+  return items.reduce((sum, i) => sum + i.price, 0);
+});
+```
+
+**Why this matters:**
+
+- Derived selectors may re-run multiple times during a single update cycle
+- Updating atoms inside derived causes infinite loops and unpredictable behavior
+- Derived is for **reading and transforming**, not for **writing**
 
 ### MUST Return Synchronous Value - NEVER Return Promise
 
@@ -355,21 +439,104 @@ const currentUser$ = derived(({ read, ready, from }) => {
 });
 ```
 
-## Effect vs Derived
+## When to Use What
 
-| Aspect        | derived()                | effect()                 |
-| ------------- | ------------------------ | ------------------------ |
-| Returns       | Computed value           | void (side effects only) |
-| Lazy          | Yes (computed on access) | No (runs immediately)    |
-| Subscription  | When accessed            | Always active            |
-| Use case      | Transform data           | Sync, persist, log       |
-| Can set atoms | No                       | Yes (use batch)          |
+### Decision Rules (IMPORTANT)
+
+| Scenario                                  | Solution                     | Why                        |
+| ----------------------------------------- | ---------------------------- | -------------------------- |
+| User clicks button → modify atoms         | Plain function with `.set()` | User-triggered, imperative |
+| React to atom changes → compute new value | `derived()`                  | Reactive computation       |
+| React to atom changes → side effects      | `effect()`                   | Reactive side effects      |
+| Need to combine multiple sync/async atoms | `derived()`                  | Handles async uniformly    |
+| Need to persist/log/sync on changes       | `effect()`                   | Side effect execution      |
+
+### Plain Functions for User Actions
+
+When a user action triggers atom modifications, write a plain function:
 
 ```typescript
-// Derived: compute value
-const doubled$ = derived(({ read }) => read(count$) * 2);
+// ✅ CORRECT - User action triggers atom updates
+function addTodo(text: string) {
+  todos$.set(prev => [...prev, { id: Date.now(), text, completed: false }]);
+}
 
-// Effect: side effect
+function toggleTodo(id: number) {
+  todos$.set(prev => prev.map(t =>
+    t.id === id ? { ...t, completed: !t.completed } : t
+  ));
+}
+
+// Usage in React
+<button onClick={() => addTodo("New task")}>Add</button>
+```
+
+### Derived for Reactive Computation
+
+When you need to compute values that update when dependencies change:
+
+```typescript
+// ✅ CORRECT - Reactive computation from multiple atoms
+const filteredTodos$ = derived(({ read }) => {
+  const todos = read(todos$); // May be sync or async
+  const filter = read(filterType$); // May be sync or async
+  return todos.filter(
+    (t) => filter === "all" || t.completed === (filter === "completed")
+  );
+});
+
+const todoStats$ = derived(({ read }) => {
+  const todos = read(todos$);
+  return {
+    total: todos.length,
+    completed: todos.filter((t) => t.completed).length,
+    pending: todos.filter((t) => !t.completed).length,
+  };
+});
+```
+
+### Effect for Reactive Side Effects
+
+When you need to perform side effects (sync execution) when atoms change:
+
+```typescript
+// ✅ CORRECT - React to changes, perform side effect
+effect(
+  ({ read }) => {
+    const todos = read(todos$); // Handles sync/async
+    localStorage.setItem("todos", JSON.stringify(todos));
+  },
+  { meta: { key: "persist.todos" } }
+);
+
+// ✅ CORRECT - Effect can also mutate atoms (use sparingly)
+effect(
+  ({ read }) => {
+    const items = read(cartItems$);
+    const total = items.reduce((sum, i) => sum + i.price, 0);
+    cartTotal$.set(total); // Mutate another atom
+  },
+  { meta: { key: "compute.cartTotal" } }
+);
+```
+
+## Effect vs Derived
+
+| Aspect            | derived()                | effect()                   |
+| ----------------- | ------------------------ | -------------------------- |
+| Returns           | `Promise<T>` (computed)  | void (side effects only)   |
+| Lazy              | Yes (computed on access) | No (runs immediately)      |
+| Subscription      | When accessed            | Always active              |
+| Use case          | Transform/combine data   | Sync, persist, log, mutate |
+| **Can set atoms** | **❌ NEVER**             | **✅ Yes**                 |
+| Async handling    | Suspends until resolved  | Suspends until resolved    |
+
+```typescript
+// Derived: compute value (returns Promise)
+const doubled$ = derived(({ read }) => read(count$) * 2);
+const value = await doubled$.get(); // Always Promise
+
+// Effect: side effect (void return)
 effect(({ read }) => {
   localStorage.setItem("count", String(read(count$)));
 });

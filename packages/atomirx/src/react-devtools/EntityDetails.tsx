@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type {
   EntityInfo,
   MutableEntityInfo,
@@ -150,11 +150,9 @@ function MutableDetails({ entity }: { entity: MutableEntityInfo }) {
 
       {entity.history.length > 0 && (
         <Section label={`History (${entity.history.length})`}>
-          <div style={{ maxHeight: 200, overflow: "auto" }}>
-            {entity.history.map((entry, idx) => (
-              <HistoryEntryItem key={idx} entry={entry} />
-            ))}
-          </div>
+          {entity.history.map((entry, idx) => (
+            <HistoryEntryItem key={idx} entry={entry} />
+          ))}
         </Section>
       )}
     </>
@@ -197,11 +195,9 @@ function DerivedDetails({ entity }: { entity: DerivedEntityInfo }) {
 
       {entity.history.length > 0 && (
         <Section label={`History (${entity.history.length})`}>
-          <div style={{ maxHeight: 200, overflow: "auto" }}>
-            {entity.history.map((entry, idx) => (
-              <HistoryEntryItem key={idx} entry={entry} />
-            ))}
-          </div>
+          {entity.history.map((entry, idx) => (
+            <HistoryEntryItem key={idx} entry={entry} />
+          ))}
         </Section>
       )}
     </>
@@ -244,23 +240,127 @@ function EffectDetails({ entity }: { entity: EffectEntityInfo }) {
 }
 
 /**
+ * Pool entry item component.
+ */
+function PoolEntryItem({ params, value }: { params: unknown; value: unknown }) {
+  return (
+    <div
+      style={{
+        padding: "8px",
+        borderBottom: "1px solid var(--atomirx-border)",
+      }}
+    >
+      <div style={{ marginBottom: 4 }}>
+        <span
+          style={{
+            fontSize: "var(--atomirx-font-size-sm)",
+            color: "var(--atomirx-text-secondary)",
+            marginRight: 6,
+          }}
+        >
+          params:
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--atomirx-font-mono)",
+            fontSize: "var(--atomirx-font-size)",
+            color: "var(--atomirx-info)",
+          }}
+        >
+          {serializeValue(params, 100)}
+        </span>
+      </div>
+      <div>
+        <span
+          style={{
+            fontSize: "var(--atomirx-font-size-sm)",
+            color: "var(--atomirx-text-secondary)",
+            marginRight: 6,
+          }}
+        >
+          value:
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--atomirx-font-mono)",
+            fontSize: "var(--atomirx-font-size)",
+          }}
+        >
+          {serializeValue(value, 200)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Pool details.
  */
 function PoolDetails({ entity }: { entity: PoolEntityInfo }) {
-  const { value } = useMemo(() => getCurrentValue(entity), [entity]);
+  // Force re-render when pool changes
+  const [updateCount, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const instance = entity.instanceRef.deref();
+    if (!instance) return;
+
+    const pool = instance as import("../core/types").Pool<unknown, unknown>;
+    return pool.on(() => {
+      forceUpdate((n) => n + 1);
+    });
+  }, [entity]);
+
+  const entries = useMemo(() => {
+    const instance = entity.instanceRef.deref();
+    if (!instance) return [];
+
+    const pool = instance as import("../core/types").Pool<unknown, unknown>;
+    const result: Array<{ params: unknown; value: unknown }> = [];
+    pool.forEach((value, params) => {
+      result.push({ params, value });
+    });
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity, updateCount]);
 
   return (
     <>
-      <Section label="Entries">
-        <div style={codeBlockStyle}>{value}</div>
-      </Section>
-
       <Section label="Config">
         <div style={detailsValueStyle}>
-          <div>Entry count: {entity.entryCount}</div>
+          <div>Entry count: {entries.length}</div>
           <div>GC time: {entity.gcTime}ms</div>
           <div>Changes: {entity.changeCount}</div>
         </div>
+      </Section>
+
+      <Section label={`Entries (${entries.length})`}>
+        {entries.length === 0 ? (
+          <div
+            style={{
+              color: "var(--atomirx-text-muted)",
+              fontStyle: "italic",
+              padding: 8,
+            }}
+          >
+            No entries
+          </div>
+        ) : (
+          <div
+            style={{
+              backgroundColor: "var(--atomirx-bg-tertiary)",
+              borderRadius: "var(--atomirx-radius)",
+              overflow: "hidden",
+            }}
+          >
+            {entries.map((entry, idx) => (
+              <PoolEntryItem
+                key={idx}
+                params={entry.params}
+                value={entry.value}
+              />
+            ))}
+          </div>
+        )}
       </Section>
     </>
   );
@@ -301,14 +401,19 @@ export const EntityDetails = memo(function EntityDetails({
 
   return (
     <div style={detailsPanelStyle}>
+      {/* Fixed header */}
       <div
         style={{
           ...detailsHeaderStyle,
           display: "flex",
           alignItems: "center",
           gap: 8,
+          flexShrink: 0,
         }}
       >
+        <button style={closeButtonStyle} onClick={onClose} title="Back to list">
+          ←
+        </button>
         <span style={getTypeBadgeStyle(entity.type)}>
           {entity.type === "mutable"
             ? "M"
@@ -333,31 +438,27 @@ export const EntityDetails = memo(function EntityDetails({
         >
           {displayName}
         </span>
-        <button
-          style={closeButtonStyle}
-          onClick={onClose}
-          title="Close details"
-        >
-          ×
-        </button>
       </div>
 
-      <Section label="ID">
-        <div
-          style={{
-            ...detailsValueStyle,
-            fontSize: "var(--atomirx-font-size-sm)",
-          }}
-        >
-          {entity.id}
-        </div>
-      </Section>
+      {/* Scrollable content */}
+      <div style={{ flex: "1 1 0", overflow: "auto", minHeight: 0, height: 0 }}>
+        <Section label="ID">
+          <div
+            style={{
+              ...detailsValueStyle,
+              fontSize: "var(--atomirx-font-size-sm)",
+            }}
+          >
+            {entity.id}
+          </div>
+        </Section>
 
-      <Section label="Created">
-        <div style={detailsValueStyle}>{formatTimestamp(entity.createdAt)}</div>
-      </Section>
+        <Section label="Created">
+          <div style={detailsValueStyle}>
+            {formatTimestamp(entity.createdAt)}
+          </div>
+        </Section>
 
-      <div style={{ flex: 1, overflow: "auto" }}>
         {entity.type === "mutable" && (
           <MutableDetails entity={entity as MutableEntityInfo} />
         )}

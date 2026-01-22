@@ -1,5 +1,7 @@
 import { onCreateHook } from "../core/onCreateHook";
 import type { CreateInfo, ModuleInfo } from "../core/onCreateHook";
+import { onErrorHook } from "../core/onErrorHook";
+import { onDispatchHook } from "../react/onDispatchHook";
 import { getRegistry, _forceResetRegistry } from "./registry";
 import type { DevtoolsOptions, DevtoolsRegistry } from "./types";
 import { DEFAULT_MAX_HISTORY_SIZE } from "./constants";
@@ -129,12 +131,45 @@ export function setupDevtools(options: DevtoolsOptions = {}): () => void {
     }
   });
 
+  // Hook into dispatch events (only log if meta.key exists)
+  onDispatchHook.override((prev) => (info) => {
+    prev?.(info);
+
+    // Only log dispatches with a key
+    if (info.meta?.key) {
+      registry.addLog({
+        type: "action.dispatch",
+        timestamp: Date.now(),
+        actionKey: info.meta.key,
+        deps: JSON.stringify(info.deps).slice(0, 100),
+      });
+    }
+  });
+
+  // Note: Atom/derived/pool events are logged via subscriptions in registry._track* methods
+
+  // Hook into error events
+  onErrorHook.override((prev) => (info) => {
+    prev?.(info);
+
+    registry.addLog({
+      type: "error",
+      timestamp: Date.now(),
+      sourceType: info.source.type,
+      sourceKey: info.source.key,
+      error: String(info.error).slice(0, 200),
+    });
+  });
+
   isEnabled = true;
 
   // Create cleanup function
   cleanupFn = () => {
     onCreateHook.reset();
+    onDispatchHook.reset();
+    onErrorHook.reset();
     registry.clear();
+    registry.clearLogs();
     isEnabled = false;
     cleanupFn = null;
   };

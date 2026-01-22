@@ -53,9 +53,9 @@ export {
 export {
   useDevtoolsPreferences,
   useDevtoolsRegistry,
+  useDevtoolsLogs,
   useKeyboardShortcuts,
   usePanelResize,
   serializeValue,
   formatTimestamp,
-  formatRelativeTime,
 } from "./hooks";

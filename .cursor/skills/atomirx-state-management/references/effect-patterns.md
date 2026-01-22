@@ -1,26 +1,69 @@
 # Effect Patterns - Side Effects on State Changes
 
-The `effect()` function creates side-effects that run when accessed atoms change. Effects are for actions (logging, syncing, persisting), NOT computed values.
+The `effect()` function creates side-effects that run when accessed atoms change. Effects are for **synchronous execution** (logging, syncing, persisting, mutating) after handling sync/async atom values.
+
+## IMPORTANT: Effect Handles Sync/Async, Then Executes Synchronously
+
+Effects are responsible for:
+
+1. **Handling sync/async values** - `read()` suspends until async atoms resolve
+2. **Executing synchronously** - Once values are available, the effect body runs synchronously
+3. **Performing side effects** - Logging, updating external state, persisting, or mutating other atoms
+
+```typescript
+const user$ = atom(fetchUser()); // Async atom
+const preferences$ = atom({ theme: "dark" }); // Sync atom
+
+// Effect handles both sync and async, then executes synchronously
+effect(
+  ({ read }) => {
+    const user = read(user$); // Suspends until resolved
+    const prefs = read(preferences$); // Reads immediately
+
+    // Synchronous execution after all values resolved
+    console.log(`User ${user.name} prefers ${prefs.theme}`);
+    localStorage.setItem("lastUser", user.id);
+  },
+  { meta: { key: "log.userPrefs" } }
+);
+```
+
+## When to Use Effect
+
+**Use `effect()` when you need to:**
+
+- React to atom changes and perform side effects (logging, persisting, syncing)
+- Handle multiple atoms (sync or async) and then do something with the values
+- Mutate other atoms based on computed values
+
+**Do NOT use `effect()` when:**
+
+- User triggers the action (write a plain function with `.set()` instead)
+- You need a computed value (use `derived()` instead)
+- The operation should return a value (use `derived()` instead)
+
+See [When to Use What](#when-to-use-what) for detailed decision rules.
 
 ## Overview
 
-| Feature               | Description                                              |
-| --------------------- | -------------------------------------------------------- |
-| **Automatic cleanup** | Previous cleanup runs before next execution              |
-| **Suspense-aware**    | Waits for async atoms to resolve before running          |
-| **Batched updates**   | Atom updates within effect are automatically batched     |
-| **Conditional deps**  | Only tracks atoms actually accessed via `read()`         |
-| **Eager execution**   | Runs immediately on creation (unlike lazy `derived`)     |
+| Feature               | Description                                          |
+| --------------------- | ---------------------------------------------------- |
+| **Automatic cleanup** | Previous cleanup runs before next execution          |
+| **Suspense-aware**    | Waits for async atoms to resolve before running      |
+| **Batched updates**   | Atom updates within effect are automatically batched |
+| **Conditional deps**  | Only tracks atoms actually accessed via `read()`     |
+| **Eager execution**   | Runs immediately on creation (unlike lazy `derived`) |
 
 ## Core API
 
 ```typescript
 interface Effect {
-  dispose: VoidFunction;  // Stop effect and run final cleanup
-  meta?: EffectMeta;      // Metadata for debugging
+  dispose: VoidFunction; // Stop effect and run final cleanup
+  meta?: EffectMeta; // Metadata for debugging
 }
 
-interface EffectContext extends SelectContext, WithReadyContext, WithAbortContext {
+interface EffectContext
+  extends SelectContext, WithReadyContext, WithAbortContext {
   onCleanup: (cleanup: VoidFunction) => void;
 }
 ```
@@ -49,22 +92,22 @@ e.dispose();
 
 All `SelectContext` methods plus cleanup utilities:
 
-| Method       | Signature                 | Description                        |
-| ------------ | ------------------------- | ---------------------------------- |
-| `read()`     | `(atom$) => T`            | Read atom value, track dependency  |
-| `ready()`    | `(atom$) => NonNull<T>`   | Wait for non-null value            |
-| `from()`     | `(pool, params) => Scoped`| Get ScopedAtom from pool           |
-| `track()`    | `(atom$) => void`         | Track without reading              |
-| `safe()`     | `(fn) => [err, result]`   | Catch errors, preserve Suspense    |
-| `state()`    | `(atom$) => AtomState`    | Get state without throwing         |
-| `all()`      | `([...atoms]) => [...]`   | Wait for all                       |
-| `any()`      | `({...atoms}) => {k,v}`   | First ready                        |
-| `race()`     | `({...atoms}) => {k,v}`   | First settled                      |
-| `settled()`  | `([...atoms]) => [...]`   | All results                        |
-| `and()`      | `([...conds]) => boolean` | Logical AND                        |
-| `or()`       | `([...conds]) => boolean` | Logical OR                         |
-| `onCleanup()`| `(fn) => void`            | Register cleanup function          |
-| `signal`     | `AbortSignal`             | Aborted on re-run or dispose       |
+| Method        | Signature                  | Description                       |
+| ------------- | -------------------------- | --------------------------------- |
+| `read()`      | `(atom$) => T`             | Read atom value, track dependency |
+| `ready()`     | `(atom$) => NonNull<T>`    | Wait for non-null value           |
+| `from()`      | `(pool, params) => Scoped` | Get ScopedAtom from pool          |
+| `track()`     | `(atom$) => void`          | Track without reading             |
+| `safe()`      | `(fn) => [err, result]`    | Catch errors, preserve Suspense   |
+| `state()`     | `(atom$) => AtomState`     | Get state without throwing        |
+| `all()`       | `([...atoms]) => [...]`    | Wait for all                      |
+| `any()`       | `({...atoms}) => {k,v}`    | First ready                       |
+| `race()`      | `({...atoms}) => {k,v}`    | First settled                     |
+| `settled()`   | `([...atoms]) => [...]`    | All results                       |
+| `and()`       | `([...conds]) => boolean`  | Logical AND                       |
+| `or()`        | `([...conds]) => boolean`  | Logical OR                        |
+| `onCleanup()` | `(fn) => void`             | Register cleanup function         |
+| `signal`      | `AbortSignal`              | Aborted on re-run or dispose      |
 
 ## CRITICAL Rules
 
@@ -143,20 +186,17 @@ effect(({ read }) => {
 });
 
 // ✅ REQUIRED - Separate effects for each workflow
-effect(
-  ({ read }) => localStorage.setItem("count", String(read(count$))),
-  { meta: { key: "persist.count" } }
-);
+effect(({ read }) => localStorage.setItem("count", String(read(count$))), {
+  meta: { key: "persist.count" },
+});
 
-effect(
-  ({ read }) => syncToServer(read(count$)),
-  { meta: { key: "sync.count" } }
-);
+effect(({ read }) => syncToServer(read(count$)), {
+  meta: { key: "sync.count" },
+});
 
-effect(
-  ({ read }) => trackEvent("count_changed", read(count$)),
-  { meta: { key: "analytics.count" } }
-);
+effect(({ read }) => trackEvent("count_changed", read(count$)), {
+  meta: { key: "analytics.count" },
+});
 ```
 
 ## Cleanup Patterns
@@ -363,14 +403,14 @@ effect(
 
 ## Effect vs Derived
 
-| Aspect          | effect()                    | derived()                   |
-| --------------- | --------------------------- | --------------------------- |
-| **Returns**     | void (side effects only)    | Computed value              |
-| **Execution**   | Eager (runs immediately)    | Lazy (on first access)      |
-| **Purpose**     | Side effects (sync, log)    | Compute/transform data      |
-| **Can set atoms**| Yes (use `batch`)          | No                          |
-| **Subscription**| Always active               | When accessed               |
-| **Use case**    | Persist, sync, track        | Filter, map, combine        |
+| Aspect            | effect()                 | derived()              |
+| ----------------- | ------------------------ | ---------------------- |
+| **Returns**       | void (side effects only) | Computed value         |
+| **Execution**     | Eager (runs immediately) | Lazy (on first access) |
+| **Purpose**       | Side effects (sync, log) | Compute/transform data |
+| **Can set atoms** | **✅ Yes**               | **❌ NEVER**           |
+| **Subscription**  | Always active            | When accessed          |
+| **Use case**      | Persist, sync, track     | Filter, map, combine   |
 
 ```typescript
 // Effect: side effect (sync to localStorage)
@@ -476,20 +516,110 @@ describe("persistEffect", () => {
 });
 ```
 
+## When to Use What
+
+### Decision Rules (IMPORTANT)
+
+| Scenario                                                   | Solution                     | Why                        |
+| ---------------------------------------------------------- | ---------------------------- | -------------------------- |
+| User clicks button → modify atoms                          | Plain function with `.set()` | User-triggered, imperative |
+| React to atom changes → compute new value                  | `derived()`                  | Reactive computation       |
+| React to atom changes → side effects                       | `effect()`                   | Reactive side effects      |
+| Need to combine multiple sync/async atoms for value        | `derived()`                  | Returns computed value     |
+| Need to handle multiple sync/async atoms then DO something | `effect()`                   | Side effect execution      |
+
+### Plain Functions for User Actions
+
+When a user action triggers atom modifications, write a plain function:
+
+```typescript
+// ✅ CORRECT - User action triggers atom updates
+function addItem(item: Item) {
+  cart$.set(prev => [...prev, item]);
+}
+
+function checkout() {
+  const items = cart$.staleValue ?? [];
+  processPayment(items);
+  cart$.set([]);  // Clear cart
+}
+
+// Usage in React
+<button onClick={() => addItem(product)}>Add to Cart</button>
+<button onClick={checkout}>Checkout</button>
+```
+
+### Effect for Reactive Side Effects
+
+When you need to react to atom changes (regardless of sync/async) and perform side effects:
+
+```typescript
+// ✅ CORRECT - React to changes, handle sync/async, then execute sync
+effect(
+  ({ read }) => {
+    const cart = read(cart$); // May be sync or async
+    const user = read(currentUser$); // May be sync or async
+
+    // Synchronous execution after values resolved
+    analytics.track("cart_updated", {
+      userId: user.id,
+      itemCount: cart.length,
+    });
+  },
+  { meta: { key: "analytics.cart" } }
+);
+
+// ✅ CORRECT - Effect that mutates atoms
+effect(
+  ({ read }) => {
+    const items = read(cartItems$);
+    const discounts = read(activeDiscounts$);
+
+    // Compute and mutate
+    const total = calculateTotal(items, discounts);
+    cartTotal$.set(total);
+  },
+  { meta: { key: "compute.cartTotal" } }
+);
+```
+
+### Derived for Reactive Computation (Returns Value)
+
+When you need a computed value that updates reactively:
+
+```typescript
+// ✅ CORRECT - Returns computed value (Promise)
+const cartSummary$ = derived(({ read }) => {
+  const items = read(cartItems$);
+  const user = read(currentUser$);
+  return {
+    items,
+    total: items.reduce((sum, i) => sum + i.price, 0),
+    discount: user.isPremium ? 0.1 : 0,
+  };
+});
+
+// Usage: await cartSummary$.get()
+```
+
 ## When to Use Effect (IMPORTANT)
 
 ✅ **MUST use effect when:**
 
+- Reacting to atom changes and performing side effects
+- Handling multiple sync/async atoms then executing synchronously
 - Syncing state to external storage (localStorage, IndexedDB)
 - Sending analytics events
 - Logging/debugging state changes
 - Managing subscriptions (WebSocket, EventSource)
 - Updating document title or other DOM properties
 - Cross-tab synchronization
+- Mutating atoms based on other atom values
 
 ❌ **NEVER use effect when:**
 
+- User triggers the action (write plain function with `.set()`)
 - Computing derived values (use `derived` instead)
 - Transforming data (use `derived` instead)
 - You need a return value (use `derived` instead)
-- The operation should only happen on-demand (use action in store)
+- The operation should only happen on-demand (use plain function)

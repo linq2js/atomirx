@@ -415,6 +415,17 @@ export type SingleOrMultipleListeners<T> = Listener<T> | Listener<T>[];
 // ============================================================================
 
 /**
+ * Event emitted by pool's `on()` method.
+ *
+ * @template P - The type of params used to index entries
+ * @template T - The type of value stored in each entry
+ */
+export type PoolEvent<P, T> =
+  | { type: "create"; params: P; value: T }
+  | { type: "change"; params: P; value: T }
+  | { type: "remove"; params: P; value: T };
+
+/**
  * A scoped atom is a temporary wrapper around a real atom from a pool.
  * It is only valid during a select() context and throws if accessed outside.
  *
@@ -575,6 +586,8 @@ export interface Pool<P, T> {
    */
   clear(): void;
 
+  size(): number;
+
   /**
    * Iterate over all entries in the pool.
    *
@@ -583,20 +596,34 @@ export interface Pool<P, T> {
   forEach(callback: (value: T, params: P) => void): void;
 
   /**
-   * Subscribe to value changes for any entry.
+   * Subscribe to pool events.
    *
-   * @param listener - Called with (params, newValue) when any entry changes
-   * @returns Unsubscribe function
-   */
-  onChange(listener: (params: P, value: T) => void): VoidFunction;
-
-  /**
-   * Subscribe to entry removals.
+   * Event types:
+   * - `create` - New entry created
+   * - `change` - Existing entry value changed
+   * - `remove` - Entry removed (manual or GC)
    *
-   * @param listener - Called with (params, lastValue) when an entry is removed
+   * @param listener - Called with event object containing type, params, and value
    * @returns Unsubscribe function
+   *
+   * @example
+   * ```ts
+   * const unsub = userPool.on((event) => {
+   *   switch (event.type) {
+   *     case "create":
+   *       console.log("Created:", event.params, event.value);
+   *       break;
+   *     case "change":
+   *       console.log("Changed:", event.params, event.value);
+   *       break;
+   *     case "remove":
+   *       console.log("Removed:", event.params, event.value);
+   *       break;
+   *   }
+   * });
+   * ```
    */
-  onRemove(listener: (params: P, value: T) => void): VoidFunction;
+  on(listener: (event: PoolEvent<P, T>) => void): VoidFunction;
 
   /**
    * Get the underlying atom for params.

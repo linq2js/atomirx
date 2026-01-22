@@ -1,9 +1,4 @@
-import type {
-  MutableAtom,
-  DerivedAtom,
-  Pool,
-  AtomState,
-} from "../core/types";
+import type { MutableAtom, DerivedAtom, Pool, AtomState } from "../core/types";
 import type { Effect } from "../core/effect";
 
 /**
@@ -146,6 +141,9 @@ export interface DevtoolsRegistry {
   /** All tracked entities by ID */
   readonly entities: ReadonlyMap<string, EntityInfo>;
 
+  /** All log entries */
+  readonly logs: readonly LogEntry[];
+
   /**
    * Get entities filtered by type.
    */
@@ -155,6 +153,16 @@ export interface DevtoolsRegistry {
    * Get a specific entity by ID.
    */
   get(id: string): EntityInfo | undefined;
+
+  /**
+   * Add a log entry.
+   */
+  addLog(entry: NewLogEntry): void;
+
+  /**
+   * Clear all logs.
+   */
+  clearLogs(): void;
 
   /**
    * Subscribe to registry changes.
@@ -193,7 +201,145 @@ export type PanelPosition = "bottom" | "right" | "left";
 /**
  * Tab types in the devtools UI.
  */
-export type DevtoolsTab = "atoms" | "effects" | "pools" | "modules";
+export type DevtoolsTab = "atoms" | "effects" | "pools" | "modules" | "logs";
+
+/**
+ * Log entry types.
+ */
+export type LogEntryType =
+  | "action.dispatch"
+  | "error"
+  | "mutable.change"
+  | "mutable.reset"
+  | "derived.change"
+  | "derived.refresh"
+  | "pool.create"
+  | "pool.set"
+  | "pool.remove";
+
+/**
+ * Log entry for action dispatch events.
+ */
+export interface ActionDispatchLogEntry {
+  id: string;
+  type: "action.dispatch";
+  timestamp: number;
+  actionKey: string;
+  deps: string;
+}
+
+/**
+ * Log entry for error events.
+ */
+export interface ErrorLogEntry {
+  id: string;
+  type: "error";
+  timestamp: number;
+  sourceType: string;
+  sourceKey: string | undefined;
+  error: string;
+}
+
+/**
+ * Log entry for mutable atom change events.
+ */
+export interface MutableChangeLogEntry {
+  id: string;
+  type: "mutable.change";
+  timestamp: number;
+  atomKey: string;
+}
+
+/**
+ * Log entry for mutable atom reset events.
+ */
+export interface MutableResetLogEntry {
+  id: string;
+  type: "mutable.reset";
+  timestamp: number;
+  atomKey: string;
+}
+
+/**
+ * Log entry for derived atom change events.
+ */
+export interface DerivedChangeLogEntry {
+  id: string;
+  type: "derived.change";
+  timestamp: number;
+  atomKey: string;
+}
+
+/**
+ * Log entry for derived atom refresh events.
+ */
+export interface DerivedRefreshLogEntry {
+  id: string;
+  type: "derived.refresh";
+  timestamp: number;
+  atomKey: string;
+}
+
+/**
+ * Log entry for pool create events.
+ */
+export interface PoolCreateLogEntry {
+  id: string;
+  type: "pool.create";
+  timestamp: number;
+  poolKey: string;
+  params: string;
+}
+
+/**
+ * Log entry for pool set events.
+ */
+export interface PoolSetLogEntry {
+  id: string;
+  type: "pool.set";
+  timestamp: number;
+  poolKey: string;
+  params: string;
+}
+
+/**
+ * Log entry for pool remove events.
+ */
+export interface PoolRemoveLogEntry {
+  id: string;
+  type: "pool.remove";
+  timestamp: number;
+  poolKey: string;
+  params: string;
+}
+
+/**
+ * Union type for all log entries.
+ */
+export type LogEntry =
+  | ActionDispatchLogEntry
+  | ErrorLogEntry
+  | MutableChangeLogEntry
+  | MutableResetLogEntry
+  | DerivedChangeLogEntry
+  | DerivedRefreshLogEntry
+  | PoolCreateLogEntry
+  | PoolSetLogEntry
+  | PoolRemoveLogEntry;
+
+/**
+ * New log entry without ID (for adding).
+ */
+export type NewLogEntry =
+  | Omit<ActionDispatchLogEntry, "id">
+  | Omit<ErrorLogEntry, "id">
+  | Omit<MutableChangeLogEntry, "id">
+  | Omit<MutableResetLogEntry, "id">
+  | Omit<DerivedChangeLogEntry, "id">
+  | Omit<DerivedRefreshLogEntry, "id">
+  | Omit<PoolCreateLogEntry, "id">
+  | Omit<PoolSetLogEntry, "id">
+  | Omit<PoolRemoveLogEntry, "id">;
 
 /**
  * Filter options for atoms tab.
@@ -235,6 +381,7 @@ export const DEFAULT_PREFERENCES: DevtoolsPreferences = {
     effects: "",
     pools: "",
     modules: "",
+    logs: "",
   },
   atomFilter: "all",
   selectedEntityId: null,

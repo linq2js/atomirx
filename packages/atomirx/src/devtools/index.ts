@@ -53,6 +53,14 @@ export type {
   // History
   ChangeHistoryEntry,
 
+  // Logs
+  LogEntry,
+  LogEntryType,
+  ActionDispatchLogEntry,
+  ErrorLogEntry,
+  PoolCreateLogEntry,
+  NewLogEntry,
+
   // UI types (for react-devtools)
   PanelPosition,
   DevtoolsTab,

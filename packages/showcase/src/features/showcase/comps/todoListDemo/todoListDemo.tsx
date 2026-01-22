@@ -71,7 +71,8 @@ const fetchTodos = (): Promise<Todo[]> =>
 // Module Definition (atoms in stable scope)
 // =============================================================================
 
-const TodoListModule = define(() => {
+const TodoListModule = define(
+  () => {
   // atom() - stores the Promise of todos from server (lazy init)
   const remoteTodoList$ = atom(() => fetchTodos(), {
     meta: { key: "remoteTodos" },
@@ -143,7 +144,9 @@ const TodoListModule = define(() => {
       localTodoList$.set({});
     },
   };
-});
+  },
+  { key: "TodoListModule" }
+);
 
 // =============================================================================
 // Components
@@ -302,11 +305,14 @@ function FilterButton({
 // Demo Module with render()
 // =============================================================================
 
-export const TodoListDemoModule = define(() => {
-  const render = () => <TodoListDemoContent />;
+export const TodoListDemoModule = define(
+  () => {
+    const render = () => <TodoListDemoContent />;
 
-  return { render };
-});
+    return { render };
+  },
+  { key: "TodoListDemoModule" }
+);
 
 function TodoListDemoContent() {
   const { log } = eventLogStore();

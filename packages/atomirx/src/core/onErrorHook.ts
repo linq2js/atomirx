@@ -6,7 +6,7 @@ import { CreateInfo } from "./onCreateHook";
  */
 export interface ErrorInfo {
   /** The source that produced the error (atom, derived, or effect) */
-  source: CreateInfo;
+  source: CreateInfo | { type: string; key?: string };
   /** The error that was thrown */
   error: unknown;
 }

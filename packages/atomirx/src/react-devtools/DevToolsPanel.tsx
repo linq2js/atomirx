@@ -5,11 +5,13 @@ import type { DevtoolsTab, AtomFilter, PanelPosition } from "../devtools/types";
 import {
   useDevtoolsPreferences,
   useDevtoolsRegistry,
+  useDevtoolsLogs,
   useKeyboardShortcuts,
   usePanelResize,
 } from "./hooks";
 import { EntityList } from "./EntityList";
 import { EntityDetails } from "./EntityDetails";
+import { LogList } from "./LogList";
 import {
   baseContainerStyle,
   floatingButtonStyle,
@@ -105,14 +107,24 @@ function AtomirxIcon() {
 
 /**
  * Position icon for the position toggle button.
+ * Generic dock/layout icon.
  */
-function PositionIcon({ position }: { position: PanelPosition }) {
-  const icons: Record<PanelPosition, string> = {
-    bottom: "↓",
-    right: "→",
-    left: "←",
-  };
-  return <span>{icons[position]}</span>;
+function PositionIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="9" y1="3" x2="9" y2="21" />
+    </svg>
+  );
 }
 
 /**
@@ -123,6 +135,7 @@ const TABS: Array<{ id: DevtoolsTab; label: string }> = [
   { id: "effects", label: "Effects" },
   { id: "pools", label: "Pools" },
   { id: "modules", label: "Modules" },
+  { id: "logs", label: "Logs" },
 ];
 
 /**
@@ -196,6 +209,7 @@ const DevToolsPanelInternal = memo(function DevToolsPanelInternal({
 
   // Subscribe to registry changes
   const entities = useDevtoolsRegistry(registry);
+  const logs = useDevtoolsLogs(registry);
 
   // Preferences with persistence
   const {
@@ -305,7 +319,9 @@ const DevToolsPanelInternal = memo(function DevToolsPanelInternal({
             flexShrink: 0,
           }}
         >
-          <span style={{ fontWeight: 600, fontSize: "var(--atomirx-font-size)" }}>
+          <span
+            style={{ fontWeight: 600, fontSize: "var(--atomirx-font-size)" }}
+          >
             Atomirx Devtools
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -313,9 +329,9 @@ const DevToolsPanelInternal = memo(function DevToolsPanelInternal({
             <button
               style={positionButtonStyle}
               onClick={cyclePosition}
-              title={`Position: ${preferences.position}`}
+              title={`Position: ${preferences.position} (click to change)`}
             >
-              <PositionIcon position={preferences.position} />
+              <PositionIcon />
             </button>
 
             {/* Close button */}
@@ -329,100 +345,127 @@ const DevToolsPanelInternal = memo(function DevToolsPanelInternal({
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div style={tabBarStyle}>
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              style={getTabStyle(preferences.activeTab === tab.id)}
-              onClick={() => handleTabChange(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Search bar */}
-        <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--atomirx-border)" }}>
-          <input
-            type="text"
-            style={{ ...searchInputStyle, width: "100%" }}
-            placeholder={`Search ${preferences.activeTab}...`}
-            value={preferences.searchText[preferences.activeTab]}
-            onChange={handleSearchChange}
-          />
-        </div>
-
-        {/* Filter bar (only for atoms tab) */}
-        {preferences.activeTab === "atoms" && (
-          <div style={{ ...toolbarStyle, justifyContent: "space-between" }}>
-            <div style={filterGroupStyle}>
-              {ATOM_FILTERS.map((filter) => (
-                <button
-                  key={filter.id}
-                  style={getFilterButtonStyle(
-                    preferences.atomFilter === filter.id
-                  )}
-                  onClick={() => setAtomFilter(filter.id)}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
-            {/* Show values toggle */}
-            <button
-              style={{
-                ...getFilterButtonStyle(preferences.showAtomValues),
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "4px 8px",
-              }}
-              onClick={toggleShowAtomValues}
-              title={preferences.showAtomValues ? "Hide values (preserves lazy computation)" : "Show values (may trigger computation)"}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+        {/* Content area wrapper - details overlay covers this entire area */}
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            position: "relative",
+            minHeight: 0,
+          }}
+        >
+          {/* Tab bar */}
+          <div style={tabBarStyle}>
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                style={getTabStyle(preferences.activeTab === tab.id)}
+                onClick={() => handleTabChange(tab.id)}
               >
-                {preferences.showAtomValues ? (
-                  <>
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </>
-                ) : (
-                  <>
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                    <path d="M1 1l22 22" />
-                  </>
-                )}
-              </svg>
-            </button>
+                {tab.label}
+              </button>
+            ))}
           </div>
-        )}
 
-        {/* Main content */}
-        <div style={mainContentStyle}>
-          {/* Entity list */}
-          <EntityList
-            entities={entities ?? new Map()}
-            activeTab={preferences.activeTab}
-            searchText={preferences.searchText[preferences.activeTab]}
-            atomFilter={preferences.atomFilter}
-            selectedEntityId={preferences.selectedEntityId}
-            onSelectEntity={setSelectedEntityId}
-            showValues={preferences.showAtomValues}
-          />
+          {/* Search bar */}
+          <div
+            style={{
+              padding: "8px 12px",
+              borderBottom: "1px solid var(--atomirx-border)",
+            }}
+          >
+            <input
+              type="text"
+              style={{ ...searchInputStyle, width: "100%" }}
+              placeholder={`Search ${preferences.activeTab}...`}
+              value={preferences.searchText[preferences.activeTab]}
+              onChange={handleSearchChange}
+            />
+          </div>
 
-          {/* Entity details */}
-          {selectedEntity && (
+          {/* Filter bar (only for atoms tab) */}
+          {preferences.activeTab === "atoms" && (
+            <div style={{ ...toolbarStyle, justifyContent: "space-between" }}>
+              <div style={filterGroupStyle}>
+                {ATOM_FILTERS.map((filter) => (
+                  <button
+                    key={filter.id}
+                    style={getFilterButtonStyle(
+                      preferences.atomFilter === filter.id
+                    )}
+                    onClick={() => setAtomFilter(filter.id)}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+              {/* Show values toggle */}
+              <button
+                style={{
+                  ...getFilterButtonStyle(preferences.showAtomValues),
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "4px 8px",
+                }}
+                onClick={toggleShowAtomValues}
+                title={
+                  preferences.showAtomValues
+                    ? "Hide values (single line)"
+                    : "Show values (two lines with data)"
+                }
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  {preferences.showAtomValues ? (
+                    <>
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                      <path d="M1 1l22 22" />
+                    </>
+                  )}
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Main content */}
+          <div style={mainContentStyle}>
+            {preferences.activeTab === "logs" ? (
+              <LogList
+                logs={logs ?? []}
+                searchText={preferences.searchText.logs}
+                onClearLogs={() => registry.clearLogs()}
+              />
+            ) : (
+              <EntityList
+                entities={entities ?? new Map()}
+                activeTab={preferences.activeTab}
+                searchText={preferences.searchText[preferences.activeTab]}
+                atomFilter={preferences.atomFilter}
+                selectedEntityId={preferences.selectedEntityId}
+                onSelectEntity={setSelectedEntityId}
+                showValues={preferences.showAtomValues}
+              />
+            )}
+          </div>
+
+          {/* Entity details overlay - covers tabs, search, filter, and list */}
+          {selectedEntity && preferences.activeTab !== "logs" && (
             <EntityDetails
               entity={selectedEntity}
               onClose={() => setSelectedEntityId(null)}

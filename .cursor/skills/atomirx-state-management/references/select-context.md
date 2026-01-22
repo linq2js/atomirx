@@ -2,16 +2,121 @@
 
 The `SelectContext` provides utilities for reading atoms and handling async operations. **The same patterns apply across ALL reactive contexts.**
 
+## Architecture: SelectContext is the Core
+
+`SelectContext` is the **foundation** that powers all reactive APIs in atomirx. Every reactive context (`derived`, `effect`, `useSelector`, `rx`) uses the same core selection engine.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              YOUR APPLICATION                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌───────────┐   ┌───────────┐   ┌─────────────┐   ┌───────────┐          │
+│   │ derived() │   │ effect()  │   │ useSelector │   │   rx()    │          │
+│   │           │   │           │   │     ()      │   │           │          │
+│   │ Computed  │   │   Side    │   │   React     │   │  Inline   │          │
+│   │  values   │   │  effects  │   │   hooks     │   │   React   │          │
+│   └─────┬─────┘   └─────┬─────┘   └──────┬──────┘   └─────┬─────┘          │
+│         │               │                │                │                │
+│         │   ┌───────────┴────────────────┴────────────────┘                │
+│         │   │                                                              │
+│         ▼   ▼                                                              │
+│   ┌─────────────────────────────────────────────────────────────────┐      │
+│   │                                                                 │      │
+│   │                      SelectContext (Core)                       │      │
+│   │                                                                 │      │
+│   │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐   │      │
+│   │  │ read()  │ │ all()   │ │ safe()  │ │ state() │ │ from()  │   │      │
+│   │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘   │      │
+│   │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐   │      │
+│   │  │ any()   │ │ race()  │ │settled()│ │ and()   │ │  or()   │   │      │
+│   │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘   │      │
+│   │                                                                 │      │
+│   │         Dependency Tracking │ Suspense │ Re-evaluation          │      │
+│   │                                                                 │      │
+│   └─────────────────────────────┬───────────────────────────────────┘      │
+│                                 │                                          │
+│                                 ▼                                          │
+│   ┌─────────────────────────────────────────────────────────────────┐      │
+│   │                         Atom Layer                              │      │
+│   │                                                                 │      │
+│   │     atom()          derived()         pool()         effect()   │      │
+│   │   (primitive)       (computed)      (parametric)    (reactive)  │      │
+│   │                                                                 │      │
+│   └─────────────────────────────────────────────────────────────────┘      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Context Extension Hierarchy
+
+Each reactive API extends `SelectContext` with additional capabilities:
+
+```
+                    ┌──────────────────────┐
+                    │    SelectContext     │
+                    │                      │
+                    │  read, all, any,     │
+                    │  race, settled,      │
+                    │  safe, state, from,  │
+                    │  track, and, or      │
+                    └──────────┬───────────┘
+                               │
+           ┌───────────────────┼───────────────────┐
+           │                   │                   │
+           ▼                   ▼                   ▼
+   ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+   │ DerivedContext│   │ EffectContext │   │ReactiveContext│
+   │               │   │               │   │               │
+   │ + ready()     │   │ + ready()     │   │  (no extra    │
+   │               │   │ + onCleanup() │   │   methods)    │
+   │               │   │ + signal      │   │               │
+   └───────┬───────┘   └───────────────┘   └───────┬───────┘
+           │                                       │
+           │                               ┌───────┴───────┐
+           ▼                               ▼               ▼
+    ┌─────────────┐                 ┌───────────┐   ┌───────────┐
+    │  derived()  │                 │useSelector│   │   rx()    │
+    └─────────────┘                 └───────────┘   └───────────┘
+```
+
+### Why This Matters
+
+1. **Learn once, use everywhere** - Same `read()`, `all()`, `safe()` patterns work in all contexts
+2. **Consistent behavior** - Suspense, dependency tracking, re-evaluation work identically
+3. **Composable** - Extract selector logic into reusable functions
+4. **Predictable** - Same mental model across the entire codebase
+
+```typescript
+// ✅ Reusable selector function works in ANY context
+const selectDashboard = ({ read, all }: SelectContext) => {
+  const [user, posts] = all([user$, posts$]);
+  return { user, posts, postCount: posts.length };
+};
+
+// Use in derived
+const dashboard$ = derived(selectDashboard);
+
+// Use in useSelector
+const dashboard = useSelector(selectDashboard);
+
+// Use in effect
+effect((ctx) => {
+  const { user, postCount } = selectDashboard(ctx);
+  analytics.track("dashboard_loaded", { userId: user.id, postCount });
+});
+```
+
 ## Unified Context (CRITICAL)
 
 **MUST** understand that `SelectContext` methods work identically in:
 
 | Context         | Usage                   | Additional Methods                 |
 | --------------- | ----------------------- | ---------------------------------- |
-| `derived()`     | Computed values         | `ready()` (via DerivedContext)     |
+| `derived()`     | Computed values         | `ready()`                          |
 | `effect()`      | Side effects            | `ready()`, `onCleanup()`, `signal` |
-| `useSelector()` | React subscriptions     | `ready()` (via DerivedContext)     |
-| `rx()`          | Inline React components | `ready()` (via DerivedContext)     |
+| `useSelector()` | React subscriptions     |                                    |
+| `rx()`          | Inline React components |                                    |
 
 ### Same Pattern, Different Contexts
 
@@ -69,6 +174,235 @@ const canEdit = and([isLoggedIn$, hasPermission$]);
 | `and()`     | Array of conds  | boolean                | Depends  | Logical AND           |
 | `or()`      | Array of conds  | boolean                | Depends  | Logical OR            |
 
+## Suspense Mechanism (CRITICAL)
+
+Understanding how the Suspense mechanism works is essential for writing correct selectors.
+
+### How It Works: Throw Promise → Re-evaluate
+
+When a selector reads an async atom that is still loading, it **throws a Promise** instead of returning a value. The system catches this Promise, waits for it to resolve, then **re-evaluates the entire selector from the beginning**.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     SELECTOR EVALUATION                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │ Start selector  │
+                    │ execution       │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │ read(atom$)     │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+        ┌──────────┐  ┌───────────┐  ┌───────────┐
+        │  READY   │  │  LOADING  │  │   ERROR   │
+        │          │  │           │  │           │
+        │ Return   │  │  Throw    │  │  Throw    │
+        │ value    │  │  Promise  │  │  Error    │
+        └────┬─────┘  └─────┬─────┘  └─────┬─────┘
+             │              │              │
+             ▼              ▼              ▼
+      ┌────────────┐  ┌───────────┐  ┌───────────┐
+      │ Continue   │  │  System   │  │  Error    │
+      │ execution  │  │  catches  │  │  handler  │
+      └────────────┘  │  Promise  │  └───────────┘
+                      └─────┬─────┘
+                            │
+                            ▼
+                      ┌───────────┐
+                      │  Wait for │
+                      │  Promise  │
+                      │  resolve  │
+                      └─────┬─────┘
+                            │
+                            ▼
+              ┌─────────────────────────┐
+              │ RE-EVALUATE SELECTOR    │
+              │ from the beginning      │
+              │ (start over)            │
+              └─────────────────────────┘
+```
+
+### Re-evaluation Example
+
+```typescript
+const dashboard$ = derived(({ read }) => {
+  console.log("1. Starting evaluation");
+
+  const user = read(user$); // If loading → throws Promise, stops here
+  console.log("2. Got user:", user.name);
+
+  const posts = read(posts$); // If loading → throws Promise, stops here
+  console.log("3. Got posts:", posts.length);
+
+  return { user, posts };
+});
+
+// If user$ is loading:
+// Console: "1. Starting evaluation"
+// [Promise thrown, wait...]
+// [user$ resolves]
+
+// Re-evaluation starts:
+// Console: "1. Starting evaluation"
+// Console: "2. Got user: John"
+// [If posts$ is loading → throws Promise, wait...]
+// [posts$ resolves]
+
+// Re-evaluation starts again:
+// Console: "1. Starting evaluation"
+// Console: "2. Got user: John"
+// Console: "3. Got posts: 5"
+// [Returns { user, posts }]
+```
+
+### CRITICAL: Promise Must Be Stable
+
+**The thrown Promise MUST be the same reference across re-evaluations.** If the Promise changes on each evaluation, the system will create infinite loops.
+
+```typescript
+// ❌ FORBIDDEN - Creates new Promise each evaluation → infinite loop
+const data$ = atom(null);
+const computed$ = derived(({ read }) => {
+  const value = read(data$);
+  if (!value) {
+    throw fetch("/api/data"); // NEW Promise each time!
+  }
+  return value;
+});
+
+// ❌ FORBIDDEN - Dynamic Promise in selector
+derived(({ read }) => {
+  // This creates a NEW Promise each evaluation!
+  const asyncAtom$ = atom(fetch("/api/" + Date.now()));
+  return read(asyncAtom$); // Different Promise each time → infinite loop
+});
+
+// ✅ CORRECT - Promise is stable (same reference)
+const data$ = atom(fetch("/api/data")); // Promise created ONCE
+const computed$ = derived(({ read }) => {
+  return read(data$); // Same Promise reference on re-eval
+});
+
+// ✅ CORRECT - Stable Promise from pool
+const dataPool = pool((id: string) => fetch(`/api/${id}`));
+const computed$ = derived(({ read, from }) => {
+  const data$ = from(dataPool, "user-1"); // Same entry, same Promise
+  return read(data$);
+});
+```
+
+### Promise Stability Rules
+
+| Pattern                         | Safe? | Why                                   |
+| ------------------------------- | ----- | ------------------------------------- |
+| `atom(fetchPromise)`            | ✅    | Promise created once at atom creation |
+| `atom(() => fetch())`           | ✅    | Promise created once per lazy init    |
+| `pool((id) => fetch())`         | ✅    | Promise cached per params             |
+| `throw fetch()` in selector     | ❌    | New Promise each evaluation           |
+| `atom(fetch())` inside selector | ❌    | New atom/Promise each evaluation      |
+| `read(atom(dynamicValue))`      | ❌    | New atom each evaluation              |
+
+### Multiple Async Dependencies
+
+When multiple atoms are loading, the selector may re-evaluate multiple times:
+
+```
+read(user$) → loading → throw Promise₁
+[wait for Promise₁]
+re-eval: read(user$) → ready ✓
+         read(posts$) → loading → throw Promise₂
+[wait for Promise₂]
+re-eval: read(user$) → ready ✓
+         read(posts$) → ready ✓
+         → return result
+```
+
+### BEST PRACTICE: Use all() for Multiple Atoms
+
+**When reading multiple atoms, ALWAYS prefer `all()` over sequential `read()` calls:**
+
+```typescript
+// ❌ INEFFICIENT - Sequential reads cause multiple re-evaluations
+const dashboard$ = derived(({ read }) => {
+  const user = read(user$); // Re-eval #1 if loading
+  const posts = read(posts$); // Re-eval #2 if loading
+  const comments = read(comments$); // Re-eval #3 if loading
+  return { user, posts, comments };
+});
+// Worst case: 3 separate re-evaluations!
+
+// ✅ OPTIMIZED - all() combines into single wait
+const dashboard$ = derived(({ all }) => {
+  const [user, posts, comments] = all([user$, posts$, comments$]);
+  // Single combined Promise, waits for ALL at once
+  // Only 1 re-evaluation after all resolve!
+  return { user, posts, comments };
+});
+```
+
+**Why `all()` is better:**
+
+| Pattern             | Re-evaluations         | Wait Strategy    |
+| ------------------- | ---------------------- | ---------------- |
+| Sequential `read()` | Up to N (one per atom) | Waterfall (slow) |
+| `all([...])`        | 1                      | Parallel (fast)  |
+
+### Why Selectors Must Be Synchronous
+
+Because selectors can be re-evaluated multiple times:
+
+1. **No side effects** - Side effects would run multiple times
+2. **No async/await** - Can't throw Promise mid-execution
+3. **Pure computation** - Same inputs → same outputs
+4. **Idempotent reads** - Re-reading same atom is safe
+
+```typescript
+// ❌ FORBIDDEN - Side effect runs multiple times on re-eval
+derived(({ read }) => {
+  console.log("Fetching..."); // Logs multiple times!
+  analytics.track("computed"); // Tracks multiple times!
+  return read(data$);
+});
+
+// ❌ FORBIDDEN - async function can't throw Promise
+derived(async ({ read }) => {
+  const data = await read(data$); // WRONG: await doesn't work
+  return data;
+});
+
+// ✅ CORRECT - Pure, synchronous, no side effects
+derived(({ read }) => {
+  const data = read(data$); // Throws Promise if loading
+  return transform(data); // Pure transformation
+});
+```
+
+### state() - Opt-out of Suspense
+
+Use `state()` when you want to handle loading/error manually without throwing:
+
+```typescript
+const dashboard$ = derived(({ state }) => {
+  const userState = state(user$);
+
+  // No Promise thrown - you handle all states
+  if (userState.status === "loading") {
+    return { loading: true, user: null };
+  }
+  if (userState.status === "error") {
+    return { loading: false, error: userState.error };
+  }
+  return { loading: false, user: userState.value };
+});
+```
+
 ## read() - Read Atom Value
 
 Reads an atom and tracks it as a dependency. Suspends on loading, throws on error.
@@ -85,6 +419,8 @@ const double$ = derived(({ read }) => {
 - If atom is ready → returns value
 - If atom has error → throws error
 - If atom is loading → throws Promise (Suspense)
+
+**Tip:** When reading multiple atoms, use `all()` instead of multiple `read()` calls to optimize re-evaluations. See [BEST PRACTICE: Use all() for Multiple Atoms](#best-practice-use-all-for-multiple-atoms).
 
 ## ready() - Wait for Non-null Value
 

@@ -2,8 +2,9 @@ import { useReducer, useCallback, useRef, useEffect } from "react";
 import { isPromiseLike } from "../core/isPromiseLike";
 import { useSelector } from "./useSelector";
 import { isAtom } from "../core/isAtom";
-import { Pipeable } from "../core/types";
+import { AtomirxMeta, Pipeable } from "../core/types";
 import { withUse } from "../core/withUse";
+import { onDispatchHook } from "./onDispatchHook";
 
 /**
  * State for an action that hasn't been dispatched yet.
@@ -63,6 +64,8 @@ export type ActionStateWithoutIdle<T> = Exclude<
  */
 export type AbortablePromise<T> = PromiseLike<T> & { abort: () => void };
 
+export interface ActionMeta extends AtomirxMeta {}
+
 /**
  * Options for useAction hook.
  */
@@ -82,6 +85,8 @@ export interface UseActionOptions {
    * @default []
    */
   deps?: unknown[];
+
+  meta?: ActionMeta;
 }
 
 /**
@@ -505,6 +510,7 @@ export function useAction<TResult, TLazy extends boolean = true>(
     currentAbortControllerRef.current = abortController;
 
     dispatchAction({ type: "START" });
+    onDispatchHook.current?.({ type: "start", meta: options.meta, deps });
 
     let result: TResult;
     try {
@@ -512,6 +518,12 @@ export function useAction<TResult, TLazy extends boolean = true>(
     } catch (error) {
       // Sync error - update state and return rejected promise
       dispatchAction({ type: "ERROR", error });
+      onDispatchHook.current?.({
+        type: "error",
+        meta: options.meta,
+        deps,
+        error,
+      });
       return Object.assign(Promise.reject(error), {
         abort: () => abortController.abort(),
       });
@@ -520,12 +532,23 @@ export function useAction<TResult, TLazy extends boolean = true>(
     // Handle async result
     if (isPromiseLike(result)) {
       const promise = result as PromiseLike<Awaited<TResult>>;
+      onDispatchHook.current?.({
+        type: "loading",
+        meta: options.meta,
+        deps,
+      });
 
       promise.then(
         (value) => {
           // Ignore stale results (a new dispatch has started)
           if (currentAbortControllerRef.current !== abortController) return;
           dispatchAction({ type: "SUCCESS", result: value });
+          onDispatchHook.current &&
+            onDispatchHook.current({
+              type: "resolved",
+              meta: options.meta,
+              deps,
+            });
         },
         (error) => {
           // Check if this was an abort error
@@ -541,6 +564,13 @@ export function useAction<TResult, TLazy extends boolean = true>(
               currentAbortControllerRef.current === abortController
             ) {
               dispatchAction({ type: "ERROR", error });
+              onDispatchHook.current &&
+                onDispatchHook.current({
+                  type: "abort",
+                  meta: options.meta,
+                  deps,
+                  error,
+                });
             }
             return;
           }
@@ -548,6 +578,13 @@ export function useAction<TResult, TLazy extends boolean = true>(
           // For non-abort errors, ignore stale results
           if (currentAbortControllerRef.current !== abortController) return;
           dispatchAction({ type: "ERROR", error });
+          onDispatchHook.current &&
+            onDispatchHook.current({
+              type: "rejected",
+              meta: options.meta,
+              deps,
+              error,
+            });
         }
       );
 
@@ -561,6 +598,13 @@ export function useAction<TResult, TLazy extends boolean = true>(
           }
         },
       }) as AbortablePromise<Awaited<TResult>>;
+    } else {
+      onDispatchHook.current &&
+        onDispatchHook.current({
+          type: "success",
+          meta: options.meta,
+          deps,
+        });
     }
 
     // Sync success - wrap in resolved promise

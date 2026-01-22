@@ -9,6 +9,8 @@ import {
   EffectEntityInfo,
   PoolEntityInfo,
   ModuleEntityInfo,
+  LogEntry,
+  NewLogEntry,
 } from "./types";
 import { DEFAULT_MAX_HISTORY_SIZE, ENTITY_ID_PREFIX } from "./constants";
 import type { MutableAtom, DerivedAtom, Pool } from "../core/types";
@@ -31,15 +33,52 @@ export function generateEntityId(type: EntityType): string {
  */
 class DevtoolsRegistryImpl implements DevtoolsRegistry {
   private _entities = new Map<string, EntityInfo>();
+  private _logs: LogEntry[] = [];
   private _listeners = new Set<() => void>();
   private _maxHistorySize: number;
+  private _maxLogSize = 200;
+  private _logIdCounter = 0;
 
   constructor(maxHistorySize: number = DEFAULT_MAX_HISTORY_SIZE) {
     this._maxHistorySize = maxHistorySize;
   }
 
+  private _version = 0;
+  private _cachedEntities: ReadonlyMap<string, EntityInfo> | null = null;
+  private _cachedLogs: readonly LogEntry[] | null = null;
+  private _notifyScheduled = false;
+
   get entities(): ReadonlyMap<string, EntityInfo> {
-    return this._entities;
+    // Cache the Map - only recreate when version changes (in _notifyListeners)
+    if (!this._cachedEntities) {
+      this._cachedEntities = new Map(this._entities);
+    }
+    return this._cachedEntities;
+  }
+
+  get logs(): readonly LogEntry[] {
+    if (!this._cachedLogs) {
+      this._cachedLogs = [...this._logs];
+    }
+    return this._cachedLogs;
+  }
+
+  get version(): number {
+    return this._version;
+  }
+
+  addLog(entry: NewLogEntry): void {
+    const logEntry = {
+      ...entry,
+      id: `log-${++this._logIdCounter}`,
+    } as LogEntry;
+    this._logs = [logEntry, ...this._logs].slice(0, this._maxLogSize);
+    this._notifyListeners();
+  }
+
+  clearLogs(): void {
+    this._logs = [];
+    this._notifyListeners();
   }
 
   /**
@@ -194,7 +233,10 @@ class DevtoolsRegistryImpl implements DevtoolsRegistry {
   /**
    * Track changes to a mutable atom.
    */
-  private _trackMutableChanges(id: string, instance: MutableAtom<unknown>): void {
+  private _trackMutableChanges(
+    id: string,
+    instance: MutableAtom<unknown>
+  ): void {
     let previousValue = this._serializeValue(instance.get());
 
     instance.on(() => {
@@ -211,12 +253,25 @@ class DevtoolsRegistryImpl implements DevtoolsRegistry {
         newValue,
       };
 
-      info.history = [historyEntry, ...info.history].slice(0, this._maxHistorySize);
+      info.history = [historyEntry, ...info.history].slice(
+        0,
+        this._maxHistorySize
+      );
       info.changeCount++;
       info.lastUpdatedAt = now;
       previousValue = newValue;
 
       this._notifyListeners();
+
+      // Log change event (only if atom has a key)
+      const atomKey = instance.meta?.key;
+      if (atomKey) {
+        this.addLog({
+          type: "mutable.change",
+          timestamp: now,
+          atomKey,
+        });
+      }
     });
   }
 
@@ -243,38 +298,77 @@ class DevtoolsRegistryImpl implements DevtoolsRegistry {
         newValue,
       };
 
-      info.history = [historyEntry, ...info.history].slice(0, this._maxHistorySize);
+      info.history = [historyEntry, ...info.history].slice(
+        0,
+        this._maxHistorySize
+      );
       info.changeCount++;
       info.lastUpdatedAt = now;
       previousValue = newValue;
 
       this._notifyListeners();
+
+      // Log change event (only if atom has a key)
+      const atomKey = instance.meta?.key;
+      if (atomKey) {
+        this.addLog({
+          type: "derived.change",
+          timestamp: now,
+          atomKey,
+        });
+      }
     });
   }
 
   /**
-   * Track changes to a pool.
+   * Track changes to a pool and log events.
    */
   private _trackPoolChanges(
     id: string,
     instance: Pool<unknown, unknown>
   ): void {
-    // Track entry changes
-    instance.onChange(() => {
+    instance.on((event) => {
       const info = this._entities.get(id) as PoolEntityInfo | undefined;
       if (!info) return;
 
-      info.changeCount++;
-      info.lastUpdatedAt = Date.now();
-      this._updatePoolEntryCount(id, instance);
-      this._notifyListeners();
-    });
+      if (event.type === "create" || event.type === "change") {
+        info.changeCount++;
+        info.lastUpdatedAt = Date.now();
+      }
 
-    // Track removals
-    instance.onRemove(() => {
       this._updatePoolEntryCount(id, instance);
       this._notifyListeners();
+
+      // Log pool events (only if pool has a key)
+      const poolKey = instance.meta?.key;
+      if (poolKey) {
+        const typeMap = {
+          create: "pool.create",
+          change: "pool.set", // "change" maps to "set" for logging
+          remove: "pool.remove",
+        } as const;
+
+        const serializedParams = this._serializeParams(event.params);
+
+        this.addLog({
+          type: typeMap[event.type],
+          timestamp: Date.now(),
+          poolKey,
+          params: serializedParams.slice(0, 50), // Truncate long params
+        });
+      }
     });
+  }
+
+  /**
+   * Serialize params for logging.
+   */
+  private _serializeParams(params: unknown): string {
+    try {
+      return JSON.stringify(params);
+    } catch {
+      return String(params);
+    }
   }
 
   /**
@@ -287,9 +381,7 @@ class DevtoolsRegistryImpl implements DevtoolsRegistry {
     const info = this._entities.get(id) as PoolEntityInfo | undefined;
     if (!info) return;
 
-    let count = 0;
-    instance.forEach(() => count++);
-    info.entryCount = count;
+    info.entryCount = instance.size();
   }
 
   /**
@@ -385,14 +477,31 @@ class DevtoolsRegistryImpl implements DevtoolsRegistry {
     this._notifyListeners();
   }
 
+  /**
+   * Schedule listener notifications.
+   * Uses queueMicrotask to defer notifications and avoid updating React state during render.
+   * Multiple calls within the same microtask are batched into a single notification.
+   */
   private _notifyListeners(): void {
-    for (const listener of this._listeners) {
-      try {
-        listener();
-      } catch {
-        // Ignore listener errors
+    this._version++;
+    // Invalidate caches so next access creates new references
+    this._cachedEntities = null;
+    this._cachedLogs = null;
+
+    // Batch multiple notifications within the same microtask
+    if (this._notifyScheduled) return;
+    this._notifyScheduled = true;
+
+    queueMicrotask(() => {
+      this._notifyScheduled = false;
+      for (const listener of this._listeners) {
+        try {
+          listener();
+        } catch {
+          // Ignore listener errors
+        }
       }
-    }
+    });
   }
 }
 
@@ -404,9 +513,7 @@ let globalRegistry: DevtoolsRegistryImpl | null = null;
 /**
  * Get or create the global devtools registry.
  */
-export function getRegistry(
-  maxHistorySize?: number
-): DevtoolsRegistryImpl {
+export function getRegistry(maxHistorySize?: number): DevtoolsRegistryImpl {
   if (!globalRegistry) {
     globalRegistry = new DevtoolsRegistryImpl(maxHistorySize);
   }

@@ -63,16 +63,19 @@ export function UseActionDemo() {
   const { log } = eventLogStore();
 
   // Basic manual dispatch (lazy: true by default)
-  const basicAction = useAction(async ({ signal }) => {
-    return fetchData(signal);
-  });
+  const basicAction = useAction(
+    async ({ signal }) => {
+      return fetchData(signal);
+    },
+    { meta: { key: "basicAction" } }
+  );
 
   // With exclusive disabled (allows concurrent requests)
   const noExclusiveAction = useAction(
     async ({ signal }) => {
       return fetchData(signal, 3000);
     },
-    { exclusive: false }
+    { exclusive: false, meta: { key: "noExclusiveAction" } }
   );
 
   // Auto-dispatch with deps (lazy: false)
@@ -80,13 +83,16 @@ export function UseActionDemo() {
     async ({ signal }) => {
       return fetchData(signal, 1500);
     },
-    { lazy: false, deps: [userId$] }
+    { lazy: false, deps: [userId$], meta: { key: "autoAction" } }
   );
 
   // Sync action
-  const syncAction = useAction(() => {
-    return { computed: Math.random() * 100 };
-  });
+  const syncAction = useAction(
+    () => {
+      return { computed: Math.random() * 100 };
+    },
+    { meta: { key: "syncAction" } }
+  );
 
   const handleBasicDispatch = async () => {
     log("Dispatching basic action...");

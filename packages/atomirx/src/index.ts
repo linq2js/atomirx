@@ -44,6 +44,7 @@ export type {
   MutableAtomMeta,
   Pipeable,
   Pool,
+  PoolEvent,
   PoolMeta,
   PoolOptions,
   SelectStateResult,

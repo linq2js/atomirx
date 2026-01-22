@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState, useEffect } from "react";
 import type {
   EntityInfo,
   DevtoolsTab,
@@ -13,7 +13,7 @@ import {
   entityValueStyle,
   emptyStateStyle,
 } from "./styles";
-import { serializeValue, formatRelativeTime } from "./hooks";
+import { serializeValue, formatTimestamp } from "./hooks";
 
 interface EntityListProps {
   entities: ReadonlyMap<string, EntityInfo>;
@@ -50,8 +50,11 @@ function getEntityPreview(entity: EntityInfo, showValues: boolean): string {
     }
     case "effect":
       return `runs: ${(entity as import("../devtools/types").EffectEntityInfo).runCount}`;
-    case "pool":
-      return `entries: ${(entity as import("../devtools/types").PoolEntityInfo).entryCount}`;
+    case "pool": {
+      // Get live entry count from pool instance
+      const pool = instance as import("../core/types").Pool<unknown, unknown>;
+      return `entries: ${pool.size()}`;
+    }
     case "module":
       return "[module]";
     default:
@@ -74,6 +77,9 @@ function getDerivedStatus(
 
 /**
  * Entity list item component.
+ * Two-line layout:
+ * - Line 1: Badge | Key | Timestamp
+ * - Line 2 (when showValues=true): Serialized value (indented)
  */
 const EntityItem = memo(function EntityItem({
   entity,
@@ -86,15 +92,51 @@ const EntityItem = memo(function EntityItem({
   onClick: () => void;
   showValues: boolean;
 }) {
+  // Force re-render when entity changes (for live updates)
+  const [updateCount, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const instance = entity.instanceRef.deref();
+    if (!instance) return;
+
+    // Subscribe to atom changes (mutable/derived)
+    if (entity.type === "mutable" || entity.type === "derived") {
+      if (!showValues) return;
+
+      const unsubscribe = (
+        instance as import("../core/types").MutableAtom<unknown>
+      ).on(() => {
+        forceUpdate((n) => n + 1);
+      });
+
+      return unsubscribe;
+    }
+
+    // Subscribe to pool changes
+    if (entity.type === "pool") {
+      const pool = instance as import("../core/types").Pool<unknown, unknown>;
+      return pool.on(() => {
+        forceUpdate((n) => n + 1);
+      });
+    }
+  }, [entity, showValues]);
+
   const preview = useMemo(
     () => getEntityPreview(entity, showValues),
-    [entity, showValues]
+    // updateCount triggers recalculation on atom changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entity, showValues, updateCount]
   );
   const displayName = entity.key || `anonymous-${entity.id.split("-").pop()}`;
 
   return (
     <div
-      style={getEntityItemStyle(isSelected)}
+      style={{
+        ...getEntityItemStyle(isSelected),
+        flexDirection: "column",
+        alignItems: "stretch",
+        gap: 4,
+      }}
       onClick={onClick}
       onMouseEnter={(e) => {
         if (!isSelected) {
@@ -109,47 +151,62 @@ const EntityItem = memo(function EntityItem({
         }
       }}
     >
-      <span style={getTypeBadgeStyle(entity.type)}>
-        {entity.type === "mutable"
-          ? "M"
-          : entity.type === "derived"
-            ? "D"
-            : entity.type === "pool"
-              ? "P"
-              : entity.type === "effect"
-                ? "E"
-                : "M"}
-      </span>
-      <span
-        style={{
-          ...entityKeyStyle,
-          ...(entity.type === "derived" && {
-            color:
-              getDerivedStatus(entity as DerivedEntityInfo) === "ready"
-                ? "var(--atomirx-success)"
-                : getDerivedStatus(entity as DerivedEntityInfo) === "loading"
-                  ? "var(--atomirx-warning)"
-                  : getDerivedStatus(entity as DerivedEntityInfo) === "error"
-                    ? "var(--atomirx-error)"
-                    : undefined,
-          }),
-        }}
-        title={displayName}
-      >
-        {displayName}
-      </span>
-      <span style={entityValueStyle} title={preview}>
-        {preview}
-      </span>
-      <span
-        style={{
-          color: "var(--atomirx-text-muted)",
-          fontSize: "var(--atomirx-font-size-sm)",
-          flexShrink: 0,
-        }}
-      >
-        {formatRelativeTime(entity.lastUpdatedAt)}
-      </span>
+      {/* Line 1: Badge | Key | Timestamp */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={getTypeBadgeStyle(entity.type)}>
+          {entity.type === "mutable"
+            ? "M"
+            : entity.type === "derived"
+              ? "D"
+              : entity.type === "pool"
+                ? "P"
+                : entity.type === "effect"
+                  ? "E"
+                  : "M"}
+        </span>
+        <span
+          style={{
+            ...entityKeyStyle,
+            ...(entity.type === "derived" && {
+              color:
+                getDerivedStatus(entity as DerivedEntityInfo) === "ready"
+                  ? "var(--atomirx-success)"
+                  : getDerivedStatus(entity as DerivedEntityInfo) === "loading"
+                    ? "var(--atomirx-warning)"
+                    : getDerivedStatus(entity as DerivedEntityInfo) === "error"
+                      ? "var(--atomirx-error)"
+                      : undefined,
+            }),
+          }}
+          title={displayName}
+        >
+          {displayName}
+        </span>
+        <span
+          style={{
+            color: "var(--atomirx-text-muted)",
+            fontSize: "var(--atomirx-font-size-sm)",
+            flexShrink: 0,
+            marginLeft: "auto",
+          }}
+        >
+          {formatTimestamp(entity.lastUpdatedAt)}
+        </span>
+      </div>
+
+      {/* Line 2: Serialized value (only when showValues is true) */}
+      {showValues && preview !== "—" && (
+        <div
+          style={{
+            ...entityValueStyle,
+            marginLeft: 30, // Align with text after badge
+            maxWidth: "none",
+          }}
+          title={preview}
+        >
+          {preview}
+        </div>
+      )}
     </div>
   );
 });

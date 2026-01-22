@@ -45,8 +45,8 @@ function savePreferences(prefs: DevtoolsPreferences): void {
  * Hook for managing devtools preferences with localStorage persistence.
  */
 export function useDevtoolsPreferences() {
-  const [preferences, setPreferencesState] = useState<DevtoolsPreferences>(
-    () => loadPreferences()
+  const [preferences, setPreferencesState] = useState<DevtoolsPreferences>(() =>
+    loadPreferences()
   );
 
   // Persist on change
@@ -92,7 +92,10 @@ export function useDevtoolsPreferences() {
   }, []);
 
   const toggleShowAtomValues = useCallback(() => {
-    setPreferencesState((prev) => ({ ...prev, showAtomValues: !prev.showAtomValues }));
+    setPreferencesState((prev) => ({
+      ...prev,
+      showAtomValues: !prev.showAtomValues,
+    }));
   }, []);
 
   const togglePanel = useCallback(() => {
@@ -145,6 +148,26 @@ export function useDevtoolsRegistry(registry: DevtoolsRegistry | null) {
 }
 
 /**
+ * Hook for subscribing to devtools logs changes.
+ */
+export function useDevtoolsLogs(registry: DevtoolsRegistry | null) {
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!registry) return () => {};
+      return registry.subscribe(onStoreChange);
+    },
+    [registry]
+  );
+
+  const getSnapshot = useCallback(() => {
+    if (!registry) return null;
+    return registry.logs;
+  }, [registry]);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
  * Hook for keyboard shortcuts.
  */
 export function useKeyboardShortcuts(
@@ -156,7 +179,11 @@ export function useKeyboardShortcuts(
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl+Shift+D or Cmd+Shift+D to toggle devtools
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "d") {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "d"
+      ) {
         e.preventDefault();
         onToggle();
       }
@@ -226,7 +253,10 @@ export function usePanelResize(
  * Serialize a value for display in devtools.
  * Handles circular references and non-serializable values.
  */
-export function serializeValue(value: unknown, maxLength: number = 500): string {
+export function serializeValue(
+  value: unknown,
+  maxLength: number = 500
+): string {
   if (value === undefined) return "undefined";
   if (value === null) return "null";
 

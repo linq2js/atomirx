@@ -82,14 +82,9 @@ derived(({ read, from }) => {
   return read(user$); // Automatically tracks dependency
 });
 
-// Subscribe to ALL changes in the pool
-userPool.onChange((params, value) => {
-  console.log(\`User \${params.id} changed:\`, value);
-});
-
-// Subscribe to ALL removals (GC or manual)
-userPool.onRemove((params, value) => {
-  console.log(\`User \${params.id} was removed\`);
+// Subscribe to pool events (create, change, remove)
+userPool.on((event) => {
+  console.log(\`Pool event: \${event.type}\`, event.params, event.value);
 });
         `}
       />
@@ -162,20 +157,19 @@ function BasicPoolDemo() {
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  // Subscribe to pool-wide changes and removals
+  // Subscribe to pool events
   useEffect(() => {
-    const unsubChange = userPool.onChange((params, value) => {
-      log(`User ${params.id} updated: score=${value.score}`, "success");
+    return userPool.on((event) => {
+      if (event.type === "change") {
+        log(
+          `User ${event.params.id} updated: score=${event.value.score}`,
+          "success"
+        );
+      } else if (event.type === "remove") {
+        log(`User ${event.params.id} removed from pool`, "warning");
+      }
       refreshUsers();
     });
-    const unsubRemove = userPool.onRemove((params) => {
-      log(`User ${params.id} removed from pool`, "warning");
-      refreshUsers();
-    });
-    return () => {
-      unsubChange();
-      unsubRemove();
-    };
   }, [log]);
 
   const incrementScore = (id: string) => {
@@ -296,12 +290,16 @@ function GCTimeDemo() {
     return () => clearInterval(interval);
   }, []);
 
-  // Subscribe to pool-wide removals
+  // Subscribe to pool removals
   useEffect(() => {
-    const unsub = gcDemoPool.onRemove((params) => {
-      log(`Entry ${params.id} was garbage collected after 3s`, "warning");
+    return gcDemoPool.on((event) => {
+      if (event.type === "remove") {
+        log(
+          `Entry ${event.params.id} was garbage collected after 3s`,
+          "warning"
+        );
+      }
     });
-    return unsub;
   }, [log]);
 
   const addEntry = () => {

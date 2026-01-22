@@ -78,6 +78,7 @@ export const floatingButtonStyle: CSSProperties = {
 
 /**
  * Panel container styles by position.
+ * Uses non-shorthand border properties to avoid React warnings.
  */
 export const getPanelStyle = (
   position: "bottom" | "right" | "left",
@@ -89,7 +90,10 @@ export const getPanelStyle = (
     backgroundColor: "var(--atomirx-bg-primary)",
     borderColor: "var(--atomirx-border)",
     borderStyle: "solid",
-    borderWidth: 0,
+    borderTopWidth: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderLeftWidth: 0,
     zIndex: DEVTOOLS_Z_INDEX,
     display: "flex",
     flexDirection: "column",
@@ -302,13 +306,16 @@ export const entityValueStyle: CSSProperties = {
  * Details panel styles.
  */
 export const detailsPanelStyle: CSSProperties = {
-  width: 300,
-  borderLeft: "1px solid var(--atomirx-border)",
-  backgroundColor: "var(--atomirx-bg-secondary)",
+  position: "absolute",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: "var(--atomirx-bg-primary)",
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
-  flexShrink: 0,
+  zIndex: 100,
 };
 
 /**
@@ -357,8 +364,6 @@ export const codeBlockStyle: CSSProperties = {
   borderRadius: "var(--atomirx-radius)",
   fontFamily: "var(--atomirx-font-mono)",
   fontSize: "var(--atomirx-font-size-sm)",
-  overflow: "auto",
-  maxHeight: 200,
   whiteSpace: "pre-wrap",
   wordBreak: "break-all",
 };

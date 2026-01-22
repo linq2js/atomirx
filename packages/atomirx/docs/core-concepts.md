@@ -20,18 +20,18 @@ Atoms are the foundational primitive - reactive containers that hold a single va
 ### Creating Atoms
 
 ```ts
-import { atom } from 'atomirx';
+import { atom } from "atomirx";
 
 // Simple value
 const count$ = atom(0);
-const name$ = atom('John');
-const user$ = atom({ id: 1, name: 'John' });
+const name$ = atom("John");
+const user$ = atom({ id: 1, name: "John" });
 
 // Lazy initialization (function is called at creation)
 const timestamp$ = atom(() => Date.now());
 
 // Async value (stores the Promise)
-const data$ = atom(fetch('/api/data').then(r => r.json()));
+const data$ = atom(fetch("/api/data").then((r) => r.json()));
 ```
 
 ### Reading Values
@@ -56,7 +56,7 @@ const count$ = atom(0);
 count$.set(5);
 
 // Reducer function (receives previous value)
-count$.set(prev => prev + 1);
+count$.set((prev) => prev + 1);
 
 // Reset to initial value
 count$.reset();
@@ -69,7 +69,7 @@ const count$ = atom(0);
 
 // Subscribe returns unsubscribe function
 const unsubscribe = count$.on(() => {
-  console.log('Count changed to:', count$.get());
+  console.log("Count changed to:", count$.get());
 });
 
 count$.set(1); // Logs: "Count changed to: 1"
@@ -86,12 +86,12 @@ When using lazy initialization, atoms receive a context object:
 const data$ = atom((context) => {
   // AbortSignal - aborted when value changes or reset
   const signal = context.signal;
-  
+
   // Register cleanup functions
   context.onCleanup(() => {
-    console.log('Cleaning up...');
+    console.log("Cleaning up...");
   });
-  
+
   return fetchData({ signal });
 });
 ```
@@ -115,10 +115,10 @@ count$.dirty(); // false
 ```ts
 const count$ = atom(0, {
   // Metadata for debugging/devtools
-  meta: { key: 'counter' },
-  
+  meta: { key: "counter" },
+
   // Equality function to prevent unnecessary notifications
-  equals: 'shallow', // or 'strict', 'deep', or custom function
+  equals: "shallow", // or 'strict', 'deep', or custom function
 });
 ```
 
@@ -127,7 +127,7 @@ const count$ = atom(0, {
 Use `readonly()` to expose atoms without mutation methods:
 
 ```ts
-import { atom, readonly } from 'atomirx';
+import { atom, readonly } from "atomirx";
 
 const count$ = atom(0);
 
@@ -144,13 +144,13 @@ Derived atoms compute values from other atoms with automatic dependency tracking
 ### Creating Derived Atoms
 
 ```ts
-import { derived } from 'atomirx';
+import { derived } from "atomirx";
 
-const firstName$ = atom('John');
-const lastName$ = atom('Doe');
+const firstName$ = atom("John");
+const lastName$ = atom("Doe");
 
-const fullName$ = derived(({ read }) => 
-  `${read(firstName$)} ${read(lastName$)}`
+const fullName$ = derived(
+  ({ read }) => `${read(firstName$)} ${read(lastName$)}`
 );
 ```
 
@@ -172,14 +172,14 @@ fullName$.staleValue; // "John Doe" | undefined
 const state = fullName$.state();
 
 switch (state.status) {
-  case 'loading':
-    console.log('Computing...', state.promise);
+  case "loading":
+    console.log("Computing...", state.promise);
     break;
-  case 'ready':
-    console.log('Value:', state.value);
+  case "ready":
+    console.log("Value:", state.value);
     break;
-  case 'error':
-    console.log('Error:', state.error);
+  case "error":
+    console.log("Error:", state.error);
     break;
 }
 ```
@@ -194,10 +194,7 @@ const count$ = derived(({ read }) => read(items$).length);
 count$.staleValue; // number | undefined
 
 // With fallback
-const countSafe$ = derived(
-  ({ read }) => read(items$).length,
-  { fallback: 0 }
-);
+const countSafe$ = derived(({ read }) => read(items$).length, { fallback: 0 });
 countSafe$.staleValue; // number (always defined)
 ```
 
@@ -215,8 +212,8 @@ Only atoms accessed via `read()` become dependencies:
 
 ```ts
 const showDetails$ = atom(false);
-const summary$ = atom('Brief');
-const details$ = atom('Detailed');
+const summary$ = atom("Brief");
+const details$ = atom("Detailed");
 
 const content$ = derived(({ read }) => {
   if (read(showDetails$)) {
@@ -232,17 +229,16 @@ Use `and()` and `or()` for composable boolean logic with short-circuit evaluatio
 
 ```ts
 // and() - all must be truthy
-const canAccess$ = derived(({ and }) => 
+const canAccess$ = derived(({ and }) =>
   and([isLoggedIn$, hasPermission$, isActive$])
 );
 
 // or() - any truthy is enough
-const hasData$ = derived(({ or }) => 
-  or([cacheData$, apiData$, fallbackData$])
-);
+const hasData$ = derived(({ or }) => or([cacheData$, apiData$, fallbackData$]));
 ```
 
 **Condition types:**
+
 - `boolean` - Static value (no subscription)
 - `Atom<T>` - Always read and subscribed
 - `() => boolean | Atom<T>` - Lazy, only evaluated if needed
@@ -250,11 +246,11 @@ const hasData$ = derived(({ or }) =>
 **Lazy evaluation for performance:**
 
 ```ts
-const canDelete$ = derived(({ and }) => 
+const canDelete$ = derived(({ and }) =>
   and([
-    isLoggedIn$,           // Always checked first
-    () => hasDeleteRole$,  // Only checked if logged in
-    () => canDeleteItem$,  // Only checked if has role
+    isLoggedIn$, // Always checked first
+    () => hasDeleteRole$, // Only checked if logged in
+    () => canDeleteItem$, // Only checked if has role
   ])
 );
 ```
@@ -263,9 +259,9 @@ const canDelete$ = derived(({ and }) =>
 
 ```ts
 // Complex: feature && loggedIn && (hasPermission || isAdmin)
-const canAccess$ = derived(({ and, or }) => 
+const canAccess$ = derived(({ and, or }) =>
   and([
-    FEATURE_ENABLED,       // Static config
+    FEATURE_ENABLED, // Static config
     isLoggedIn$,
     or([hasPermission$, isAdmin$]),
   ])
@@ -281,11 +277,11 @@ Effects run side effects in response to atom changes.
 ### Creating Effects
 
 ```ts
-import { effect } from 'atomirx';
+import { effect } from "atomirx";
 
 const dispose = effect(({ read }) => {
   const count = read(count$);
-  localStorage.setItem('count', String(count));
+  localStorage.setItem("count", String(count));
 });
 
 // Stop the effect
@@ -299,11 +295,11 @@ Register cleanup functions that run before each re-execution and on dispose:
 ```ts
 effect(({ read, onCleanup }) => {
   const interval = read(intervalMs$);
-  
+
   const id = setInterval(() => {
-    console.log('tick');
+    console.log("tick");
   }, interval);
-  
+
   onCleanup(() => {
     clearInterval(id);
   });
@@ -317,14 +313,14 @@ Effects provide a `signal` for cancelling async operations. The signal is automa
 ```ts
 effect(({ read, signal }) => {
   const userId = read(userId$);
-  
+
   // Fetch is cancelled if userId changes or effect disposes
   fetch(`/api/users/${userId}`, { signal })
-    .then(r => r.json())
-    .then(user => user$.set(user))
-    .catch(err => {
+    .then((r) => r.json())
+    .then((user) => user$.set(user))
+    .catch((err) => {
       // Ignore abort errors
-      if (err.name !== 'AbortError') throw err;
+      if (err.name !== "AbortError") throw err;
     });
 });
 ```
@@ -338,8 +334,8 @@ effect(({ read, signal, abort }) => {
     abort();
     return;
   }
-  
-  fetch('/api/data', { signal });
+
+  fetch("/api/data", { signal });
 });
 ```
 
@@ -353,8 +349,8 @@ effect(
   },
   {
     onError: (error) => {
-      console.error('Effect failed:', error);
-    }
+      console.error("Effect failed:", error);
+    },
   }
 );
 ```
@@ -368,31 +364,28 @@ Pools are parameterized collections of atoms with automatic garbage collection.
 ### Creating Pools
 
 ```ts
-import { pool } from 'atomirx';
+import { pool } from "atomirx";
 
-const userPool = pool(
-  (id: string) => fetchUser(id),
-  { 
-    gcTime: 60_000, // GC after 60s of inactivity
-    equals: 'shallow' // Params equality
-  }
-);
+const userPool = pool((id: string) => fetchUser(id), {
+  gcTime: 60_000, // GC after 60s of inactivity
+  equals: "shallow", // Params equality
+});
 ```
 
 ### Using Pools
 
 ```ts
 // Get value
-const user = userPool.get('user-1');
+const user = userPool.get("user-1");
 
 // Set value
-userPool.set('user-1', { name: 'John' });
+userPool.set("user-1", { name: "John" });
 
 // Check existence
-userPool.has('user-1'); // true
+userPool.has("user-1"); // true
 
 // Remove entry
-userPool.remove('user-1');
+userPool.remove("user-1");
 
 // Clear all
 userPool.clear();
@@ -406,14 +399,19 @@ userPool.forEach((value, params) => {
 ### Pool Events
 
 ```ts
-// Value changes
-userPool.onChange((id, value) => {
-  console.log('Changed:', id, value);
-});
-
-// Entry removed (including by GC)
-userPool.onRemove((id, value) => {
-  console.log('Removed:', id, value);
+// Subscribe to all pool events
+userPool.on((event) => {
+  switch (event.type) {
+    case "create":
+      console.log("Created:", event.params, event.value);
+      break;
+    case "change":
+      console.log("Changed:", event.params, event.value);
+      break;
+    case "remove":
+      console.log("Removed:", event.params, event.value);
+      break;
+  }
 });
 ```
 
@@ -438,7 +436,7 @@ The ScopedAtom is automatically cleaned up after the computation, preventing mem
 Batch multiple updates into a single notification cycle.
 
 ```ts
-import { batch } from 'atomirx';
+import { batch } from "atomirx";
 
 const a$ = atom(0);
 const b$ = atom(0);
@@ -488,15 +486,15 @@ Create swappable lazy singleton stores.
 ### Creating Modules
 
 ```ts
-import { define, atom, readonly } from 'atomirx';
+import { define, atom, readonly } from "atomirx";
 
 const counterModule = define(() => {
   const count$ = atom(0);
-  
+
   return {
     count$: readonly(count$),
-    increment: () => count$.set(c => c + 1),
-    decrement: () => count$.set(c => c - 1),
+    increment: () => count$.set((c) => c + 1),
+    decrement: () => count$.set((c) => c - 1),
     reset: () => count$.reset(),
   };
 });
@@ -543,7 +541,7 @@ counterModule.override((original) => ({
 
 ```ts
 counterModule.isInitialized(); // Has instance been created?
-counterModule.isOverridden();  // Is override active?
+counterModule.isOverridden(); // Is override active?
 
 // Force new instance on next access
 counterModule.invalidate();
@@ -556,7 +554,7 @@ If the module returns a `dispose` function, it's called on invalidate:
 ```ts
 const connectionModule = define(() => {
   const conn = createConnection();
-  
+
   return {
     query: (sql) => conn.query(sql),
     dispose: () => conn.close(),

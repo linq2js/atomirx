@@ -1,10 +1,27 @@
+/**
+ * @fileoverview Pool implementation - a collection of atoms indexed by params with automatic GC.
+ *
+ * Pools solve the "atomFamily" problem with better memory management:
+ * - Automatic garbage collection prevents memory leaks
+ * - Promise-aware GC avoids collecting pending async operations
+ * - ScopedAtom pattern ensures safe usage in reactive contexts
+ *
+ * @module core/pool
+ */
+
 import { atom, AtomContext } from "./atom";
 import { emitter, Emitter } from "./emitter";
 import { resolveEquality } from "./equality";
 import { isPromiseLike } from "./isPromiseLike";
 import { onCreateHook } from "./onCreateHook";
 import { trackPromise } from "./promiseCache";
-import { MutableAtom, Pool, PoolOptions, SYMBOL_POOL } from "./types";
+import {
+  MutableAtom,
+  Pool,
+  PoolEvent,
+  PoolOptions,
+  SYMBOL_POOL,
+} from "./types";
 
 /**
  * Internal entry structure for pool management.
@@ -40,8 +57,7 @@ interface PoolEntry<P, T> {
  * - `remove(params)` - Remove entry
  * - `clear()` - Remove all entries
  * - `forEach(cb)` - Iterate entries
- * - `onChange(cb)` - Subscribe to value changes
- * - `onRemove(cb)` - Subscribe to removals
+ * - `on(cb)` - Subscribe to pool events (create, change, remove)
  *
  * ## Reactive Context (via SelectContext.from())
  *
@@ -96,19 +112,42 @@ export function pool<T, P = unknown>(
   options: PoolOptions<P>
 ): Pool<P, T> {
   const { gcTime, meta } = options;
+
   // Default to "shallow" equality for params comparison
+  // This means { a: 1 } and { a: 1 } are considered the same entry
   const paramsEqual = resolveEquality(options.equals ?? "shallow");
 
-  // Entry cache - use array for equality-based lookup
+  // =========================================================================
+  // Internal State
+  // =========================================================================
+
+  /**
+   * Primary cache - stores all pool entries.
+   * Uses array for equality-based lookup (O(n) worst case).
+   * Order is insertion order.
+   */
   const cache: PoolEntry<P, T>[] = [];
 
-  // Reference cache for O(1) lookup when same object reference is passed
-  // Helps avoid expensive equality checks on repeated lookups with same params object
+  /**
+   * Reference cache - O(1) lookup optimization for object params.
+   *
+   * When the same params object reference is passed multiple times
+   * (common in React re-renders), we can skip the O(n) equality search.
+   *
+   * Uses WeakMap so entries are automatically cleaned up when
+   * the params object is garbage collected.
+   */
   const refCache = new WeakMap<WeakKey, PoolEntry<P, T>>();
 
-  // Global event emitters
-  const changeEmitter = emitter<{ params: P; value: T }>();
-  const removeEmitter = emitter<{ params: P; value: T }>();
+  /**
+   * Event emitter for pool lifecycle events.
+   * Emits: "create" | "change" | "remove"
+   */
+  const eventEmitter = emitter<PoolEvent<P, T>>();
+
+  // =========================================================================
+  // Helper Functions
+  // =========================================================================
 
   /**
    * Check if params can be used as WeakMap key (non-null object or function).
@@ -178,99 +217,181 @@ export function pool<T, P = unknown>(
     return undefined;
   };
 
+  // =========================================================================
+  // Entry Lifecycle
+  // =========================================================================
+
   /**
-   * Creates a new pool entry for params.
+   * Creates a new pool entry for the given params.
+   *
+   * Entry lifecycle:
+   * 1. Create atom with initial value from `init(params)`
+   * 2. Start GC timer
+   * 3. Subscribe to value changes (resets GC, emits "change" event)
+   * 4. Entry is removed when GC timer fires or `remove()` is called
+   *
+   * @param params - The params to create an entry for
+   * @returns The created pool entry
    */
   const createEntry = (params: P): PoolEntry<P, T> => {
+    // Create the underlying atom with the init function
     const entryAtom = atom((context) => init(params, context));
+
+    // Token to track value changes - used to invalidate stale GC timers
     let changeToken = {};
+
+    // Reference to the active GC timeout (null if no timer running)
     let gcTimeout: ReturnType<typeof setTimeout> | null = null;
 
     /**
-     * Tries to start the GC timer.
-     * If value is a pending Promise, waits for it to settle first.
+     * Attempts to start the GC timer.
+     *
+     * ## Promise-Aware GC
+     *
+     * If the value is a pending Promise, we DON'T start the timer yet.
+     * Instead, we wait for the Promise to settle, then start the timer.
+     * This prevents collecting entries while async operations are in-flight.
+     *
+     * ```
+     * tryToStartGC(value)
+     *        │
+     *        ▼
+     *   Is value Promise?
+     *        │
+     *   ┌────┴────┐
+     *   │Yes      │No
+     *   ▼         ▼
+     * Is pending? Start timer
+     *   │
+     * ┌─┴──┐
+     * │Yes │No (settled)
+     * ▼    ▼
+     * Wait Start timer
+     * ```
+     *
+     * @param value - Current atom value
      */
     const tryToStartGC = (value: T) => {
-      // Clear any existing timer
+      // Clear any existing timer to avoid multiple timers
       if (gcTimeout) {
         clearTimeout(gcTimeout);
         gcTimeout = null;
       }
 
+      // Create new token - any value change will invalidate this token
       const prevToken = (changeToken = {});
 
-      // If value is a pending Promise, wait for it to settle
+      // Promise-aware: don't GC while value is a pending Promise
       if (isPromiseLike(value)) {
         const state = trackPromise(value as PromiseLike<unknown>);
         if (state.status === "pending") {
           const onSettled = () => {
-            // Only proceed if value hasn't changed
+            // Abort if value changed while waiting
             if (changeToken !== prevToken) return;
-            // Retry GC with same value (now settled)
+            // Promise settled, now we can start the GC timer
             tryToStartGC(value);
           };
-          // Wait for Promise to settle before starting GC
+          // Wait for Promise to resolve or reject
           value.then(onSettled, onSettled);
           return;
         }
       }
 
-      // Start GC timer
+      // Start the GC timer
       gcTimeout = setTimeout(() => {
-        // Verify value hasn't changed
+        // Abort if value changed since timer started
         if (changeToken !== prevToken) return;
-        // Remove entry
+        // Time's up - remove this entry
         removeEntry(params);
       }, gcTime);
     };
 
+    /**
+     * Resets the GC timer.
+     * Called on: entry creation, value change, get(), set()
+     */
     const resetGC = () => tryToStartGC(entryAtom.get());
 
+    /**
+     * Cleans up entry resources.
+     * Called when entry is removed from pool.
+     */
     const cleanup = () => {
+      // Cancel pending GC timer
       if (gcTimeout) {
         clearTimeout(gcTimeout);
         gcTimeout = null;
       }
+      // Unsubscribe from atom changes
       unsubAtom();
     };
 
-    // Subscribe to atom value changes to reset GC and emit onChange
+    // Subscribe to atom value changes
+    // This handles both direct set() calls and async value updates
     const unsubAtom = entryAtom.on(() => {
+      // Invalidate any pending GC timer
       changeToken = {};
       const newValue = entryAtom.get();
+      // Restart GC timer with new value
       resetGC();
-      changeEmitter.emit({ params, value: newValue });
+      // Notify listeners of the change
+      eventEmitter.emit({ type: "change", params, value: newValue });
     });
 
     // Start initial GC timer
     resetGC();
 
-    // Create entry structure
+    // Return the entry structure
     return {
       atom: entryAtom,
       params,
-      disposeEmitter: emitter(),
+      disposeEmitter: emitter(), // For entry-specific removal listeners
       resetGC,
       cleanup,
     };
   };
 
   /**
-   * Gets or creates an entry for params.
+   * Gets an existing entry or creates a new one.
+   *
+   * This is the primary entry point for accessing pool entries.
+   * If an entry with matching params exists, returns it.
+   * Otherwise, creates a new entry with the init function.
+   *
+   * @param params - The params to look up or create
+   * @returns The existing or newly created entry
    */
   const getOrCreateEntry = (params: P): PoolEntry<P, T> => {
+    // Try to find existing entry
     const found = findEntry(params);
     if (found) {
       return found.entry;
     }
 
+    // Create new entry
     const entry = createEntry(params);
     cache.push(entry);
+
+    // Emit "create" event for new entry
+    // Callers can use pool.on() to listen for create/change/remove events
+    eventEmitter.emit({ type: "create", params, value: entry.atom.get() });
+
     return entry;
   };
 
   /**
-   * Removes an entry and notifies listeners.
+   * Removes an entry from the pool.
+   *
+   * Removal sequence:
+   * 1. Find entry by params
+   * 2. Dispose the underlying atom (aborts signals, runs cleanup)
+   * 3. Clean up entry resources (GC timer, subscriptions)
+   * 4. Notify entry-specific listeners (via disposeEmitter)
+   * 5. Remove from cache
+   * 6. Emit "remove" event
+   * 7. Notify devtools hook
+   *
+   * @param params - The params of the entry to remove
    */
   const removeEntry = (params: P) => {
     const found = findEntry(params);
@@ -278,83 +399,153 @@ export function pool<T, P = unknown>(
 
     const { entry, index } = found;
 
-    // Dispose atom (abort signals, run cleanup functions)
+    // Step 1: Dispose atom (abort signals, run cleanup functions)
     entry.atom._dispose();
 
-    // Cleanup resources (GC timer, atom subscription)
+    // Step 2: Cleanup entry resources (GC timer, atom subscription)
     entry.cleanup();
 
-    // Get last value before removing
+    // Step 3: Capture values before removing (for events)
     const lastValue = entry.atom.get();
     const entryParams = entry.params;
 
-    // Notify entry-specific disposal listeners
+    // Step 4: Notify entry-specific disposal listeners
+    // Used by SelectContext to know when to recompute
     entry.disposeEmitter.emitAndClear();
 
-    // Remove from cache (use splice for array)
+    // Step 5: Remove from cache
     cache.splice(index, 1);
 
-    // Notify global remove listeners
-    removeEmitter.emit({ params: entryParams, value: lastValue });
+    // Step 6: Emit "remove" event
+    // Callers can use pool.on() to listen for remove events
+    eventEmitter.emit({
+      type: "remove",
+      params: entryParams,
+      value: lastValue,
+    });
   };
 
-  // Create the pool object
+  // =========================================================================
+  // Public API
+  // =========================================================================
+
+  // Create the pool instance with public API
   const poolInstance: Pool<P, T> = {
+    // Symbol marker for type identification
     [SYMBOL_POOL]: true as const,
+
+    // User-provided metadata (for devtools, debugging)
     meta,
 
+    /**
+     * Returns the number of entries in the pool.
+     */
+    size(): number {
+      return cache.length;
+    },
+
+    /**
+     * Gets the value for params.
+     * Creates entry if it doesn't exist.
+     * Resets GC timer on access (keeps entry alive).
+     */
     get(params: P): T {
       const entry = getOrCreateEntry(params);
-      entry.resetGC();
+      entry.resetGC(); // Keep alive on access
       return entry.atom.get();
     },
 
+    /**
+     * Sets the value for params.
+     * Creates entry if it doesn't exist.
+     * Resets GC timer on access.
+     *
+     * Accepts either a direct value or an updater function.
+     */
     set(params: P, value: T | ((prev: T) => T)): void {
       const entry = getOrCreateEntry(params);
-      entry.resetGC();
+      entry.resetGC(); // Keep alive on access
       entry.atom.set(value);
+      // Note: "change" event is emitted via atom subscription
     },
 
+    /**
+     * Checks if an entry exists for params.
+     * Does NOT create entry or reset GC timer.
+     */
     has(params: P): boolean {
       return findEntry(params) !== undefined;
     },
 
+    /**
+     * Removes an entry from the pool.
+     * Triggers "remove" event and cleanup.
+     */
     remove(params: P): void {
       removeEntry(params);
     },
 
+    /**
+     * Removes all entries from the pool.
+     * Triggers "remove" event for each entry.
+     */
     clear(): void {
-      // Copy to avoid mutation during iteration
+      // Copy array to avoid mutation during iteration
       const entries = [...cache];
       for (const entry of entries) {
         removeEntry(entry.params);
       }
     },
 
+    /**
+     * Iterates over all entries in the pool.
+     * Callback receives (value, params) for each entry.
+     */
     forEach(callback: (value: T, params: P) => void): void {
       for (const entry of cache) {
         callback(entry.atom.get(), entry.params);
       }
     },
 
-    onChange(listener: (params: P, value: T) => void): VoidFunction {
-      return changeEmitter.on(({ params, value }) => listener(params, value));
+    /**
+     * Subscribes to pool events.
+     *
+     * Events:
+     * - "create": New entry created
+     * - "change": Entry value changed
+     * - "remove": Entry removed (manual or GC)
+     *
+     * @returns Unsubscribe function
+     */
+    on(listener: (event: PoolEvent<P, T>) => void): VoidFunction {
+      return eventEmitter.on(listener);
     },
 
-    onRemove(listener: (params: P, value: T) => void): VoidFunction {
-      return removeEmitter.on(({ params, value }) => listener(params, value));
-    },
+    // =========================================================================
+    // Internal API (used by SelectContext)
+    // =========================================================================
 
+    /**
+     * Gets the underlying atom for params.
+     * @internal Used by SelectContext.from() to create ScopedAtom
+     */
     _getAtom(params: P): MutableAtom<T> {
       const entry = getOrCreateEntry(params);
       return entry.atom;
     },
 
+    /**
+     * Subscribes to removal of a specific entry.
+     * @internal Used by SelectContext for automatic recomputation
+     *
+     * When an entry is removed while a derived/effect depends on it,
+     * this listener triggers recomputation to get a fresh entry.
+     */
     _onRemove(params: P, listener: VoidFunction): VoidFunction {
       const found = findEntry(params);
 
       if (!found) {
-        // Entry doesn't exist, nothing to clean up - return no-op
+        // Entry doesn't exist - return no-op unsubscribe
         return () => {};
       }
 
@@ -362,6 +553,7 @@ export function pool<T, P = unknown>(
     },
   };
 
+  // Notify devtools that a new pool was created
   onCreateHook.current?.({
     type: "pool",
     key: meta?.key,
@@ -371,6 +563,10 @@ export function pool<T, P = unknown>(
 
   return poolInstance;
 }
+
+// =============================================================================
+// Type Guards
+// =============================================================================
 
 /**
  * Type guard to check if a value is a Pool.
