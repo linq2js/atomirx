@@ -141,6 +141,14 @@ export const publicCount$ = readonly(count$);
 
 Derived atoms compute values from other atoms with automatic dependency tracking.
 
+### IMPORTANT: Derived Value is Always a Promise
+
+**The `.get()` method of a derived atom ALWAYS returns a `Promise<T>`**, even for synchronous computations. This is by design:
+
+- **Unified async handling** - Derived atoms seamlessly handle both sync and async dependency atoms
+- **Reactive composition** - Use `derived()` when you need to reactively combine multiple atoms
+- **Suspense integration** - The Promise-based API enables React Suspense support
+
 ### Creating Derived Atoms
 
 ```ts
@@ -268,11 +276,93 @@ const canAccess$ = derived(({ and, or }) =>
 );
 ```
 
+### CRITICAL: Never Update Atoms in Derived
+
+**Derived is for pure computation only.** Never call `.set()` on any atom inside a derived selector:
+
+```ts
+// ❌ FORBIDDEN - Don't update atoms in derived
+derived(({ read }) => {
+  const items = read(cartItems$);
+  const total = items.reduce((sum, i) => sum + i.price, 0);
+  cartTotal$.set(total); // ❌ NEVER DO THIS
+  return total;
+});
+
+// ✅ CORRECT - Use effect() when you need to update atoms reactively
+effect(
+  ({ read }) => {
+    const items = read(cartItems$);
+    const total = items.reduce((sum, i) => sum + i.price, 0);
+    cartTotal$.set(total); // ✅ OK in effect
+  },
+  { meta: { key: "compute.cartTotal" } }
+);
+
+// ✅ CORRECT - Derived is pure computation only
+const cartTotal$ = derived(({ read }) => {
+  const items = read(cartItems$);
+  return items.reduce((sum, i) => sum + i.price, 0);
+});
+```
+
+**Why this matters:**
+
+- Derived selectors may re-run multiple times during a single update cycle
+- Updating atoms inside derived causes infinite loops and unpredictable behavior
+- Derived is for **reading and transforming**, not for **writing**
+
+### Optimize Multiple Reads with all()
+
+When reading multiple atoms, use `all()` instead of sequential `read()` calls:
+
+```ts
+// ❌ INEFFICIENT - Sequential reads cause multiple re-evaluations
+const dashboard$ = derived(({ read }) => {
+  const user = read(user$); // Re-eval #1 if loading
+  const posts = read(posts$); // Re-eval #2 if loading
+  return { user, posts };
+});
+
+// ✅ OPTIMIZED - all() combines into single wait
+const dashboard$ = derived(({ all }) => {
+  const [user, posts] = all([user$, posts$]);
+  // Single combined Promise, waits for ALL at once
+  return { user, posts };
+});
+```
+
 ---
 
 ## Effects
 
-Effects run side effects in response to atom changes.
+Effects run side effects in response to atom changes. Effects handle sync/async atom values, then execute synchronously.
+
+### Effect Handles Sync/Async, Then Executes Synchronously
+
+Effects are responsible for:
+
+1. **Handling sync/async values** - `read()` suspends until async atoms resolve
+2. **Executing synchronously** - Once values are available, the effect body runs synchronously
+3. **Performing side effects** - Logging, updating external state, persisting, or mutating other atoms
+
+```ts
+const user$ = atom(fetchUser()); // Async atom
+const preferences$ = atom({ theme: "dark" }); // Sync atom
+
+// Effect handles both sync and async, then executes synchronously
+effect(
+  ({ read }) => {
+    const user = read(user$); // Suspends until resolved
+    const prefs = read(preferences$); // Reads immediately
+
+    // Synchronous execution after all values resolved
+    console.log(`User ${user.name} prefers ${prefs.theme}`);
+    localStorage.setItem("lastUser", user.id);
+  },
+  { meta: { key: "log.userPrefs" } }
+);
+```
 
 ### Creating Effects
 
@@ -354,6 +444,116 @@ effect(
   }
 );
 ```
+
+### Effect Lifecycle
+
+```mermaid
+flowchart TB
+    Created["effect created"]
+    Initial["Initial run"]
+    DepChanged["Dependency changed<br/>(atom$.set() triggers)"]
+    RunCleanup["Run cleanup(s)<br/>(onCleanup functions in FIFO order)"]
+    ReRun["Re-run effect"]
+    Repeat["(repeat on changes)"]
+    Dispose["e.dispose()"]
+    FinalCleanup["Final cleanup(s)<br/>(onCleanup functions in FIFO order)"]
+    Stopped["Effect stopped"]
+
+    Created --> Initial
+    Initial --> DepChanged
+    DepChanged --> RunCleanup
+    RunCleanup --> ReRun
+    ReRun --> Repeat
+    Repeat -.-> DepChanged
+    Repeat --> Dispose
+    Dispose --> FinalCleanup
+    FinalCleanup --> Stopped
+```
+
+---
+
+## When to Use What
+
+### Decision Rules
+
+| Scenario                                  | Solution                     | Why                        |
+| ----------------------------------------- | ---------------------------- | -------------------------- |
+| User clicks button → modify atoms         | Plain function with `.set()` | User-triggered, imperative |
+| React to atom changes → compute new value | `derived()`                  | Reactive computation       |
+| React to atom changes → side effects      | `effect()`                   | Reactive side effects      |
+| Need to combine multiple sync/async atoms | `derived()`                  | Handles async uniformly    |
+| Need to persist/log/sync on changes       | `effect()`                   | Side effect execution      |
+
+### Plain Functions for User Actions
+
+When a user action triggers atom modifications, write a plain function:
+
+```ts
+// ✅ CORRECT - User action triggers atom updates
+function addTodo(text: string) {
+  todos$.set((prev) => [...prev, { id: Date.now(), text, completed: false }]);
+}
+
+function toggleTodo(id: number) {
+  todos$.set((prev) =>
+    prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+  );
+}
+
+// Usage in React
+<button onClick={() => addTodo("New task")}>Add</button>
+```
+
+### Derived for Reactive Computation
+
+When you need to compute values that update when dependencies change:
+
+```ts
+// ✅ CORRECT - Reactive computation from multiple atoms
+const filteredTodos$ = derived(({ read }) => {
+  const todos = read(todos$); // May be sync or async
+  const filter = read(filterType$); // May be sync or async
+  return todos.filter(
+    (t) => filter === "all" || t.completed === (filter === "completed")
+  );
+});
+```
+
+### Effect for Reactive Side Effects
+
+When you need to perform side effects when atoms change:
+
+```ts
+// ✅ CORRECT - React to changes, perform side effect
+effect(
+  ({ read }) => {
+    const todos = read(todos$);
+    localStorage.setItem("todos", JSON.stringify(todos));
+  },
+  { meta: { key: "persist.todos" } }
+);
+
+// ✅ CORRECT - Effect can also mutate atoms
+effect(
+  ({ read }) => {
+    const items = read(cartItems$);
+    const total = items.reduce((sum, i) => sum + i.price, 0);
+    cartTotal$.set(total);
+  },
+  { meta: { key: "compute.cartTotal" } }
+);
+```
+
+### Comparison Table
+
+| Aspect            | derived()                | effect()                   |
+| ----------------- | ------------------------ | -------------------------- |
+| Returns           | `Promise<T>` (computed)  | void (side effects only)   |
+| Lazy              | Yes (computed on access) | No (runs immediately)      |
+| Subscription      | When accessed            | Always active              |
+| Use case          | Transform/combine data   | Sync, persist, log, mutate |
+| **Can set atoms** | **❌ NEVER**             | **✅ Yes**                 |
+| Async handling    | Suspends until resolved  | Suspends until resolved    |
 
 ---
 

@@ -20,10 +20,10 @@ atomirx exports React-specific utilities from a separate entry point:
 
 ```ts
 // Core (framework-agnostic)
-import { atom, derived, effect } from 'atomirx';
+import { atom, derived, effect } from "atomirx";
 
 // React integration
-import { useSelector, rx, useAction, useStable } from 'atomirx/react';
+import { useSelector, rx, useAction, useStable } from "atomirx/react";
 ```
 
 ---
@@ -35,8 +35,8 @@ React hook for subscribing to atom values.
 ### Basic Usage
 
 ```tsx
-import { atom } from 'atomirx';
-import { useSelector } from 'atomirx/react';
+import { atom } from "atomirx";
+import { useSelector } from "atomirx/react";
 
 const count$ = atom(0);
 
@@ -51,12 +51,12 @@ function Counter() {
 Derive values using the select context:
 
 ```tsx
-const firstName$ = atom('John');
-const lastName$ = atom('Doe');
+const firstName$ = atom("John");
+const lastName$ = atom("Doe");
 
 function FullName() {
-  const fullName = useSelector(({ read }) => 
-    `${read(firstName$)} ${read(lastName$)}`
+  const fullName = useSelector(
+    ({ read }) => `${read(firstName$)} ${read(lastName$)}`
   );
   return <div>{fullName}</div>;
 }
@@ -71,10 +71,12 @@ function Dashboard() {
     name: read(name$),
     items: read(items$),
   }));
-  
+
   return (
     <div>
-      <p>{data.name}: {data.count}</p>
+      <p>
+        {data.name}: {data.count}
+      </p>
       <p>Items: {data.items.length}</p>
     </div>
   );
@@ -113,16 +115,13 @@ Control re-renders with equality functions:
 const user = useSelector(user$);
 
 // Strict equality
-const user = useSelector(user$, 'strict');
+const user = useSelector(user$, "strict");
 
 // Deep equality
-const user = useSelector(user$, 'deep');
+const user = useSelector(user$, "deep");
 
 // Custom equality
-const user = useSelector(
-  user$, 
-  (a, b) => a.id === b.id
-);
+const user = useSelector(user$, (a, b) => a.id === b.id);
 ```
 
 ### Async Utilities
@@ -132,13 +131,42 @@ Use async utilities for multiple async atoms:
 ```tsx
 function Dashboard() {
   const data = useSelector(({ all }) => {
-    const [user, posts] = all(user$, posts$);
+    const [user, posts] = all([user$, posts$]);
     return { user, posts };
   });
-  
+
   return <DashboardContent {...data} />;
 }
 ```
+
+### Optimize Multiple Reads with all()
+
+When reading multiple atoms, **always prefer `all()` over sequential `read()` calls**:
+
+```tsx
+// ❌ INEFFICIENT - Sequential reads cause multiple re-renders
+function Dashboard() {
+  const data = useSelector(({ read }) => {
+    const user = read(user$); // Re-render #1 if loading
+    const posts = read(posts$); // Re-render #2 if loading
+    return { user, posts };
+  });
+}
+
+// ✅ OPTIMIZED - all() waits for all at once
+function Dashboard() {
+  const data = useSelector(({ all }) => {
+    const [user, posts] = all([user$, posts$]);
+    // Single Suspense boundary, single re-render
+    return { user, posts };
+  });
+}
+```
+
+| Pattern             | Re-renders             | Wait Strategy    |
+| ------------------- | ---------------------- | ---------------- |
+| Sequential `read()` | Up to N (one per atom) | Waterfall (slow) |
+| `all([...])`        | 1                      | Parallel (fast)  |
 
 ---
 
@@ -171,18 +199,14 @@ With `rx`, subscribe inline:
 ```tsx
 // With rx
 function Counter() {
-  return (
-    <div>
-      Count: {rx(count$)}
-    </div>
-  );
+  return <div>Count: {rx(count$)}</div>;
 }
 ```
 
 ### Basic Usage
 
 ```tsx
-import { rx } from 'atomirx/react';
+import { rx } from "atomirx/react";
 
 function Counter() {
   return (
@@ -200,12 +224,12 @@ Only the `rx` component re-renders, not the parent:
 
 ```tsx
 function Parent() {
-  console.log('Parent renders once');
-  
+  console.log("Parent renders once");
+
   return (
     <div>
       {rx(count$)} {/* Only this re-renders */}
-      <button onClick={() => count$.set(c => c + 1)}>+</button>
+      <button onClick={() => count$.set((c) => c + 1)}>+</button>
     </div>
   );
 }
@@ -214,26 +238,31 @@ function Parent() {
 ### With Loading/Error Handling
 
 ```tsx
-{rx(
-  ({ read }) => read(asyncData$),
-  {
+{
+  rx(({ read }) => read(asyncData$), {
     loading: () => <Spinner />,
     error: ({ error }) => <ErrorMessage error={error} />,
-  }
-)}
+  });
+}
 ```
 
 ### Memoization Control
 
 ```tsx
 // No memoization (recreated every render)
-{rx(({ read }) => read(count$) * multiplier)}
+{
+  rx(({ read }) => read(count$) * multiplier);
+}
 
 // Stable selector (never recreated)
-{rx(({ read }) => read(count$) * 2, { deps: [] })}
+{
+  rx(({ read }) => read(count$) * 2, { deps: [] });
+}
 
 // Recreate when dependencies change
-{rx(({ read }) => read(count$) * multiplier, { deps: [multiplier] })}
+{
+  rx(({ read }) => read(count$) * multiplier, { deps: [multiplier] });
+}
 ```
 
 ### Important: Value Must Be ReactNode
@@ -243,14 +272,20 @@ When using atom shorthand, the value must be renderable:
 ```tsx
 // ✅ OK - number is ReactNode
 const count$ = atom(5);
-{rx(count$)}
+{
+  rx(count$);
+}
 
 // ❌ Wrong - object is not ReactNode
-const user$ = atom({ name: 'John' });
-{rx(user$)} // Error!
+const user$ = atom({ name: "John" });
+{
+  rx(user$);
+} // Error!
 
 // ✅ OK - extract renderable value
-{rx(({ read }) => read(user$).name)}
+{
+  rx(({ read }) => read(user$).name);
+}
 ```
 
 ---
@@ -262,7 +297,7 @@ Hook for managing async operations with state tracking.
 ### Basic Usage
 
 ```tsx
-import { useAction } from 'atomirx/react';
+import { useAction } from "atomirx/react";
 
 function SaveButton() {
   const [save, state] = useAction(async (data: FormData) => {
@@ -271,20 +306,16 @@ function SaveButton() {
 
   return (
     <div>
-      <button 
+      <button
         onClick={() => save(formData)}
-        disabled={state.status === 'loading'}
+        disabled={state.status === "loading"}
       >
-        {state.status === 'loading' ? 'Saving...' : 'Save'}
+        {state.status === "loading" ? "Saving..." : "Save"}
       </button>
-      
-      {state.status === 'error' && (
-        <p>Error: {state.error.message}</p>
-      )}
-      
-      {state.status === 'success' && (
-        <p>Saved! ID: {state.data.id}</p>
-      )}
+
+      {state.status === "error" && <p>Error: {state.error.message}</p>}
+
+      {state.status === "success" && <p>Saved! ID: {state.data.id}</p>}
     </div>
   );
 }
@@ -293,11 +324,21 @@ function SaveButton() {
 ### Action States
 
 ```ts
-type ActionState<T> = 
-  | { status: 'idle' }
-  | { status: 'loading'; promise: Promise<T> }
-  | { status: 'success'; data: T }
-  | { status: 'error'; error: Error };
+type ActionState<T> =
+  | { status: "idle" }
+  | { status: "loading"; promise: Promise<T> }
+  | { status: "success"; data: T }
+  | { status: "error"; error: Error };
+```
+
+### State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> loading: dispatch()
+    loading --> success: success
+    loading --> error: error
 ```
 
 ### Cancellation
@@ -312,10 +353,8 @@ function Search() {
 
   return (
     <div>
-      <input onChange={e => search(e.target.value)} />
-      {state.status === 'loading' && (
-        <button onClick={cancel}>Cancel</button>
-      )}
+      <input onChange={(e) => search(e.target.value)} />
+      {state.status === "loading" && <button onClick={cancel}>Cancel</button>}
     </div>
   );
 }
@@ -331,15 +370,15 @@ const [action, state] = useAction(
     onSuccess: (result) => {
       toast.success('Saved!');
     },
-    
+
     // Callback on error
     onError: (error) => {
       toast.error(error.message);
     },
-    
+
     // Reset state after success (ms)
     resetOnSuccess: 3000,
-    
+
     // Reset state after error (ms)
     resetOnError: 5000,
   }
@@ -355,7 +394,7 @@ Utilities for creating stable references.
 ### Stable Functions
 
 ```tsx
-import { useStable } from 'atomirx/react';
+import { useStable } from "atomirx/react";
 
 function Component({ onSave }) {
   // Reference stays the same, always calls latest onSave
@@ -384,6 +423,33 @@ function Component() {
 ---
 
 ## Suspense & Error Boundaries
+
+### How Suspense Works
+
+When a selector reads an async atom that is still loading, it **throws a Promise**. React catches this Promise, shows the fallback, waits for resolution, then re-renders.
+
+```mermaid
+flowchart TB
+    Start["useSelector reads atom"]
+    Read["read(asyncAtom$)"]
+
+    Start --> Read
+    Read --> Ready & Loading & Error
+
+    subgraph States["Atom State"]
+        Ready["READY<br/>Return value"]
+        Loading["LOADING<br/>Throw Promise"]
+        Error["ERROR<br/>Throw Error"]
+    end
+
+    Ready --> Render["Render component"]
+    Loading --> Suspense["React Suspense catches<br/>Shows fallback"]
+    Error --> ErrorBoundary["ErrorBoundary catches"]
+
+    Suspense --> Wait["Wait for Promise"]
+    Wait --> ReRender["Re-render component"]
+    ReRender -.-> Start
+```
 
 ### Async Atoms with Suspense
 
@@ -415,11 +481,11 @@ function Dashboard() {
       <Suspense fallback={<HeaderSkeleton />}>
         <Header />
       </Suspense>
-      
+
       <Suspense fallback={<ContentSkeleton />}>
         <Content />
       </Suspense>
-      
+
       <Suspense fallback={<SidebarSkeleton />}>
         <Sidebar />
       </Suspense>
@@ -462,7 +528,7 @@ useSelector(({ read, safe }) => {
 export const count$ = atom(0);
 
 // features/counter/Counter.tsx
-import { count$ } from './atoms';
+import { count$ } from "./atoms";
 ```
 
 ### 2. Use Modules for Complex State
@@ -470,10 +536,10 @@ import { count$ } from './atoms';
 ```tsx
 const counterModule = define(() => {
   const count$ = atom(0);
-  
+
   return {
     count$: readonly(count$),
-    increment: () => count$.set(c => c + 1),
+    increment: () => count$.set((c) => c + 1),
   };
 });
 ```
@@ -497,7 +563,7 @@ function Counter() {
 
 ```tsx
 // Good - computed once, cached
-const total$ = derived(({ read }) => 
+const total$ = derived(({ read }) =>
   read(items$).reduce((sum, i) => sum + i.price, 0)
 );
 
