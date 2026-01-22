@@ -3,7 +3,8 @@
   "compilerOptions": {
     "moduleResolution": "bundler",
     "outDir": "dist",
-    "declaration": true
+    "declaration": true,
+    "lib": ["ES2021", "DOM", "DOM.Iterable"]
   },
   "include": ["src"]
 }

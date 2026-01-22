@@ -14,6 +14,8 @@ export default defineConfig({
       entry: {
         index: resolve(__dirname, "src/index.ts"),
         "react/index": resolve(__dirname, "src/react/index.ts"),
+        "devtools/index": resolve(__dirname, "src/devtools/index.ts"),
+        "react-devtools/index": resolve(__dirname, "src/react-devtools/index.ts"),
       },
       name: "Atomirx",
       fileName: (format, entryName) => {

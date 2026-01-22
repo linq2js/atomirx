@@ -7,7 +7,8 @@
     "management",
     "atom",
     "derived",
-    "effect"
+    "effect",
+    "devtools"
   ],
   "author": "Gignuyen",
   "license": "MIT",
@@ -31,6 +32,16 @@
       "import": "./dist/react/index.js",
       "require": "./dist/react/index.cjs",
       "types": "./dist/react/index.d.ts"
+    },
+    "./devtools": {
+      "import": "./dist/devtools/index.js",
+      "require": "./dist/devtools/index.cjs",
+      "types": "./dist/devtools/index.d.ts"
+    },
+    "./react-devtools": {
+      "import": "./dist/react-devtools/index.js",
+      "require": "./dist/react-devtools/index.cjs",
+      "types": "./dist/react-devtools/index.d.ts"
     }
   },
   "scripts": {
