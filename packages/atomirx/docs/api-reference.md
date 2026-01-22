@@ -29,7 +29,7 @@ Complete API documentation for atomirx.
   - [isAtom](#isatom)
   - [isDerived](#isderived)
   - [isPool](#ispool)
-  - [isVirtualAtom](#isvirtualatom)
+  - [isScopedAtom](#isvirtualatom)
 - [Hooks](#hooks)
   - [onCreateHook](#oncreatehook)
   - [onErrorHook](#onerrorhook)
@@ -327,7 +327,7 @@ function select<T>(
 | Method | Type | Description |
 |--------|------|-------------|
 | `read(atom)` | `Awaited<T>` | Read atom value |
-| `from(pool, params)` | `VirtualAtom<T>` | Get pool entry |
+| `from(pool, params)` | `ScopedAtom<T>` | Get pool entry |
 | `all(atoms)` | `Awaited<T>[]` | Wait for all |
 | `race(atoms)` | `KeyedResult` | First settled |
 | `any(atoms)` | `KeyedResult` | First success |
@@ -612,10 +612,10 @@ function isDerived<T = unknown>(value: unknown): value is DerivedAtom<T>
 function isPool<P = unknown, T = unknown>(value: unknown): value is Pool<P, T>
 ```
 
-### isVirtualAtom
+### isScopedAtom
 
 ```ts
-function isVirtualAtom<T = unknown>(value: unknown): value is VirtualAtom<T>
+function isScopedAtom<T = unknown>(value: unknown): value is ScopedAtom<T>
 ```
 
 ---

@@ -1,6 +1,6 @@
 ---
 name: atomirx-state-management
-description: Guide for working with atomirx reactive state management library. Use when working with atomirx primitives (atom, derived, effect, select), implementing store patterns with define(), using ready() for deferred loading, debugging reactive data flows, handling async operations, or integrating with React (useSelector, rx, useAction). Triggers on atomirx imports, atom$ naming conventions, or reactive state patterns.
+description: Guide for working with atomirx reactive state management library. Use when working with atomirx primitives (atom, derived, effect, select, pool), implementing store patterns with define(), using ready() for deferred loading, debugging reactive data flows, handling async operations, or integrating with React (useSelector, rx, useAction, useStable). Triggers on atomirx imports, atom$ naming conventions, or reactive state patterns.
 ---
 
 # atomirx State Management
@@ -13,23 +13,45 @@ description: Guide for working with atomirx reactive state management library. U
 | `derived(fn)`      | Computed value from other atoms    | Yes (lazy)           |
 | `effect(fn)`       | Side effects on state changes      | Yes (eager)          |
 | `select(fn)`       | One-time read without subscription | No                   |
+| `pool(fn, opts)`   | Collection of atoms indexed by params | No (per-entry GC) |
 | `batch(fn)`        | Group updates into single notify   | No                   |
 | `define(fn)`       | Lazy singleton factory             | No                   |
 | `onCreateHook`     | Track atom/effect/module creation  | No                   |
 | `onErrorHook`      | Global error handling              | No                   |
 
-## SelectContext Methods
+## SelectContext Methods (Unified Across All Reactive Contexts)
+
+**CRITICAL:** These methods work **identically** in `derived()`, `effect()`, `useSelector()`, and `rx()`. Learn once, use everywhere.
 
 | Method      | Signature                   | Behavior                              |
 | ----------- | --------------------------- | ------------------------------------- |
 | `read()`    | `read(atom$)`               | Read + track dependency               |
 | `ready()`   | `ready(atom$)` or with `fn` | Wait for non-null (suspends)          |
+| `from()`    | `from(pool, params)`        | Get ScopedAtom from pool              |
+| `track()`   | `track(atom$)`              | Track dependency without reading      |
 | `safe()`    | `safe(() => expr)`          | Catch errors, preserve Suspense       |
 | `all()`     | `all([a$, b$])`             | Wait for all (like Promise.all)       |
 | `any()`     | `any({ a: a$, b: b$ })`     | First ready (like Promise.any)        |
 | `race()`    | `race({ a: a$, b: b$ })`    | First settled (like Promise.race)     |
 | `settled()` | `settled([a$, b$])`         | All results (like Promise.allSettled) |
 | `state()`   | `state(atom$)`              | Get state without throwing            |
+| `and()`     | `and([cond1, cond2])`       | Logical AND with short-circuit        |
+| `or()`      | `or([cond1, cond2])`        | Logical OR with short-circuit         |
+
+```typescript
+// ✅ SAME pattern works in derived(), effect(), useSelector(), rx()
+const pattern = ({ read, all, safe }) => {
+  const [user, posts] = all([user$, posts$]);
+  const [err, parsed] = safe(() => JSON.parse(read(config$)));
+  return { user, posts, config: err ? null : parsed };
+};
+
+// Use in any context:
+const combined$ = derived(pattern);
+effect(({ read, all }) => console.log(all([user$, posts$])));
+const data = useSelector(pattern);
+{rx(pattern)}
+```
 
 ## read() vs ready() vs state()
 
@@ -43,18 +65,19 @@ description: Guide for working with atomirx reactive state management library. U
 
 1. **MUST use define() for all state/logic** - Global classes/utils OK, but variables/state MUST be in `define()`.
 2. **MUST use batch() for multiple atom updates** - Wrap multiple `.set()` calls in `batch()` for single notification.
-3. **Group multiple useSelector calls** - Each call creates a subscription. Group reads into single selector.
-4. **useAction deps: pass atoms, not values** - For `lazy: false` auto re-dispatch, pass atoms to `deps` and use `.get()` inside.
-5. **Never use try/catch with read()** - breaks Suspense. Use `safe()` instead.
-6. **Co-locate mutations in store** - all `.set()` calls for an atom belong in its store.
-7. **Export readonly atoms** - Use `readonly({ atom$ })` to prevent external mutations.
-8. **SelectContext is synchronous only** - can't use `read()` in setTimeout/Promise.then.
+3. **MUST group multiple useSelector calls** - Each call creates a subscription. Group reads into single selector.
+4. **useAction deps: MUST pass atoms, not values** - For `lazy: false` auto re-dispatch, pass atoms to `deps` and use `.get()` inside.
+5. **NEVER use try/catch with read()** - BREAKS Suspense. Use `safe()` instead.
+6. **MUST co-locate mutations in store** - all `.set()` calls for an atom MUST belong in its store.
+7. **MUST export readonly atoms** - Use `readonly({ atom$ })` to prevent external mutations.
+8. **SelectContext is synchronous ONLY** - NEVER use `read()` in setTimeout/Promise.then.
 9. **Service vs Store naming** - Services are stateless (`*Service`), Stores contain atoms (`*Store`). See Naming Conventions.
 10. **NEVER import service factories** - Use `define()` for services, consume via invocation. See FORBIDDEN Patterns.
 11. **Single effect, single workflow** - Each effect handles ONE workflow. Split multiple workflows into separate effects.
 12. **MUST define meta.key for atoms/derived/effects** - Use `{ meta: { key: "store.name" } }` for debugging.
 13. **MUST use .override() for hooks** - Never assign directly to `.current`. Use `.override()` to preserve hook chain.
 14. **MUST use useStable() for callbacks** - NEVER use React's useCallback. Use `useStable({ callback1, callback2 })` instead.
+15. **Use pool for parameterized state** - When you need atoms indexed by ID/params, use `pool()` instead of manual Maps.
 
 ### meta.key for Debugging (CRITICAL)
 
@@ -63,6 +86,7 @@ description: Guide for working with atomirx reactive state management library. U
 const user$ = atom<User | null>(null, { meta: { key: "auth.user" } });
 const isAuth$ = derived(({ read }) => !!read(user$), { meta: { key: "auth.isAuthenticated" } });
 effect(({ read }) => { ... }, { meta: { key: "auth.persistSession" } });
+const userPool = pool((id: string) => fetchUser(id), { gcTime: 60_000, meta: { key: "users" } });
 
 // ❌ DON'T: Skip meta.key (hard to debug)
 const user$ = atom<User | null>(null);
@@ -94,7 +118,7 @@ const load = useAction(async () => atom1$.get() + (await atom2$.get()), {
   deps: [atom1$, atom2$],
   lazy: false,
 });
-// load() to call, load.loading, load.result, load.error for state
+// load() to call, load.status, load.result, load.error for state
 
 // ❌ DON'T: useSelector values in deps (causes Suspense, stale closures)
 const { v1, v2 } = useSelector(({ read }) => ({
@@ -145,14 +169,6 @@ const config = useMemo(
   []
 );
 
-const columns = useMemo(
-  () => [
-    { key: "name", label: "Name" },
-    { key: "email", label: "Email" },
-  ],
-  []
-);
-
 // ✅ REQUIRED: useStable for callbacks, arrays, objects
 const stable = useStable({
   // Callbacks
@@ -171,74 +187,60 @@ const stable = useStable({
     { key: "name", label: "Name" },
     { key: "email", label: "Email" },
   ],
-
-  // Dates
-  startDate: new Date(),
 });
 
-// Usage: stable.onSubmit, stable.config, stable.columns, stable.startDate
+// Usage: stable.onSubmit, stable.config, stable.columns
 ```
 
-**Why useStable over useCallback/useMemo:**
-
-1. **Stable references** — values never change identity, no dependency arrays needed
-2. **Always fresh values** — closures capture current values, no stale closure bugs
-3. **Cleaner code** — group related stable values together
-4. **Better performance** — no re-creation on every render
-5. **Works with any value** — functions, objects, arrays, dates
-
-**Pattern in `.logic.ts` hooks:**
+### pool() for Parameterized State (IMPORTANT)
 
 ```tsx
-export function useAuthPageLogic() {
-  const auth = authStore();
-  const [view, setView] = useState<AuthView>("checking");
-  const [username, setUsername] = useState("");
+// ✅ DO: Use pool for entity caches
+const userPool = pool(
+  (id: string) => fetchUser(id),
+  { gcTime: 60_000, meta: { key: "users" } }
+);
 
-  // ✅ Group ALL stable values with useStable
-  const stable = useStable({
-    // Callbacks
-    onRegister: async () => {
-      if (!username.trim()) return;
-      await auth.register(username.trim());
-    },
-    onLogin: async () => {
-      await auth.login();
-    },
-    onSwitchToRegister: () => {
-      auth.clearError();
-      setView("register");
-    },
-    onSwitchToLogin: () => {
-      auth.clearError();
-      setView("login");
-    },
+// Public API (value-based)
+userPool.get("user-1");  // T
+userPool.set("user-1", newUser);
+userPool.remove("user-1");
 
-    // Config/options that need stable reference
-    formOptions: {
-      validateOnBlur: true,
-      validateOnChange: false,
-    },
-  });
+// In reactive context - use from() to get ScopedAtom
+const userPosts$ = derived(({ read, from }) => {
+  const user$ = from(userPool, "user-1"); // ScopedAtom<User>
+  return read(user$).posts;
+});
 
-  return {
-    view,
-    username,
-    setUsername,
-    ...stable, // Spread all stable values
-  };
+// ❌ DON'T: Manual Map-based caching
+const userCache = new Map<string, MutableAtom<User>>();
+function getUser(id: string) {
+  if (!userCache.has(id)) {
+    userCache.set(id, atom(fetchUser(id)));
+  }
+  return userCache.get(id)!;
 }
 ```
 
-**When to use useStable vs useMemo:**
+### and()/or() for Boolean Logic (IMPORTANT)
 
-| Use Case                                  | Use                                                |
-| ----------------------------------------- | -------------------------------------------------- |
-| Callbacks/handlers                        | `useStable` (ALWAYS)                               |
-| Config objects passed as props            | `useStable`                                        |
-| Arrays passed as props (columns, options) | `useStable`                                        |
-| Expensive computed values                 | `useMemo` (computation cost > reference stability) |
-| Derived data from state                   | `useMemo` or just compute inline                   |
+```tsx
+// ✅ DO: Use and()/or() for boolean conditions with atoms
+const canEdit$ = derived(({ and }) => and([isLoggedIn$, hasPermission$]));
+const hasData$ = derived(({ or }) => or([cacheData$, apiData$]));
+
+// With lazy evaluation (short-circuit)
+const canDelete$ = derived(({ and }) => and([
+  isLoggedIn$,                    // Always evaluated
+  () => hasDeletePermission$,     // Only evaluated if logged in
+]));
+
+// Nested logic: (A && B) || C
+const result$ = derived(({ or, and }) => or([and([a$, b$]), c$]));
+
+// ❌ DON'T: Manual boolean logic (verbose, no short-circuit)
+const canEdit$ = derived(({ read }) => read(isLoggedIn$) && read(hasPermission$));
+```
 
 ### define() for Services and Stores (CRITICAL)
 
@@ -323,7 +325,7 @@ onErrorHook.reset();
 
 | Hook           | Use Case                          | Info Type                          |
 | -------------- | --------------------------------- | ---------------------------------- |
-| `onCreateHook` | DevTools, persistence, validation | `{ type, key, meta, atom/effect }` |
+| `onCreateHook` | DevTools, persistence, validation | `{ type, key, meta, instance }` |
 | `onErrorHook`  | Monitoring, logging, toast alerts | `{ source: CreateInfo, error }`    |
 
 See [references/hooks.md](references/hooks.md) for complete patterns.
@@ -335,9 +337,11 @@ See [references/hooks.md](references/hooks.md) for complete patterns.
 | Atom definitions | `atom<` or `atom(`                                                   |
 | Derived atoms    | `derived((`                                                          |
 | Effects          | `effect((`                                                           |
+| Pools            | `pool((`                                                             |
 | Stores           | `define(() =>` in `*.store.ts` files                                 |
 | Services         | `define(() =>` in `*.service.ts` files                               |
 | Atom usages      | `read(`, `ready(`, `all([`, `any({`, `race({`, `settled([`, `state(` |
+| Pool usages      | `from(poolName,`                                                     |
 | Mutations        | Find the store that owns the atom, look at its return statement      |
 | Hook setup       | `onCreateHook.override`, `onErrorHook.override`                      |
 
@@ -347,6 +351,7 @@ See [references/hooks.md](references/hooks.md) for complete patterns.
 2. Find subscribers → search `read(atomName$)`, `ready(atomName$)`, etc.
 3. Check derived is subscribed → used in `useSelector`?
 4. Check effect cleanup → doesn't prevent re-run?
+5. For pools → check if entry was GC'd, verify `from()` usage
 
 ## Common Issues
 
@@ -359,6 +364,8 @@ See [references/hooks.md](references/hooks.md) for complete patterns.
 | Suspense not working   | try/catch around read()      | Use `safe()` instead            |
 | Hook not firing        | Direct `.current` assignment | Use `.override()` instead       |
 | Missing hook calls     | Hook chain broken            | Always call `prev?.(info)`      |
+| Pool entry missing     | GC'd before access           | Increase gcTime or access more  |
+| ScopedAtom error       | Used outside select context  | Only use from() inside derived  |
 
 ## Naming Conventions
 
@@ -370,6 +377,7 @@ See [references/hooks.md](references/hooks.md) for complete patterns.
 - **Atoms**: `$` suffix → `count$`, `user$`
 - **Services**: camelCase, `Service` suffix → `authService`, `cryptoService` (NO atoms)
 - **Stores**: camelCase, `Store` suffix → `authStore`, `todosStore` (HAS atoms)
+- **Pools**: camelCase, `Pool` suffix → `userPool`, `articlePool`
 - **Actions**: verb-led → `navigateTo`, `invalidate`, `refresh`
 
 ### File Structure
@@ -391,10 +399,16 @@ src/
 ## References
 
 - [Rules & Best Practices](references/rules.md) - Storage, mutations, error handling
+- [Pool Patterns](references/pool-patterns.md) - Parameterized state with automatic GC
+- [Select Context](references/select-context.md) - All context methods in detail
 - [Deferred Loading](references/deferred-loading.md) - Entity loading with ready()
-- [React Integration](references/react-integration.md) - useSelector, rx, useAction
+- [React Integration](references/react-integration.md) - useSelector, rx, useAction, useStable
 - [Error Handling](references/error-handling.md) - safe() vs try/catch details
 - [Async Patterns](references/async-patterns.md) - all, any, race, settled
+- [Atom Patterns](references/atom-patterns.md) - Atom features (dirty, signal, cleanup)
+- [Derived Patterns](references/derived-patterns.md) - Derived features (staleValue, state, refresh)
+- [Effect Patterns](references/effect-patterns.md) - Effect features (cleanup, signal, lifecycle)
 - [Hooks](references/hooks.md) - onCreateHook, onErrorHook, middleware patterns
+- [Testing Patterns](references/testing-patterns.md) - Testing with define, hooks
 - [Store Template](references/store-template.md) - JSDoc template for stores (stateful)
 - [Service Template](references/service-template.md) - JSDoc template for services (stateless)

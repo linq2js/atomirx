@@ -27,7 +27,7 @@ interface PoolEntry<P, T> {
  *
  * A pool is similar to atomFamily in Jotai/Recoil, but with:
  * - Automatic garbage collection based on `gcTime`
- * - VirtualAtom pattern to prevent memory leaks from stale references
+ * - ScopedAtom pattern to prevent memory leaks from stale references
  * - Promise-aware GC (never GC while value is a pending Promise)
  * - GC timer resets on create, value change, and access
  *
@@ -45,7 +45,7 @@ interface PoolEntry<P, T> {
  *
  * ## Reactive Context (via SelectContext.from())
  *
- * In derived/effect/useSelector, use `from(pool, params)` to get a VirtualAtom:
+ * In derived/effect/useSelector, use `from(pool, params)` to get a ScopedAtom:
  * ```ts
  * derived(({ read, from }) => {
  *   const user$ = from(userPool, "user-1");
@@ -53,7 +53,7 @@ interface PoolEntry<P, T> {
  * });
  * ```
  *
- * The VirtualAtom is automatically disposed after the computation,
+ * The ScopedAtom is automatically disposed after the computation,
  * preventing memory leaks from stale atom references.
  *
  * @template P - The type of params used to index entries

@@ -22,10 +22,15 @@ const count$ = atom(0);
 const doubled$ = derived(({ read }) => read(count$) * 2);
 
 function App() {
-  const count = useSelector(count$);
+  // Read multiple atoms in one selector = one subscription, one re-render
+  const { count, doubled } = useSelector(({ read }) => ({
+    count: read(count$),
+    doubled: read(doubled$),
+  }));
+
   return (
     <button onClick={() => count$.set((c) => c + 1)}>
-      {count} × 2 = {useSelector(doubled$)}
+      {count} × 2 = {doubled}
     </button>
   );
 }
@@ -59,18 +64,23 @@ npm install atomirx
 
 ### Atoms
 
+Reactive state containers - the foundation of everything.
+
 ```ts
 const count$ = atom(0);
 
-count$.get();              // 0
-count$.set(5);             // set to 5
-count$.set(n => n + 1);    // increment
-count$.on(() => { ... });  // subscribe
+count$.get();              // Read current value
+count$.set(5);             // Set new value
+count$.set(n => n + 1);    // Update with reducer
+count$.on(() => { ... });  // Subscribe to changes
 ```
 
 ### Derived
 
+Computed values that auto-update when dependencies change.
+
 ```ts
+// Automatically recomputes when firstName$ or lastName$ changes
 const fullName$ = derived(
   ({ read }) => `${read(firstName$)} ${read(lastName$)}`
 );
@@ -80,11 +90,15 @@ await fullName$.get(); // "John Doe"
 
 ### Effects
 
+Side effects that run when dependencies change.
+
 ```ts
 effect(({ read, onCleanup }) => {
-  const count = read(count$); // Read synchronously, subscribes to changes
+  const count = read(count$); // Subscribe to count$ changes
   console.log("Count changed:", count);
-  onCleanup(() => console.log("Cleanup before next run"));
+
+  // Cleanup runs before each re-run and on dispose
+  onCleanup(() => console.log("Cleanup"));
 });
 ```
 
@@ -94,10 +108,16 @@ effect(({ read, onCleanup }) => {
 
 ### useSelector
 
+Subscribe to atoms in React components.
+
 ```tsx
 function Counter() {
+  // Single atom - component re-renders when count$ changes
   const count = useSelector(count$);
+
+  // Selector function - derive values inline
   const doubled = useSelector(({ read }) => read(count$) * 2);
+
   return (
     <span>
       {count} / {doubled}
@@ -108,10 +128,13 @@ function Counter() {
 
 ### rx - Inline Reactive
 
+Fine-grained updates without re-rendering the parent component.
+
 ```tsx
 function App() {
   return (
     <div>
+      {/* Only this span re-renders when count$ changes */}
       Count: {rx(count$)}
       Double: {rx(({ read }) => read(count$) * 2)}
     </div>
@@ -123,15 +146,18 @@ function App() {
 
 ## Async Atoms
 
+First-class async support with React Suspense.
+
 ```tsx
+// Atom holds a Promise - Suspense handles loading state
 const user$ = atom(fetchUser());
 
 function Profile() {
-  const user = useSelector(user$); // Suspends until loaded
+  const user = useSelector(user$); // Suspends until resolved
   return <h1>{user.name}</h1>;
 }
 
-// Wrap with Suspense
+// Wrap with Suspense for loading fallback
 <Suspense fallback={<Loading />}>
   <Profile />
 </Suspense>;
@@ -139,9 +165,12 @@ function Profile() {
 
 ### Multiple Async
 
+Wait for multiple atoms with `all()`.
+
 ```ts
-derived(({ all }) => {
-  const [user, posts] = all(user$, posts$);
+derived(({ read, all }) => {
+  // Waits for both to resolve (like Promise.all)
+  const [user, posts] = all([user$, posts$]);
   return { user, posts };
 });
 ```
@@ -150,15 +179,19 @@ derived(({ all }) => {
 
 ## Modules
 
+Encapsulate state and actions with lazy initialization.
+
 ```ts
 const counterModule = define(() => {
   const count$ = atom(0);
+
   return {
-    count$: readonly(count$),
-    increment: () => count$.set((c) => c + 1),
+    count$: readonly(count$), // Expose read-only
+    increment: () => count$.set((c) => c + 1), // Expose actions
   };
 });
 
+// Lazy - created on first call
 const { count$, increment } = counterModule();
 ```
 
@@ -166,12 +199,65 @@ const { count$, increment } = counterModule();
 
 ## Batching
 
+Combine multiple updates into a single notification.
+
 ```ts
 batch(() => {
   firstName$.set("John");
   lastName$.set("Doe");
-}); // Single notification
+}); // Subscribers notified once, not twice
 ```
+
+---
+
+## Pools
+
+Parameterized atoms with automatic garbage collection.
+
+```ts
+// Create a pool - atoms are created lazily per params
+const userPool = pool(
+  (id: string) => fetchUser(id), // Factory function
+  { gcTime: 60_000 } // Auto-cleanup after 60s of inactivity
+);
+
+// Access pool atoms via select context - never store references
+derived(({ read, from }) => {
+  const user$ = from(userPool, "user-123"); // Get atom for this id
+  return read(user$); // Read its value
+});
+```
+
+### Design Philosophy
+
+Unlike other libraries where you might store atom references in variables:
+
+```ts
+// ❌ Other libraries - orphan atoms can leak memory
+const userAtom = userFamily("user-123");
+someMap.set("cached", userAtom); // Orphan reference!
+```
+
+atomirx enforces access through select context only:
+
+```ts
+// ✅ atomirx - atoms only accessible in reactive context
+derived(({ read, from }) => {
+  const user$ = from(userPool, "user-123");
+  return read(user$);
+});
+
+// ScopedAtom throws if accessed directly
+const virtual = from(userPool, "user-123");
+virtual.get(); // ❌ Throws: use read(virtual) instead
+virtual.on(() => {}); // ❌ Throws: use derived/effect instead
+```
+
+This prevents:
+
+- **Memory leaks** from stale atom references
+- **Orphan atoms** that bypass garbage collection
+- **Inconsistent state** from multiple references to same entity
 
 ---
 

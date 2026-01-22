@@ -16,9 +16,9 @@ export const SYMBOL_ATOM = Symbol.for("atomirx.atom");
 export const SYMBOL_DERIVED = Symbol.for("atomirx.derived");
 
 /**
- * Symbol to identify virtual atoms (temporary wrappers for pool atoms).
+ * Symbol to identify scoped atoms (temporary wrappers for pool atoms).
  */
-export const SYMBOL_VIRTUAL = Symbol.for("atomirx.virtual");
+export const SYMBOL_SCOPED = Symbol.for("atomirx.scoped");
 
 /**
  * Symbol to identify pool instances.
@@ -415,17 +415,17 @@ export type SingleOrMultipleListeners<T> = Listener<T> | Listener<T>[];
 // ============================================================================
 
 /**
- * A virtual atom is a temporary wrapper around a real atom from a pool.
+ * A scoped atom is a temporary wrapper around a real atom from a pool.
  * It is only valid during a select() context and throws if accessed outside.
  *
- * VirtualAtoms prevent memory leaks by ensuring pool atom references
+ * ScopedAtoms prevent memory leaks by ensuring pool atom references
  * cannot be stored and used after the computation completes.
  *
  * @template T - The type of value stored in the underlying atom
  */
-export interface VirtualAtom<T> extends Atom<T> {
-  /** Symbol marker to identify virtual atom instances */
-  readonly [SYMBOL_VIRTUAL]: true;
+export interface ScopedAtom<T> extends Atom<T> {
+  /** Symbol marker to identify scoped atom instances */
+  readonly [SYMBOL_SCOPED]: true;
 
   /**
    * Get the underlying real atom.
@@ -435,7 +435,7 @@ export interface VirtualAtom<T> extends Atom<T> {
   _getAtom(): Atom<T>;
 
   /**
-   * Mark this virtual atom as disposed.
+   * Mark this scoped atom as disposed.
    * After disposal, any method call will throw.
    * @internal
    */
@@ -501,7 +501,7 @@ export interface PoolMeta extends AtomirxMeta {
 /**
  * A pool is a collection of atoms indexed by params.
  * Similar to atomFamily in Jotai/Recoil, but with automatic GC
- * and VirtualAtom pattern to prevent memory leaks.
+ * and ScopedAtom pattern to prevent memory leaks.
  *
  * @template P - The type of params used to index entries
  * @template T - The type of value stored in each entry

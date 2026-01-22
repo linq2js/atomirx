@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { atom } from "./atom";
 import { pool } from "./pool";
-import { select, isVirtualAtom } from "./select";
+import { select, isScopedAtom } from "./select";
 import { derived } from "./derived";
 
 describe("select with pool integration", () => {
@@ -14,19 +14,19 @@ describe("select with pool integration", () => {
   });
 
   describe("from()", () => {
-    it("should return a VirtualAtom from pool", () => {
+    it("should return a ScopedAtom from pool", () => {
       const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
 
       const { result } = select(({ from }) => {
         const virtual = from(testPool, "a");
-        expect(isVirtualAtom(virtual)).toBe(true);
+        expect(isScopedAtom(virtual)).toBe(true);
         return virtual;
       });
 
       expect(result.error).toBe(undefined);
     });
 
-    it("should be able to read value from VirtualAtom", () => {
+    it("should be able to read value from ScopedAtom", () => {
       const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
 
       const { result } = select(({ read, from }) => {
@@ -63,7 +63,7 @@ describe("select with pool integration", () => {
       expect(result._poolDeps.get(testPool)?.size).toBe(2);
     });
 
-    it("should reuse VirtualAtom for same underlying atom", () => {
+    it("should reuse ScopedAtom for same underlying atom", () => {
       const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
 
       const { result } = select(({ from }) => {
@@ -89,7 +89,7 @@ describe("select with pool integration", () => {
       expect(result._atomDeps.has(count$)).toBe(true);
     });
 
-    it("should track VirtualAtom and add underlying atom to deps", () => {
+    it("should track ScopedAtom and add underlying atom to deps", () => {
       const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
 
       const { result } = select(({ from, track }) => {
@@ -103,48 +103,92 @@ describe("select with pool integration", () => {
     });
   });
 
-  describe("VirtualAtom disposal", () => {
-    it("should dispose VirtualAtom after select completes", () => {
+  describe("ScopedAtom direct access prevention", () => {
+    it("should throw on ScopedAtom.get() - use read() instead", () => {
       const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
-      let capturedVirtual: any;
 
-      select(({ from }) => {
-        capturedVirtual = from(testPool, "a");
-        return capturedVirtual.get(); // Works inside select
+      // Direct access throws even inside select context
+      const { result } = select(({ from }) => {
+        const virtual = from(testPool, "a");
+        return virtual.get(); // ❌ Should use read(virtual)
       });
 
-      // After select, VirtualAtom should be disposed
-      expect(() => capturedVirtual.get()).toThrow(
-        /VirtualAtom.*was called after disposal/
+      expect(result.error).toBeInstanceOf(Error);
+      expect((result.error as Error).message).toMatch(
+        /ScopedAtom\.get\(\) is not allowed.*use read\(virtualAtom\)/
       );
     });
 
-    it("should throw on VirtualAtom.on() after disposal", () => {
+    it("should throw on ScopedAtom.on() - use derived/effect instead", () => {
       const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
-      let capturedVirtual: any;
 
-      select(({ from }) => {
-        capturedVirtual = from(testPool, "a");
+      // Direct subscription throws - use derived/effect for reactivity
+      const { result } = select(({ from }) => {
+        const virtual = from(testPool, "a");
+        virtual.on(() => {}); // ❌ Should use derived/effect
         return "done";
       });
 
-      expect(() => capturedVirtual.on(() => {})).toThrow(
-        /VirtualAtom.*was called after disposal/
+      expect(result.error).toBeInstanceOf(Error);
+      expect((result.error as Error).message).toMatch(
+        /ScopedAtom\.on\(\) is not allowed/
       );
     });
 
-    it("should throw on VirtualAtom._getAtom() after disposal", () => {
+    it("should throw on ScopedAtom.meta access", () => {
+      const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
+
+      const { result } = select(({ from }) => {
+        const virtual = from(testPool, "a");
+        return virtual.meta; // ❌ Direct access not allowed
+      });
+
+      expect(result.error).toBeInstanceOf(Error);
+      expect((result.error as Error).message).toMatch(
+        /ScopedAtom\.meta\(\) is not allowed/
+      );
+    });
+
+    it("should allow _getAtom() during select for internal use", () => {
+      const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
+
+      const { result } = select(({ from }) => {
+        const virtual = from(testPool, "a");
+        const realAtom = virtual._getAtom(); // ✅ Internal API works
+        return realAtom.get();
+      });
+
+      expect(result.value).toBe("value-a");
+    });
+  });
+
+  describe("ScopedAtom disposal", () => {
+    it("should throw on _getAtom() after disposal", () => {
       const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
       let capturedVirtual: any;
 
-      select(({ from }) => {
+      select(({ read, from }) => {
         capturedVirtual = from(testPool, "a");
-        return "done";
+        return read(capturedVirtual); // Use read() correctly
       });
 
+      // After select, ScopedAtom is disposed - _getAtom throws
       expect(() => capturedVirtual._getAtom()).toThrow(
-        /VirtualAtom.*was called after disposal/
+        /ScopedAtom\._getAtom\(\) was called after disposal/
       );
+    });
+
+    it("should set realAtom to undefined on disposal", () => {
+      const testPool = pool((id: string) => `value-${id}`, { gcTime: 1000 });
+      let capturedVirtual: any;
+
+      select(({ read, from }) => {
+        capturedVirtual = from(testPool, "a");
+        return read(capturedVirtual);
+      });
+
+      // Verify disposal happened by checking _getAtom throws
+      expect(() => capturedVirtual._getAtom()).toThrow(/after disposal/);
     });
   });
 
@@ -264,27 +308,27 @@ describe("select with pool integration", () => {
     });
   });
 
-  describe("isVirtualAtom type guard", () => {
-    it("should return true for VirtualAtom", () => {
+  describe("isScopedAtom type guard", () => {
+    it("should return true for ScopedAtom", () => {
       const testPool = pool(() => 0, { gcTime: 1000 });
 
       select(({ from }) => {
         const virtual = from(testPool, "a");
-        expect(isVirtualAtom(virtual)).toBe(true);
+        expect(isScopedAtom(virtual)).toBe(true);
         return null;
       });
     });
 
     it("should return false for regular atoms", () => {
       const count$ = atom(0);
-      expect(isVirtualAtom(count$)).toBe(false);
+      expect(isScopedAtom(count$)).toBe(false);
     });
 
     it("should return false for non-atoms", () => {
-      expect(isVirtualAtom(null)).toBe(false);
-      expect(isVirtualAtom(undefined)).toBe(false);
-      expect(isVirtualAtom({})).toBe(false);
-      expect(isVirtualAtom(42)).toBe(false);
+      expect(isScopedAtom(null)).toBe(false);
+      expect(isScopedAtom(undefined)).toBe(false);
+      expect(isScopedAtom({})).toBe(false);
+      expect(isScopedAtom(42)).toBe(false);
     });
   });
 

@@ -9,12 +9,12 @@ import {
   MutableAtom,
   Pipeable,
   Pool,
+  ScopedAtom,
   SelectStateResult,
   SettledResult,
   SYMBOL_ATOM,
   SYMBOL_POOL,
-  SYMBOL_VIRTUAL,
-  VirtualAtom,
+  SYMBOL_SCOPED,
 } from "./types";
 import { withUse } from "./withUse";
 
@@ -103,15 +103,15 @@ export interface SelectContext extends Pipeable {
   read<T>(atom: Atom<T>): Awaited<T>;
 
   /**
-   * Get a VirtualAtom from a pool for the given params.
-   * The VirtualAtom is only valid during this select() execution.
+   * Get a ScopedAtom from a pool for the given params.
+   * The ScopedAtom is only valid during this select() execution.
    *
    * When the pool entry is removed (GC or manual), the computation
    * will automatically re-run to get the new atom.
    *
    * @param pool - The pool to get atom from
    * @param params - The params to look up
-   * @returns A VirtualAtom wrapping the pool entry's atom
+   * @returns A ScopedAtom wrapping the pool entry's atom
    *
    * @example
    * ```ts
@@ -121,13 +121,13 @@ export interface SelectContext extends Pipeable {
    * });
    * ```
    */
-  from<P, T>(pool: Pool<P, T>, params: P): VirtualAtom<T>;
+  from<P, T>(pool: Pool<P, T>, params: P): ScopedAtom<T>;
 
   /**
    * Track an atom as a dependency without reading its value.
    * Useful when you need to subscribe to changes but already have the value.
    *
-   * @param atom - The atom to track (can be VirtualAtom)
+   * @param atom - The atom to track (can be ScopedAtom)
    */
   track(atom: Atom<unknown>): void;
 
@@ -455,51 +455,76 @@ export class AllAtomsRejectedError extends Error {
 }
 
 // ============================================================================
-// VirtualAtom - Temporary wrapper for pool atoms
+// ScopedAtom - Temporary wrapper for pool atoms
 // ============================================================================
 
 /**
- * Creates a VirtualAtom that wraps a real atom from a pool.
- * VirtualAtom is only valid during select() execution.
+ * Creates a ScopedAtom that wraps a real atom from a pool.
+ * ScopedAtom is only valid during select() execution.
+ *
+ * ## Design Philosophy
+ *
+ * ScopedAtom intentionally restricts direct access to atom properties.
+ * Users must use `read(virtualAtom)` instead of `virtualAtom.get()`.
+ *
+ * This enforces the pool pattern where atoms are never stored in variables
+ * or accessed outside the select context, preventing orphan atom references.
+ *
+ * ```
+ * ❌ const value = virtualAtom.get();     // Throws error
+ * ✅ const value = read(virtualAtom);     // Correct - uses select context
+ *
+ * ❌ virtualAtom.on(() => { ... });       // Throws error
+ * ✅ derived(({ read, from }) => {        // Correct - reactive via derived
+ *      const atom = from(pool, params);
+ *      return read(atom);
+ *    });
+ * ```
  */
-function createVirtualAtom<T>(realAtom: MutableAtom<T>): VirtualAtom<T> {
-  let disposed = false;
+function createScopedAtom<T>(realAtom: MutableAtom<T>): ScopedAtom<T> {
+  let atom: MutableAtom<T> | undefined = realAtom;
 
-  const assertNotDisposed = (methodName: string) => {
-    if (disposed) {
+  const throwDirectAccessError = (methodName: string): never => {
+    throw new Error(
+      `ScopedAtom.${methodName}() is not allowed. ` +
+        "ScopedAtom cannot be accessed directly - use read(virtualAtom) in select context instead. " +
+        "This prevents orphan atom references and ensures proper reactive tracking."
+    );
+  };
+
+  const assertNotDisposed = (): MutableAtom<T> => {
+    if (!atom) {
       throw new Error(
-        `VirtualAtom.${methodName}() was called after disposal. ` +
-          "VirtualAtoms are only valid during select() execution. " +
+        "ScopedAtom._getAtom() was called after disposal. " +
+          "ScopedAtoms are only valid during select() execution. " +
           "Always use from(pool, params) inside the computation, not outside."
       );
     }
+    return atom;
   };
 
-  const virtual: VirtualAtom<T> = {
+  const virtual: ScopedAtom<T> = {
     [SYMBOL_ATOM]: true as const,
-    [SYMBOL_VIRTUAL]: true as const,
+    [SYMBOL_SCOPED]: true as const,
 
     get meta() {
-      return realAtom.meta;
+      return throwDirectAccessError("meta");
     },
 
     get(): T {
-      assertNotDisposed("get");
-      return realAtom.get();
+      return throwDirectAccessError("get");
     },
 
-    on(listener: VoidFunction): VoidFunction {
-      assertNotDisposed("on");
-      return realAtom.on(listener);
+    on(_listener: VoidFunction): VoidFunction {
+      return throwDirectAccessError("on");
     },
 
     _getAtom(): MutableAtom<T> {
-      assertNotDisposed("_getAtom");
-      return realAtom;
+      return assertNotDisposed();
     },
 
     _dispose(): void {
-      disposed = true;
+      atom = undefined;
     },
   };
 
@@ -507,16 +532,16 @@ function createVirtualAtom<T>(realAtom: MutableAtom<T>): VirtualAtom<T> {
 }
 
 /**
- * Type guard to check if a value is a VirtualAtom.
+ * Type guard to check if a value is a ScopedAtom.
  */
-export function isVirtualAtom<T = unknown>(
+export function isScopedAtom<T = unknown>(
   value: unknown
-): value is VirtualAtom<T> {
+): value is ScopedAtom<T> {
   return (
     value !== null &&
     typeof value === "object" &&
-    SYMBOL_VIRTUAL in value &&
-    (value as VirtualAtom<T>)[SYMBOL_VIRTUAL] === true
+    SYMBOL_SCOPED in value &&
+    (value as ScopedAtom<T>)[SYMBOL_SCOPED] === true
   );
 }
 
@@ -558,7 +583,7 @@ export function isPool<P = unknown, T = unknown>(
  *
  * ## Pool Support via from()
  *
- * Use `from(pool, params)` to get a VirtualAtom from a pool:
+ * Use `from(pool, params)` to get a ScopedAtom from a pool:
  * ```ts
  * const { result } = select(({ read, from }) => {
  *   const user$ = from(userPool, "user-1");
@@ -566,7 +591,7 @@ export function isPool<P = unknown, T = unknown>(
  * });
  * ```
  *
- * VirtualAtoms are automatically disposed after select() completes,
+ * ScopedAtoms are automatically disposed after select() completes,
  * preventing memory leaks from stale atom references.
  *
  * ## IMPORTANT: Selector Must Return Synchronous Value
@@ -607,9 +632,9 @@ export function select<T>(
   const atomDeps = new Set<Atom<unknown>>();
   const poolDeps = new Map<Pool<unknown, unknown>, Set<unknown>>();
 
-  // Map of real atoms to their VirtualAtom wrappers (for reuse within same computation)
+  // Map of real atoms to their ScopedAtom wrappers (for reuse within same computation)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const virtualAtoms = new Map<Atom<any>, VirtualAtom<any>>();
+  const virtualAtoms = new Map<Atom<any>, ScopedAtom<any>>();
 
   // Flag to detect calls outside selection context (e.g., in async callbacks)
   let isSelecting = true;
@@ -629,11 +654,11 @@ export function select<T>(
   };
 
   /**
-   * Track an atom as a dependency (unwraps VirtualAtom if needed).
+   * Track an atom as a dependency (unwraps ScopedAtom if needed).
    */
   const track = (atom: Atom<unknown>): void => {
     assertSelecting("track");
-    if (isVirtualAtom(atom)) {
+    if (isScopedAtom(atom)) {
       atomDeps.add(atom._getAtom());
     } else {
       atomDeps.add(atom);
@@ -641,9 +666,9 @@ export function select<T>(
   };
 
   /**
-   * Get a VirtualAtom from a pool.
+   * Get a ScopedAtom from a pool.
    */
-  const from = <P, V>(pool: Pool<P, V>, params: P): VirtualAtom<V> => {
+  const from = <P, V>(pool: Pool<P, V>, params: P): ScopedAtom<V> => {
     assertSelecting("from");
 
     // Track pool dependency
@@ -655,13 +680,13 @@ export function select<T>(
     // Get the real atom from pool
     const realAtom = pool._getAtom(params);
 
-    // Reuse existing VirtualAtom for same underlying atom
+    // Reuse existing ScopedAtom for same underlying atom
     if (virtualAtoms.has(realAtom)) {
-      return virtualAtoms.get(realAtom) as VirtualAtom<V>;
+      return virtualAtoms.get(realAtom) as ScopedAtom<V>;
     }
 
-    // Create new VirtualAtom
-    const virtual = createVirtualAtom(realAtom);
+    // Create new ScopedAtom
+    const virtual = createScopedAtom(realAtom);
     virtualAtoms.set(realAtom, virtual);
     return virtual;
   };
@@ -673,11 +698,11 @@ export function select<T>(
   const read = <V>(atom: Atom<V>): Awaited<V> => {
     assertSelecting("read");
 
-    // Track dependency (unwrap VirtualAtom)
+    // Track dependency (unwrap ScopedAtom)
     track(atom as Atom<unknown>);
 
     // Get the real atom for state access
-    const realAtom = isVirtualAtom(atom) ? atom._getAtom() : atom;
+    const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
     const state = getAtomState(realAtom);
 
     switch (state.status) {
@@ -703,7 +728,7 @@ export function select<T>(
 
     for (const atom of atoms) {
       track(atom);
-      const realAtom = isVirtualAtom(atom) ? atom._getAtom() : atom;
+      const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
       const state = getAtomState(realAtom);
 
       switch (state.status) {
@@ -738,7 +763,7 @@ export function select<T>(
 
     for (const [key, atom] of entries) {
       track(atom);
-      const realAtom = isVirtualAtom(atom) ? atom._getAtom() : atom;
+      const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
       const state = getAtomState(realAtom);
 
       switch (state.status) {
@@ -776,7 +801,7 @@ export function select<T>(
 
     for (const [key, atom] of entries) {
       track(atom);
-      const realAtom = isVirtualAtom(atom) ? atom._getAtom() : atom;
+      const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
       const state = getAtomState(realAtom);
 
       switch (state.status) {
@@ -814,7 +839,7 @@ export function select<T>(
 
     for (const atom of atoms) {
       track(atom);
-      const realAtom = isVirtualAtom(atom) ? atom._getAtom() : atom;
+      const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
       const state = getAtomState(realAtom);
 
       switch (state.status) {
@@ -866,7 +891,7 @@ export function select<T>(
 
     if (isAtom(atomOrSelector)) {
       track(atomOrSelector as Atom<unknown>);
-      const realAtom = isVirtualAtom(atomOrSelector)
+      const realAtom = isScopedAtom(atomOrSelector)
         ? atomOrSelector._getAtom()
         : atomOrSelector;
       const atomState = getAtomState(realAtom);
@@ -1067,7 +1092,7 @@ export function select<T>(
     // Mark execution as complete
     isSelecting = false;
 
-    // Dispose all VirtualAtoms
+    // Dispose all ScopedAtoms
     for (const virtual of virtualAtoms.values()) {
       virtual._dispose();
     }

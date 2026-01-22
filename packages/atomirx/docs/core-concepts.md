@@ -424,12 +424,12 @@ Use `from()` to safely access pool entries in derived/effect/useSelector:
 ```ts
 const userPosts$ = derived(({ read, from }) => {
   const userId = read(currentUserId$);
-  const user$ = from(userPool, userId); // Creates VirtualAtom
+  const user$ = from(userPool, userId); // Creates ScopedAtom
   return read(user$).posts;
 });
 ```
 
-The VirtualAtom is automatically cleaned up after the computation, preventing memory leaks.
+The ScopedAtom is automatically cleaned up after the computation, preventing memory leaks.
 
 ---
 

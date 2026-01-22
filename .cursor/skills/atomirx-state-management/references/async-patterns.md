@@ -10,6 +10,8 @@ atomirx provides powerful utilities for working with multiple async atoms.
 | `any()`     | Record of atoms | `{ key, value }` (first) | First to resolve wins              |
 | `race()`    | Record of atoms | `{ key, value }` (first) | First to settle (ready/error) wins |
 | `settled()` | Array of atoms  | Array of SettledResult   | Suspends until all settled         |
+| `and()`     | Array of conds  | boolean                  | Logical AND with short-circuit     |
+| `or()`      | Array of conds  | boolean                  | Logical OR with short-circuit      |
 
 ## all() - Wait for All (like Promise.all)
 
@@ -171,4 +173,73 @@ const [user, posts, comments] = useSelector(({ all }) =>
 );
 
 // All three load in parallel, component renders when all ready
+```
+
+## and() - Logical AND
+
+Short-circuit AND evaluation. Returns true if ALL conditions are truthy.
+
+```typescript
+const canEdit$ = derived(({ and }) => and([isLoggedIn$, hasPermission$]));
+
+// With lazy evaluation (only check if previous is true)
+const canDelete$ = derived(({ and }) =>
+  and([
+    isLoggedIn$, // Always evaluated
+    () => hasDeletePermission$, // Only evaluated if logged in
+  ])
+);
+```
+
+**Use when:** You need boolean logic with atoms, especially with expensive conditions.
+
+### Condition Types
+
+```typescript
+type Condition =
+  | boolean // Static value
+  | Atom<unknown> // Always read
+  | (() => boolean | Atom<unknown>); // Lazy evaluation
+```
+
+## or() - Logical OR
+
+Short-circuit OR evaluation. Returns true if ANY condition is truthy.
+
+```typescript
+const hasData$ = derived(({ or }) => or([cacheData$, apiData$]));
+
+// With lazy fallback chain
+const data$ = derived(({ or }) =>
+  or([
+    () => primaryData$, // Try primary first
+    () => fallbackData$, // Only if primary is falsy
+  ])
+);
+```
+
+**Use when:** You want to check multiple sources in order, stopping at first truthy.
+
+## Combining Boolean and Async Patterns
+
+### Complex Conditional Logic
+
+```typescript
+// (A && B) || C
+const result$ = derived(({ or, and }) => or([and([a$, b$]), c$]));
+
+// A || (B && C)
+const result2$ = derived(({ or, and }) => or([a$, and([b$, c$])]));
+```
+
+### Guard Expensive Operations
+
+```typescript
+const data$ = derived(({ and, read }) => {
+  // Only read expensive atom if conditions met
+  if (!and([isLoggedIn$, hasPermission$])) {
+    return null;
+  }
+  return read(expensiveData$);
+});
 ```

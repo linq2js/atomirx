@@ -1,18 +1,18 @@
 # Service Documentation Template
 
-Use this JSDoc template when documenting atomirx services to help both humans and AI understand the interface.
+**MUST** use this JSDoc template when documenting atomirx services to help both humans and AI understand the interface.
 
-## When to Use Service
+## When to Use Service (CRITICAL)
 
 A **Service** is for **stateless** logic that wraps external I/O.
 
-| Criteria                                  | Service | Store                  |
-| ----------------------------------------- | ------- | ---------------------- |
-| Contains atoms/derived/effects            | ❌ No   | ✅ Yes                 |
-| Wraps external I/O (API, storage, crypto) | ✅ Yes  | ❌ No (inject service) |
-| Pure functions / async operations         | ✅ Yes  | Actions call services  |
+| Criteria                                  | Service          | Store                 |
+| ----------------------------------------- | ---------------- | --------------------- |
+| Contains atoms/derived/effects            | ❌ **FORBIDDEN** | ✅ **REQUIRED**       |
+| Wraps external I/O (API, storage, crypto) | ✅ **REQUIRED**  | ❌ **NEVER**          |
+| Pure functions / async operations         | ✅ Yes           | Actions call services |
 
-## Naming Convention
+## Naming Convention (MUST Follow)
 
 | Element  | Pattern        | Example                                |
 | -------- | -------------- | -------------------------------------- |
@@ -20,9 +20,9 @@ A **Service** is for **stateless** logic that wraps external I/O.
 | File     | `*.service.ts` | `auth.service.ts`, `crypto.service.ts` |
 | Location | `services/`    | `src/services/auth/auth.service.ts`    |
 
-## Key Distinction
+## Key Distinction (CRITICAL)
 
-Services are **stateless** - they contain NO atoms, derived, or effects. They wrap external I/O (APIs, storage, crypto) and are injected into stores via `define()`.
+Services are **stateless** - they **MUST NEVER** contain atoms, derived, or effects. They wrap external I/O (APIs, storage, crypto) and **MUST** be injected into stores via `define()`.
 
 ## Full Template
 
@@ -163,10 +163,12 @@ export const apiService = define((): ApiService => {
 });
 ```
 
-## Override Pattern for Testing
+## Override Pattern for Testing (REQUIRED)
+
+**MUST** use `define()` to enable testing with `override()`:
 
 ```typescript
-// Define with interface
+// MUST define with interface for type safety
 export const cryptoService = define(
   (): CryptoService => ({
     encrypt: async (data, key) => {
@@ -178,9 +180,25 @@ export const cryptoService = define(
   })
 );
 
-// In tests: override with mock
+// In tests: MUST use override() for mocking
 cryptoService.override(() => ({
   encrypt: jest.fn().mockResolvedValue("encrypted"),
   decrypt: jest.fn().mockResolvedValue("decrypted"),
 }));
+
+// MUST reset after tests
+afterEach(() => {
+  cryptoService.reset();
+});
 ```
+
+## Service Rules Summary (MUST Follow)
+
+| Rule      | Requirement                                                                |
+| --------- | -------------------------------------------------------------------------- |
+| State     | **MUST NEVER** contain atoms, derived, or effects                          |
+| I/O       | **MUST** wrap external I/O (API, storage, crypto)                          |
+| Naming    | **MUST** use `*Service` suffix and `*.service.ts` file                     |
+| Module    | **MUST** use `define()` for testability                                    |
+| Testing   | **MUST** use `override()` for mocking, `reset()` after tests               |
+| Injection | **MUST** be consumed via invocation in stores, **NEVER** imported directly |

@@ -10,7 +10,7 @@ export { pool, isPool } from "./core/pool";
 export {
   select,
   AllAtomsRejectedError,
-  isVirtualAtom,
+  isScopedAtom,
   type Condition,
 } from "./core/select";
 
@@ -48,7 +48,7 @@ export type {
   PoolOptions,
   SelectStateResult,
   SettledResult,
-  VirtualAtom,
+  ScopedAtom,
 } from "./core/types";
 
 export { onCreateHook } from "./core/onCreateHook";

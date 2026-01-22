@@ -10,9 +10,9 @@ Hooks provide extension points for middleware, devtools, monitoring, and cross-c
 | `onErrorHook`  | Global error handling for derived and effects | Error thrown in derived or effect |
 | `hook()`       | Create custom hooks (advanced)                | N/A - factory for creating hooks  |
 
-## Critical Rule: Always Use `.override()`
+## CRITICAL Rule: MUST Use `.override()` - NEVER Direct Assignment
 
-**NEVER** assign directly to `.current` - it breaks the hook chain.
+**NEVER** assign directly to `.current` - it **BREAKS** the hook chain.
 
 ```typescript
 // ❌ FORBIDDEN: Breaks existing handlers
@@ -383,9 +383,9 @@ hook.use(
 );
 ```
 
-## Testing with Hooks
+## Testing with Hooks (IMPORTANT)
 
-### Isolating Tests
+### MUST Isolate Tests - Reset Hooks in beforeEach/afterEach
 
 ```typescript
 import { onCreateHook, onErrorHook } from "atomirx";
@@ -446,9 +446,9 @@ it("should call error hook on derived error", async () => {
 });
 ```
 
-## Initialization Order
+## Initialization Order (CRITICAL)
 
-Set up hooks early in your app, before any atoms are created:
+**MUST** set up hooks early in your app, **BEFORE** any atoms are created:
 
 ```typescript
 // src/app/init.ts
@@ -479,15 +479,15 @@ import "./init"; // Run hooks setup first
 import { App } from "./App";
 ```
 
-## Summary
+## Summary (MUST Follow These Patterns)
 
-| Task                    | Hook           | Pattern                                          |
-| ----------------------- | -------------- | ------------------------------------------------ |
-| Track atom creation     | `onCreateHook` | `override((prev) => (info) => { prev?.(info) })` |
-| Global error logging    | `onErrorHook`  | `override((prev) => (info) => { prev?.(info) })` |
-| Persistence middleware  | `onCreateHook` | Check `info.meta?.persisted`                     |
-| Validation middleware   | `onCreateHook` | Wrap `info.atom.set()`                           |
-| Error monitoring        | `onErrorHook`  | Send to Sentry/etc                               |
-| DevTools integration    | `onCreateHook` | Register in global registry                      |
-| Reset all handlers      | Both           | `.reset()`                                       |
-| Temporary hooks (tests) | `hook.use()`   | `hook.use([setup], fn)`                          |
+| Task                    | Hook           | Pattern                                                       |
+| ----------------------- | -------------- | ------------------------------------------------------------- |
+| Track atom creation     | `onCreateHook` | **MUST** use `override((prev) => (info) => { prev?.(info) })` |
+| Global error logging    | `onErrorHook`  | **MUST** use `override((prev) => (info) => { prev?.(info) })` |
+| Persistence middleware  | `onCreateHook` | Check `info.meta?.persisted`                                  |
+| Validation middleware   | `onCreateHook` | Wrap `info.atom.set()`                                        |
+| Error monitoring        | `onErrorHook`  | Send to Sentry/etc                                            |
+| DevTools integration    | `onCreateHook` | Register in global registry                                   |
+| Reset all handlers      | Both           | **MUST** use `.reset()` in tests                              |
+| Temporary hooks (tests) | `hook.use()`   | `hook.use([setup], fn)`                                       |
