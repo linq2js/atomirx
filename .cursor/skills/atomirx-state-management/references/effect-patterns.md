@@ -424,35 +424,27 @@ const doubled$ = derived(({ read }) => read(count$) * 2);
 
 ## Lifecycle
 
-```
-effect created
-       │
-       ▼
-  Initial run
-       │
-       ▼
-┌──────────────────┐
-│ Dependency       │◄─── atom$.set() triggers
-│ changed          │
-└──────────────────┘
-       │
-       ▼
-  Run cleanup(s)    ◄─── onCleanup functions in FIFO order
-       │
-       ▼
-  Re-run effect
-       │
-       ▼
-  (repeat on changes)
-       │
-       ▼
-  e.dispose()
-       │
-       ▼
-  Final cleanup(s)  ◄─── onCleanup functions in FIFO order
-       │
-       ▼
-  Effect stopped
+```mermaid
+flowchart TB
+    Created["effect created"]
+    Initial["Initial run"]
+    DepChanged["Dependency changed<br/>(atom$.set() triggers)"]
+    RunCleanup["Run cleanup(s)<br/>(onCleanup functions in FIFO order)"]
+    ReRun["Re-run effect"]
+    Repeat["(repeat on changes)"]
+    Dispose["e.dispose()"]
+    FinalCleanup["Final cleanup(s)<br/>(onCleanup functions in FIFO order)"]
+    Stopped["Effect stopped"]
+
+    Created --> Initial
+    Initial --> DepChanged
+    DepChanged --> RunCleanup
+    RunCleanup --> ReRun
+    ReRun --> Repeat
+    Repeat -.-> DepChanged
+    Repeat --> Dispose
+    Dispose --> FinalCleanup
+    FinalCleanup --> Stopped
 ```
 
 ## Testing Effects

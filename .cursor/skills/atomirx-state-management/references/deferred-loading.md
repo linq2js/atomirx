@@ -4,20 +4,18 @@ Complete pattern for route-based entity loading with Suspense integration.
 
 ## Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Reactive Dependency Graph                                   │
-│                                                             │
-│  currentId$  (set by route/action)                          │
-│       │                                                     │
-│       ├──────────────────┬─────────────────┐                │
-│       ▼                  ▼                 ▼                │
-│  currentEntity$      effect()        (UI components)        │
-│   (ready waits)      (fetches)                              │
-│       │                  │                                  │
-│       ▼                  ▼                                  │
-│    cache$  ◄─────────────┘                                  │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph DependencyGraph["Reactive Dependency Graph"]
+        currentId["currentId$<br/>(set by route/action)"]
+
+        currentId --> currentEntity["currentEntity$<br/>(ready waits)"]
+        currentId --> effectFetch["effect()<br/>(fetches)"]
+        currentId --> UI["(UI components)"]
+
+        currentEntity --> cache["cache$"]
+        effectFetch -->|writes to| cache
+    end
 ```
 
 ## Complete Implementation

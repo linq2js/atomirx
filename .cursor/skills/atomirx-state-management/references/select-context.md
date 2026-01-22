@@ -6,78 +6,52 @@ The `SelectContext` provides utilities for reading atoms and handling async oper
 
 `SelectContext` is the **foundation** that powers all reactive APIs in atomirx. Every reactive context (`derived`, `effect`, `useSelector`, `rx`) uses the same core selection engine.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              YOUR APPLICATION                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   ┌───────────┐   ┌───────────┐   ┌─────────────┐   ┌───────────┐           │
-│   │ derived() │   │ effect()  │   │ useSelector │   │   rx()    │           │
-│   │           │   │           │   │     ()      │   │           │           │
-│   │ Computed  │   │   Side    │   │   React     │   │  Inline   │           │
-│   │  values   │   │  effects  │   │   hooks     │   │   React   │           │
-│   └─────┬─────┘   └─────┬─────┘   └──────┬──────┘   └─────┬─────┘           │
-│         │               │                │                │                 │
-│         │   ┌───────────┴────────────────┴────────────────┘                 │
-│         │   │                                                               │
-│         ▼   ▼                                                               │
-│   ┌─────────────────────────────────────────────────────────────────┐       │
-│   │                                                                 │       │
-│   │                      SelectContext (Core)                       │       │
-│   │                                                                 │       │
-│   │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │       │
-│   │  │ read()  │ │ all()   │ │ safe()  │ │ state() │ │ from()  │    │       │
-│   │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘    │       │
-│   │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │       │
-│   │  │ any()   │ │ race()  │ │settled()│ │ and()   │ │  or()   │    │       │
-│   │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘    │       │
-│   │                                                                 │       │
-│   │         Dependency Tracking │ Suspense │ Re-evaluation          │       │
-│   │                                                                 │       │
-│   └─────────────────────────────┬───────────────────────────────────┘       │
-│                                 │                                           │
-│                                 ▼                                           │
-│   ┌─────────────────────────────────────────────────────────────────┐       │
-│   │                         Atom Layer                              │       │
-│   │                                                                 │       │
-│   │     atom()          derived()         pool()         effect()   │       │
-│   │   (primitive)       (computed)      (parametric)    (reactive)  │       │
-│   │                                                                 │       │
-│   └─────────────────────────────────────────────────────────────────┘       │
-│                                                                             │
-└───────────────────────────────────────────────────────────────────────────-─┘
+```mermaid
+graph TB
+    subgraph Application["YOUR APPLICATION"]
+        derived["derived()<br/>Computed values"]
+        effect["effect()<br/>Side effects"]
+        useSelector["useSelector()<br/>React hooks"]
+        rx["rx()<br/>Inline React"]
+    end
+
+    subgraph Core["SelectContext (Core)"]
+        methods["read() | all() | safe() | state() | from()<br/>any() | race() | settled() | and() | or()<br/><br/>Dependency Tracking | Suspense | Re-evaluation"]
+    end
+
+    subgraph AtomLayer["Atom Layer"]
+        atom["atom()<br/>primitive"]
+        derivedAtom["derived()<br/>computed"]
+        pool["pool()<br/>parametric"]
+        effectAtom["effect()<br/>reactive"]
+    end
+
+    derived --> Core
+    effect --> Core
+    useSelector --> Core
+    rx --> Core
+    Core --> AtomLayer
 ```
 
 ### Context Extension Hierarchy
 
 Each reactive API extends `SelectContext` with additional capabilities:
 
-```
-                    ┌──────────────────────┐
-                    │    SelectContext     │
-                    │                      │
-                    │  read, all, any,     │
-                    │  race, settled,      │
-                    │  safe, state, from,  │
-                    │  track, and, or      │
-                    └──────────┬───────────┘
-                               │
-           ┌───────────────────┼───────────────────┐
-           │                   │                   │
-           ▼                   ▼                   ▼
-   ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-   │ DerivedContext│   │ EffectContext │   │ReactiveContext│
-   │               │   │               │   │               │
-   │ + ready()     │   │ + ready()     │   │  (no extra    │
-   │               │   │ + onCleanup() │   │   methods)    │
-   │               │   │ + signal      │   │               │
-   └───────┬───────┘   └───────────────┘   └───────┬───────┘
-           │                                       │
-           │                               ┌───────┴───────┐
-           ▼                               ▼               ▼
-    ┌─────────────┐                 ┌───────────┐   ┌───────────┐
-    │  derived()  │                 │useSelector│   │   rx()    │
-    └─────────────┘                 └───────────┘   └───────────┘
+```mermaid
+graph TB
+    SelectContext["SelectContext<br/><br/>read, all, any, race, settled,<br/>safe, state, from, track, and, or"]
+
+    SelectContext --> DerivedContext
+    SelectContext --> EffectContext
+    SelectContext --> ReactiveContext
+
+    DerivedContext["DerivedContext<br/><br/>+ ready()"]
+    EffectContext["EffectContext<br/><br/>+ ready()<br/>+ onCleanup()<br/>+ signal"]
+    ReactiveContext["ReactiveContext<br/><br/>(no extra methods)"]
+
+    DerivedContext --> derived["derived()"]
+    ReactiveContext --> useSelector["useSelector()"]
+    ReactiveContext --> rx["rx()"]
 ```
 
 ### Why This Matters
@@ -182,51 +156,27 @@ Understanding how the Suspense mechanism works is essential for writing correct 
 
 When a selector reads an async atom that is still loading, it **throws a Promise** instead of returning a value. The system catches this Promise, waits for it to resolve, then **re-evaluates the entire selector from the beginning**.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     SELECTOR EVALUATION                         │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │ Start selector  │
-                    │ execution       │
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │ read(atom$)     │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-        ┌──────────┐  ┌───────────┐  ┌───────────┐
-        │  READY   │  │  LOADING  │  │   ERROR   │
-        │          │  │           │  │           │
-        │ Return   │  │  Throw    │  │  Throw    │
-        │ value    │  │  Promise  │  │  Error    │
-        └────┬─────┘  └─────┬─────┘  └─────┬─────┘
-             │              │              │
-             ▼              ▼              ▼
-      ┌────────────┐  ┌───────────┐  ┌───────────┐
-      │ Continue   │  │  System   │  │  Error    │
-      │ execution  │  │  catches  │  │  handler  │
-      └────────────┘  │  Promise  │  └───────────┘
-                      └─────┬─────┘
-                            │
-                            ▼
-                      ┌───────────┐
-                      │  Wait for │
-                      │  Promise  │
-                      │  resolve  │
-                      └─────┬─────┘
-                            │
-                            ▼
-              ┌─────────────────────────┐
-              │ RE-EVALUATE SELECTOR    │
-              │ from the beginning      │
-              │ (start over)            │
-              └─────────────────────────┘
+```mermaid
+flowchart TB
+    Start["Start selector execution"]
+    Read["read(atom$)"]
+    
+    Start --> Read
+    Read --> Ready & Loading & Error
+    
+    subgraph States["Atom State"]
+        Ready["READY<br/>Return value"]
+        Loading["LOADING<br/>Throw Promise"]
+        Error["ERROR<br/>Throw Error"]
+    end
+    
+    Ready --> Continue["Continue execution"]
+    Loading --> Catch["System catches Promise"]
+    Error --> ErrorHandler["Error handler"]
+    
+    Catch --> Wait["Wait for Promise resolve"]
+    Wait --> ReEval["RE-EVALUATE SELECTOR<br/>from the beginning<br/>(start over)"]
+    ReEval -.-> Start
 ```
 
 ### Re-evaluation Example
@@ -690,21 +640,24 @@ const result$ = derived(({ or, and }) => or([and([a$, b$]), c$]));
 
 ### Evaluation Flow
 
-```
-and([a, b, () => c])
-     │
-     ▼
-  a truthy? ─No──→ return false
-     │Yes
-     ▼
-  b truthy? ─No──→ return false
-     │Yes
-     ▼
-  call () => c
-  c truthy? ─No──→ return false
-     │Yes
-     ▼
-  return true
+```mermaid
+flowchart TB
+    Start["and([a, b, () => c])"]
+    A{"a truthy?"}
+    B{"b truthy?"}
+    CallC["call () => c"]
+    C{"c truthy?"}
+    ReturnFalse["return false"]
+    ReturnTrue["return true"]
+
+    Start --> A
+    A -->|No| ReturnFalse
+    A -->|Yes| B
+    B -->|No| ReturnFalse
+    B -->|Yes| CallC
+    CallC --> C
+    C -->|No| ReturnFalse
+    C -->|Yes| ReturnTrue
 ```
 
 ## or() - Logical OR
@@ -731,21 +684,24 @@ const result$ = derived(({ or, and }) => or([a$, and([b$, c$])]));
 
 ### Evaluation Flow
 
-```
-or([a, b, () => c])
-    │
-    ▼
- a truthy? ─Yes─→ return true
-    │No
-    ▼
- b truthy? ─Yes─→ return true
-    │No
-    ▼
- call () => c
- c truthy? ─Yes─→ return true
-    │No
-    ▼
- return false
+```mermaid
+flowchart TB
+    Start["or([a, b, () => c])"]
+    A{"a truthy?"}
+    B{"b truthy?"}
+    CallC["call () => c"]
+    C{"c truthy?"}
+    ReturnTrue["return true"]
+    ReturnFalse["return false"]
+
+    Start --> A
+    A -->|Yes| ReturnTrue
+    A -->|No| B
+    B -->|Yes| ReturnTrue
+    B -->|No| CallC
+    CallC --> C
+    C -->|Yes| ReturnTrue
+    C -->|No| ReturnFalse
 ```
 
 ## Context Rules (CRITICAL)

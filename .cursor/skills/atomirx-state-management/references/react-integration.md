@@ -199,16 +199,12 @@ action.reset(); // Reset to idle state
 
 ### State Machine
 
-```
-┌──────┐  dispatch()  ┌─────────┐  success  ┌─────────┐
-│ idle │ ───────────► │ loading │ ────────► │ success │
-└──────┘              └─────────┘           └─────────┘
-                           │
-                           │ error
-                           ▼
-                      ┌─────────┐
-                      │  error  │
-                      └─────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> loading: dispatch()
+    loading --> success: success
+    loading --> error: error
 ```
 
 ### Options
