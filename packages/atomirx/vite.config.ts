@@ -14,6 +14,8 @@ export default defineConfig({
       entry: {
         index: resolve(__dirname, "src/index.ts"),
         "react/index": resolve(__dirname, "src/react/index.ts"),
+        "devtools/index": resolve(__dirname, "src/devtools/index.ts"),
+        "react-devtools/index": resolve(__dirname, "src/react-devtools/index.ts"),
       },
       name: "Atomirx",
       fileName: (format, entryName) => {
@@ -23,11 +25,14 @@ export default defineConfig({
       formats: ["es", "cjs"],
     },
     rollupOptions: {
-      external: ["react", "react-dom"],
+      // Use regex to externalize all react-related imports including jsx-runtime
+      external: [/^react($|\/)/, /^react-dom($|\/)/],
       output: {
         globals: {
           react: "React",
           "react-dom": "ReactDOM",
+          "react/jsx-runtime": "React",
+          "react/jsx-dev-runtime": "React",
         },
       },
     },

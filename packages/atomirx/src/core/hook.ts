@@ -56,7 +56,7 @@ export interface Hook<T> {
   /**
    * Current value of the hook. Direct property access for fast reads.
    */
-  current: T;
+  readonly current: T;
 
   /**
    * Override the current value using a reducer.

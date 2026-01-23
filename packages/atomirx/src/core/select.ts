@@ -1,6 +1,21 @@
 import { isPromiseLike } from "./isPromiseLike";
 import { getAtomState } from "./getAtomState";
-import { Atom, AtomValue, Pipeable, SettledResult } from "./types";
+import { createCombinedPromise } from "./promiseCache";
+import { isAtom } from "./isAtom";
+import {
+  Atom,
+  AtomValue,
+  KeyedResult,
+  MutableAtom,
+  Pipeable,
+  Pool,
+  ScopedAtom,
+  SelectStateResult,
+  SettledResult,
+  SYMBOL_ATOM,
+  SYMBOL_POOL,
+  SYMBOL_SCOPED,
+} from "./types";
 import { withUse } from "./withUse";
 
 // AggregateError polyfill for environments that don't support it
@@ -30,8 +45,21 @@ export interface SelectResult<T> {
   error: unknown;
   /** Promise thrown during computation - indicates loading state */
   promise: PromiseLike<unknown> | undefined;
-  /** Set of atoms that were accessed during computation */
+  /**
+   * Set of atoms that were accessed during computation.
+   * @deprecated Use _atomDeps instead. Kept for backward compatibility.
+   */
   dependencies: Set<Atom<unknown>>;
+  /**
+   * Set of atoms that were accessed during computation.
+   * @internal
+   */
+  _atomDeps: Set<Atom<unknown>>;
+  /**
+   * Map of pools to their accessed params.
+   * @internal
+   */
+  _poolDeps: Map<Pool<any, any>, Set<any>>;
 }
 
 /**
@@ -41,6 +69,19 @@ export interface SelectResult<T> {
 export type SafeResult<T> =
   | [error: undefined, result: T]
   | [error: unknown, result: undefined];
+
+/**
+ * Condition input type for and()/or() operators.
+ *
+ * Supports three forms:
+ * - `boolean` - Static value, no subscription
+ * - `Atom<unknown>` - Always read and subscribed
+ * - `() => boolean | Atom<unknown>` - Lazy evaluation, only called if needed
+ */
+export type Condition =
+  | boolean
+  | Atom<unknown>
+  | (() => boolean | Atom<unknown>);
 
 /**
  * Context object passed to selector functions.
@@ -62,69 +103,123 @@ export interface SelectContext extends Pipeable {
   read<T>(atom: Atom<T>): Awaited<T>;
 
   /**
+   * Get a ScopedAtom from a pool for the given params.
+   * The ScopedAtom is only valid during this select() execution.
+   *
+   * When the pool entry is removed (GC or manual), the computation
+   * will automatically re-run to get the new atom.
+   *
+   * @param pool - The pool to get atom from
+   * @param params - The params to look up
+   * @returns A ScopedAtom wrapping the pool entry's atom
+   *
+   * @example
+   * ```ts
+   * derived(({ read, from }) => {
+   *   const user$ = from(userPool, "user-1");
+   *   return read(user$);
+   * });
+   * ```
+   */
+  from<P, T>(pool: Pool<P, T>, params: P): ScopedAtom<T>;
+
+  /**
+   * Track an atom as a dependency without reading its value.
+   * Useful when you need to subscribe to changes but already have the value.
+   *
+   * @param atom - The atom to track (can be ScopedAtom)
+   */
+  track(atom: Atom<unknown>): void;
+
+  /**
    * Wait for all atoms to resolve (like Promise.all).
-   * Variadic form - pass atoms as arguments.
+   * Array-based - pass atoms as an array.
    *
    * - If all atoms are ready → returns array of values
    * - If any atom has error → throws that error
    * - If any atom is loading (no fallback) → throws Promise
    * - If loading with fallback → uses staleValue
    *
-   * @param atoms - Atoms to wait for (variadic)
+   * @param atoms - Array of atoms to wait for
    * @returns Array of resolved values (same order as input)
    *
    * @example
    * ```ts
-   * const [user, posts] = all(user$, posts$);
+   * const [user, posts] = all([user$, posts$]);
    * ```
    */
-  all<A extends Atom<unknown>[]>(
-    ...atoms: A
-  ): { [K in keyof A]: AtomValue<A[K]> };
+  all<A extends Atom<unknown>[]>(atoms: A): { [K in keyof A]: AtomValue<A[K]> };
 
   /**
    * Return the first settled value (like Promise.race).
-   * Variadic form - pass atoms as arguments.
+   * Object-based - pass atoms as a record with keys.
    *
-   * - If any atom is ready → returns first ready value
+   * - If any atom is ready → returns `{ key, value }` for first ready
    * - If any atom has error → throws first error
    * - If all atoms are loading → throws first Promise
    *
+   * The `key` in the result identifies which atom won the race.
+   *
    * Note: race() does NOT use fallback - it's meant for first "real" settled value.
    *
-   * @param atoms - Atoms to race (variadic)
-   * @returns First settled value
+   * @param atoms - Record of atoms to race
+   * @returns KeyedResult with winning key and value
+   *
+   * @example
+   * ```ts
+   * const result = race({ cache: cache$, api: api$ });
+   * console.log(result.key);   // "cache" or "api"
+   * console.log(result.value); // The winning value
+   * ```
    */
-  race<A extends Atom<unknown>[]>(...atoms: A): AtomValue<A[number]>;
+  race<T extends Record<string, Atom<unknown>>>(
+    atoms: T
+  ): KeyedResult<keyof T & string, AtomValue<T[keyof T]>>;
 
   /**
    * Return the first ready value (like Promise.any).
-   * Variadic form - pass atoms as arguments.
+   * Object-based - pass atoms as a record with keys.
    *
-   * - If any atom is ready → returns first ready value
+   * - If any atom is ready → returns `{ key, value }` for first ready
    * - If all atoms have errors → throws AggregateError
    * - If any loading (not all errored) → throws Promise
    *
+   * The `key` in the result identifies which atom resolved first.
+   *
    * Note: any() does NOT use fallback - it waits for a real ready value.
    *
-   * @param atoms - Atoms to check (variadic)
-   * @returns First ready value
+   * @param atoms - Record of atoms to check
+   * @returns KeyedResult with winning key and value
+   *
+   * @example
+   * ```ts
+   * const result = any({ primary: primaryApi$, fallback: fallbackApi$ });
+   * console.log(result.key);   // "primary" or "fallback"
+   * console.log(result.value); // The winning value
+   * ```
    */
-  any<A extends Atom<unknown>[]>(...atoms: A): AtomValue<A[number]>;
+  any<T extends Record<string, Atom<unknown>>>(
+    atoms: T
+  ): KeyedResult<keyof T & string, AtomValue<T[keyof T]>>;
 
   /**
    * Get all atom statuses when all are settled (like Promise.allSettled).
-   * Variadic form - pass atoms as arguments.
+   * Array-based - pass atoms as an array.
    *
    * - If all atoms are settled → returns array of statuses
    * - If any atom is loading (no fallback) → throws Promise
    * - If loading with fallback → { status: "ready", value: staleValue }
    *
-   * @param atoms - Atoms to check (variadic)
+   * @param atoms - Array of atoms to check
    * @returns Array of settled results
+   *
+   * @example
+   * ```ts
+   * const [userResult, postsResult] = settled([user$, posts$]);
+   * ```
    */
   settled<A extends Atom<unknown>[]>(
-    ...atoms: A
+    atoms: A
   ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> };
 
   /**
@@ -156,6 +251,235 @@ export interface SelectContext extends Pipeable {
    * ```
    */
   safe<T>(fn: () => T): SafeResult<T>;
+
+  /**
+   * Get the async state of an atom or selector without throwing.
+   *
+   * Unlike `read()` which throws promises/errors (Suspense pattern),
+   * `state()` always returns a `SelectStateResult<T>` object that you can
+   * inspect and handle inline.
+   *
+   * All properties (`status`, `value`, `error`) are always present,
+   * enabling easy destructuring:
+   * ```ts
+   * const { status, value, error } = state(atom$);
+   * ```
+   *
+   * @param atom - The atom to get state from
+   * @returns SelectStateResult with status, value, error (no promise - for equality)
+   *
+   * @example
+   * ```ts
+   * // Get state of single atom
+   * const dashboard$ = derived(({ state }) => {
+   *   const userState = state(user$);
+   *   const postsState = state(posts$);
+   *
+   *   return {
+   *     user: userState.value, // undefined if not ready
+   *     isLoading: userState.status === 'loading' || postsState.status === 'loading',
+   *   };
+   * });
+   * ```
+   */
+  state<T>(atom: Atom<T>): SelectStateResult<Awaited<T>>;
+
+  /**
+   * Get the async state of a selector function without throwing.
+   *
+   * Wraps the selector in try/catch and returns the result as a
+   * `SelectStateResult<T>` object. Useful for getting state of combined
+   * operations like `all()`, `race()`, etc.
+   *
+   * @param selector - Function that may throw promises or errors
+   * @returns SelectStateResult with status, value, error (no promise - for equality)
+   *
+   * @example
+   * ```ts
+   * // Get state of combined operation
+   * const allData$ = derived(({ state, all }) => {
+   *   const result = state(() => all(a$, b$, c$));
+   *
+   *   if (result.status === 'loading') return { loading: true };
+   *   if (result.status === 'error') return { error: result.error };
+   *   return { data: result.value };
+   * });
+   * ```
+   */
+  state<T>(selector: () => T): SelectStateResult<T>;
+
+  /**
+   * Logical AND - returns true if ALL conditions are truthy.
+   * Short-circuits on first falsy value (lazy conditions after that are not evaluated).
+   *
+   * ## Condition Types
+   *
+   * - `boolean` - Static value, no subscription
+   * - `Atom<T>` - Always read and subscribed
+   * - `() => boolean | Atom<T>` - Lazy, only called if previous conditions are truthy
+   *
+   * ## Evaluation Flow
+   *
+   * ```
+   * and([a, b, () => c, () => d])
+   *      │
+   *      ▼
+   *   a truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   b truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   call () => c
+   *   c truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   call () => d
+   *   d truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   return true
+   * ```
+   *
+   * @param conditions - Array of conditions (booleans, atoms, or lazy functions)
+   * @returns true if all conditions are truthy, false otherwise
+   *
+   * @example
+   * ```ts
+   * // Simple: all atoms must be truthy
+   * const canAccess = and([isLoggedIn$, hasPermission$]);
+   *
+   * // With static value
+   * const canEdit = and([FEATURE_ENABLED, isLoggedIn$, hasEditRole$]);
+   *
+   * // With lazy evaluation (only check permission if logged in)
+   * const canDelete = and([
+   *   isLoggedIn$,
+   *   () => hasDeletePermission$,  // Only read if logged in
+   * ]);
+   *
+   * // Nested: (A && B) || C
+   * const result = or([and([a$, b$]), c$]);
+   * ```
+   */
+  and(conditions: Condition[]): boolean;
+
+  /**
+   * Logical OR - returns true if ANY condition is truthy.
+   * Short-circuits on first truthy value (lazy conditions after that are not evaluated).
+   *
+   * ## Condition Types
+   *
+   * - `boolean` - Static value, no subscription
+   * - `Atom<T>` - Always read and subscribed
+   * - `() => boolean | Atom<T>` - Lazy, only called if previous conditions are falsy
+   *
+   * ## Evaluation Flow
+   *
+   * ```
+   * or([a, b, () => c, () => d])
+   *     │
+   *     ▼
+   *  a truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  b truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  call () => c
+   *  c truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  call () => d
+   *  d truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  return false
+   * ```
+   *
+   * @param conditions - Array of conditions (booleans, atoms, or lazy functions)
+   * @returns true if any condition is truthy, false otherwise
+   *
+   * @example
+   * ```ts
+   * // Simple: any atom truthy
+   * const hasData = or([cacheData$, apiData$]);
+   *
+   * // With lazy fallback chain
+   * const data = or([
+   *   () => primaryData$,   // Try primary first
+   *   () => fallbackData$,  // Only if primary is falsy
+   * ]);
+   *
+   * // Nested: A || (B && C)
+   * const result = or([a$, and([b$, c$])]);
+   * ```
+   */
+  or(conditions: Condition[]): boolean;
+
+  /**
+   * Read atoms or execute functions without tracking dependencies.
+   * Useful when you need to read a value but don't want to re-compute when it changes.
+   *
+   * Supports two forms:
+   * - `untrack(atom$)` - Read atom value without tracking
+   * - `untrack(() => expr)` - Execute function without tracking any reads inside
+   *
+   * ## Flow Diagram
+   *
+   * ```
+   * untrack(input)
+   *       │
+   *       ▼
+   *   Is input an Atom?
+   *       │
+   *   ┌───┴───┐
+   *   │Yes    │No (function)
+   *   ▼       ▼
+   *  Read    Set isUntracking = true
+   *  without  │
+   *  tracking ▼
+   *   │      Execute fn()
+   *   │       │
+   *   │       ▼
+   *   │      Set isUntracking = false
+   *   │       │
+   *   └───────┴──→ Return value
+   * ```
+   *
+   * @param atom - Atom to read without tracking
+   * @returns The atom's current value
+   *
+   * @example
+   * ```ts
+   * const combined$ = derived(({ read, untrack }) => {
+   *   const count = read(count$);           // Tracks count$
+   *   const doubled = untrack(doubled$);    // Does NOT track doubled$
+   *   return count + doubled;
+   * });
+   * ```
+   */
+  untrack<T>(atom: Atom<T>): Awaited<T>;
+
+  /**
+   * Execute a function without tracking any atom reads inside.
+   *
+   * @param fn - Function to execute without tracking
+   * @returns The function's return value
+   *
+   * @example
+   * ```ts
+   * const combined$ = derived(({ read, untrack }) => {
+   *   const count = read(count$);           // Tracks count$
+   *   const tripled = untrack(() => {
+   *     // None of these reads are tracked
+   *     return read(a$) + read(b$) + read(c$);
+   *   });
+   *   return count + tripled;
+   * });
+   * ```
+   */
+  untrack<T>(fn: () => T): T;
 }
 
 /**
@@ -164,6 +488,22 @@ export interface SelectContext extends Pipeable {
 export type ReactiveSelector<T, C extends SelectContext = SelectContext> = (
   context: C
 ) => T;
+
+/**
+ * Output of select() - includes result and startTracking function.
+ */
+export interface SelectOutput<T> {
+  /** The computation result */
+  result: SelectResult<T>;
+  /**
+   * Start tracking dependencies and subscribe to changes.
+   * Call this after computation to set up subscriptions.
+   *
+   * @param onNotify - Callback to invoke when any dependency changes
+   * @returns Cleanup function to unsubscribe all
+   */
+  startTracking(onNotify: VoidFunction): VoidFunction;
+}
 
 /**
  * Custom error for when all atoms in `any()` are rejected.
@@ -179,6 +519,111 @@ export class AllAtomsRejectedError extends Error {
 }
 
 // ============================================================================
+// ScopedAtom - Temporary wrapper for pool atoms
+// ============================================================================
+
+/**
+ * Creates a ScopedAtom that wraps a real atom from a pool.
+ * ScopedAtom is only valid during select() execution.
+ *
+ * ## Design Philosophy
+ *
+ * ScopedAtom intentionally restricts direct access to atom properties.
+ * Users must use `read(virtualAtom)` instead of `virtualAtom.get()`.
+ *
+ * This enforces the pool pattern where atoms are never stored in variables
+ * or accessed outside the select context, preventing orphan atom references.
+ *
+ * ```
+ * ❌ const value = virtualAtom.get();     // Throws error
+ * ✅ const value = read(virtualAtom);     // Correct - uses select context
+ *
+ * ❌ virtualAtom.on(() => { ... });       // Throws error
+ * ✅ derived(({ read, from }) => {        // Correct - reactive via derived
+ *      const atom = from(pool, params);
+ *      return read(atom);
+ *    });
+ * ```
+ */
+function createScopedAtom<T>(realAtom: MutableAtom<T>): ScopedAtom<T> {
+  let atom: MutableAtom<T> | undefined = realAtom;
+
+  const throwDirectAccessError = (methodName: string): never => {
+    throw new Error(
+      `ScopedAtom.${methodName}() is not allowed. ` +
+        "ScopedAtom cannot be accessed directly - use read(virtualAtom) in select context instead. " +
+        "This prevents orphan atom references and ensures proper reactive tracking."
+    );
+  };
+
+  const assertNotDisposed = (): MutableAtom<T> => {
+    if (!atom) {
+      throw new Error(
+        "ScopedAtom._getAtom() was called after disposal. " +
+          "ScopedAtoms are only valid during select() execution. " +
+          "Always use from(pool, params) inside the computation, not outside."
+      );
+    }
+    return atom;
+  };
+
+  const virtual: ScopedAtom<T> = {
+    [SYMBOL_ATOM]: true as const,
+    [SYMBOL_SCOPED]: true as const,
+
+    get meta() {
+      return throwDirectAccessError("meta");
+    },
+
+    get(): T {
+      return throwDirectAccessError("get");
+    },
+
+    on(_listener: VoidFunction): VoidFunction {
+      return throwDirectAccessError("on");
+    },
+
+    _getAtom(): MutableAtom<T> {
+      return assertNotDisposed();
+    },
+
+    _dispose(): void {
+      atom = undefined;
+    },
+  };
+
+  return virtual;
+}
+
+/**
+ * Type guard to check if a value is a ScopedAtom.
+ */
+export function isScopedAtom<T = unknown>(
+  value: unknown
+): value is ScopedAtom<T> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    SYMBOL_SCOPED in value &&
+    (value as ScopedAtom<T>)[SYMBOL_SCOPED] === true
+  );
+}
+
+/**
+ * Type guard to check if a value is a Pool.
+ */
+export function isPool<P = unknown, T = unknown>(
+  value: unknown
+): value is Pool<P, T> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    SYMBOL_POOL in value &&
+    (value as Pool<P, T>)[SYMBOL_POOL] === true
+  );
+}
+
+// ============================================================================
 // select() - Core selection/computation function
 // ============================================================================
 
@@ -186,132 +631,135 @@ export class AllAtomsRejectedError extends Error {
  * Selects/computes a value from atom(s) with dependency tracking.
  *
  * This is the core computation logic used by `derived()`. It:
- * 1. Creates a context with `read`, `all`, `any`, `race`, `settled`, `safe` utilities
- * 2. Tracks which atoms are accessed during computation
- * 3. Returns a result with value/error/promise and dependencies
+ * 1. Creates a context with `read`, `from`, `all`, `any`, `race`, `settled`, `safe` utilities
+ * 2. Tracks which atoms and pools are accessed during computation
+ * 3. Returns a result with value/error/promise and a startTracking function
  *
- * All context methods use `getAtomState()` internally.
+ * ## New API
+ *
+ * ```ts
+ * const { result, startTracking } = select(fn, prevResult);
+ * const cleanup = startTracking(onNotify);
+ * ```
+ *
+ * The `startTracking` function sets up subscriptions to all dependencies
+ * (atoms and pool entries) and returns a cleanup function.
+ *
+ * ## Pool Support via from()
+ *
+ * Use `from(pool, params)` to get a ScopedAtom from a pool:
+ * ```ts
+ * const { result } = select(({ read, from }) => {
+ *   const user$ = from(userPool, "user-1");
+ *   return read(user$);
+ * });
+ * ```
+ *
+ * ScopedAtoms are automatically disposed after select() completes,
+ * preventing memory leaks from stale atom references.
  *
  * ## IMPORTANT: Selector Must Return Synchronous Value
  *
  * **The selector function MUST NOT return a Promise or PromiseLike value.**
  *
- * If your selector returns a Promise, it will throw an error. This is because:
- * - `select()` is designed for synchronous derivation from atoms
- * - Async atoms should be created using `atom(Promise)` directly
- * - Use `read()` to read async atoms - it handles Suspense-style loading
- *
- * ```ts
- * // ❌ WRONG - Don't return a Promise from selector
- * select(({ get }) => fetch('/api/data'));
- *
- * // ✅ CORRECT - Create async atom and read with read()
- * const data$ = atom(fetch('/api/data').then(r => r.json()));
- * select(({ read }) => read(data$)); // Suspends until resolved
- * ```
- *
  * ## IMPORTANT: Do NOT Use try/catch - Use safe() Instead
  *
- * **Never wrap `read()` calls in try/catch blocks.** The `read()` function throws
- * Promises when atoms are loading (Suspense pattern). A try/catch will catch
- * these Promises and break the Suspense mechanism.
- *
- * ```ts
- * // ❌ WRONG - Catches Suspense Promise, breaks loading state
- * select(({ read }) => {
- *   try {
- *     return read(asyncAtom$);
- *   } catch (e) {
- *     return 'fallback'; // This catches BOTH errors AND loading promises!
- *   }
- * });
- *
- * // ✅ CORRECT - Use safe() to catch errors but preserve Suspense
- * select(({ read, safe }) => {
- *   const [err, data] = safe(() => {
- *     const raw = read(asyncAtom$);    // Can throw Promise (Suspense)
- *     return JSON.parse(raw);          // Can throw Error
- *   });
- *
- *   if (err) return { error: err.message };
- *   return { data };
- * });
- * ```
- *
- * The `safe()` utility:
- * - **Catches errors** and returns `[error, undefined]`
- * - **Re-throws Promises** to preserve Suspense behavior
- * - Returns `[undefined, result]` on success
- *
- * ## IMPORTANT: SelectContext Methods Are Synchronous Only
- *
- * **All context methods (`read`, `all`, `race`, `any`, `settled`, `safe`) must be
- * called synchronously during selector execution.** They cannot be used in async
- * callbacks like `setTimeout`, `Promise.then`, or event handlers.
- *
- * ```ts
- * // ❌ WRONG - Calling read() in async callback
- * select(({ read }) => {
- *   setTimeout(() => {
- *     read(atom$); // Error: called outside selection context
- *   }, 100);
- *   return 'value';
- * });
- *
- * // ❌ WRONG - Storing read() for later use
- * let savedRead;
- * select(({ read }) => {
- *   savedRead = read; // Don't do this!
- *   return read(atom$);
- * });
- * savedRead(atom$); // Error: called outside selection context
- *
- * // ✅ CORRECT - For async access, use atom.get() directly
- * effect(({ read }) => {
- *   const config = read(config$);
- *   setTimeout(async () => {
- *     // Use atom.get() for async access
- *     const data = await asyncAtom$.get();
- *     console.log(data);
- *   }, 100);
- * });
- * ```
+ * **Never wrap `read()` calls in try/catch blocks.** Use `safe()` instead.
  *
  * @template T - The type of the computed value
  * @param fn - Context-based selector function (must return sync value)
- * @returns SelectResult with value, error, promise, and dependencies
- * @throws Error if selector returns a Promise or PromiseLike
- * @throws Error if context methods are called outside selection context
+ * @param prevResult - Previous result for diff-based subscription updates
+ * @returns SelectOutput with result and startTracking function
  *
  * @example
  * ```ts
- * select(({ read, all }) => {
- *   const user = read(user$);
- *   const [posts, comments] = all(posts$, comments$);
- *   return { user, posts, comments };
- * });
+ * // Basic usage
+ * const { result, startTracking } = select(({ read }) => {
+ *   return read(count$) * 2;
+ * }, null);
+ *
+ * // With pool
+ * const { result, startTracking } = select(({ read, from }) => {
+ *   const user$ = from(userPool, userId);
+ *   return read(user$);
+ * }, prevResult);
+ *
+ * // Start tracking dependencies
+ * const cleanup = startTracking(() => recompute());
  * ```
  */
-export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
+export function select<T>(
+  fn: ReactiveSelector<T>,
+  _prevResult: SelectResult<T> | null = null
+): SelectOutput<T> {
   // Track accessed dependencies during computation
-  const dependencies = new Set<Atom<unknown>>();
+  const atomDeps = new Set<Atom<unknown>>();
+  const poolDeps = new Map<Pool<unknown, unknown>, Set<unknown>>();
+
+  // Map of real atoms to their ScopedAtom wrappers (for reuse within same computation)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const virtualAtoms = new Map<Atom<any>, ScopedAtom<any>>();
 
   // Flag to detect calls outside selection context (e.g., in async callbacks)
-  let isExecuting = true;
+  let isSelecting = true;
+
+  // Flag to disable dependency tracking during untrack() execution
+  let isUntracking = false;
 
   /**
    * Throws an error if called outside the synchronous selection context.
-   * This catches common mistakes like using get() in async callbacks.
    */
-  const assertExecuting = (methodName: string) => {
-    if (!isExecuting) {
+  const assertSelecting = (methodName: string) => {
+    if (!isSelecting) {
       throw new Error(
         `${methodName}() was called outside of the selection context. ` +
           "This usually happens when calling context methods in async callbacks (setTimeout, Promise.then, etc.). " +
           "All atom reads must happen synchronously during selector execution. " +
-          "For async access, use atom.get() directly (e.g., myMutableAtom$.get() or await myDerivedAtom$.get())."
+          "For async access, use atom.get() directly."
       );
     }
+  };
+
+  /**
+   * Track an atom as a dependency (unwraps ScopedAtom if needed).
+   * Skips tracking if inside an untrack() block.
+   */
+  const track = (atom: Atom<unknown>): void => {
+    assertSelecting("track");
+    // Skip tracking when inside untrack() block
+    if (isUntracking) return;
+
+    if (isScopedAtom(atom)) {
+      atomDeps.add(atom._getAtom());
+    } else {
+      atomDeps.add(atom);
+    }
+  };
+
+  /**
+   * Get a ScopedAtom from a pool.
+   */
+  const from = <P, V>(pool: Pool<P, V>, params: P): ScopedAtom<V> => {
+    assertSelecting("from");
+
+    // Track pool dependency
+    if (!poolDeps.has(pool as Pool<unknown, unknown>)) {
+      poolDeps.set(pool as Pool<unknown, unknown>, new Set());
+    }
+    poolDeps.get(pool as Pool<unknown, unknown>)!.add(params);
+
+    // Get the real atom from pool
+    const realAtom = pool._getAtom(params);
+
+    // Reuse existing ScopedAtom for same underlying atom
+    if (virtualAtoms.has(realAtom)) {
+      return virtualAtoms.get(realAtom) as ScopedAtom<V>;
+    }
+
+    // Create new ScopedAtom
+    const virtual = createScopedAtom(realAtom);
+    virtualAtoms.set(realAtom, virtual);
+    return virtual;
   };
 
   /**
@@ -319,16 +767,18 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
    * Implements Suspense-like behavior.
    */
   const read = <V>(atom: Atom<V>): Awaited<V> => {
-    assertExecuting("read");
+    assertSelecting("read");
 
-    // Track this atom as accessed dependency
-    dependencies.add(atom as Atom<unknown>);
+    // Track dependency (unwrap ScopedAtom)
+    track(atom as Atom<unknown>);
 
-    const state = getAtomState(atom);
+    // Get the real atom for state access
+    const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
+    const state = getAtomState(realAtom);
 
     switch (state.status) {
       case "ready":
-        return state.value;
+        return state.value as Awaited<V>;
       case "error":
         throw state.error;
       case "loading":
@@ -340,38 +790,32 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
    * all() - like Promise.all
    */
   const all = <A extends Atom<unknown>[]>(
-    ...atoms: A
+    atoms: A
   ): { [K in keyof A]: AtomValue<A[K]> } => {
-    assertExecuting("all");
+    assertSelecting("all");
 
     const results: unknown[] = [];
-    let loadingPromise: Promise<unknown> | null = null;
+    const loadingPromises: Promise<unknown>[] = [];
 
     for (const atom of atoms) {
-      dependencies.add(atom);
-      const state = getAtomState(atom);
+      track(atom);
+      const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
+      const state = getAtomState(realAtom);
 
       switch (state.status) {
         case "ready":
           results.push(state.value);
           break;
-
         case "error":
-          // Any error → throw immediately
           throw state.error;
-
         case "loading":
-          // First loading without fallback → will throw
-          if (!loadingPromise) {
-            loadingPromise = state.promise;
-          }
+          loadingPromises.push(state.promise!);
           break;
       }
     }
 
-    // If any loading without fallback → throw Promise
-    if (loadingPromise) {
-      throw loadingPromise;
+    if (loadingPromises.length > 0) {
+      throw createCombinedPromise("all", loadingPromises);
     }
 
     return results as { [K in keyof A]: AtomValue<A[K]> };
@@ -380,37 +824,35 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
   /**
    * race() - like Promise.race
    */
-  const race = <A extends Atom<unknown>[]>(
-    ...atoms: A
-  ): AtomValue<A[number]> => {
-    assertExecuting("race");
+  const race = <R extends Record<string, Atom<unknown>>>(
+    atoms: R
+  ): KeyedResult<keyof R & string, AtomValue<R[keyof R]>> => {
+    assertSelecting("race");
 
-    let firstLoadingPromise: Promise<unknown> | null = null;
+    const loadingPromises: Promise<unknown>[] = [];
+    const entries = Object.entries(atoms);
 
-    for (const atom of atoms) {
-      dependencies.add(atom);
-
-      // For race(), we need raw state without fallback handling
-      const state = getAtomState(atom);
+    for (const [key, atom] of entries) {
+      track(atom);
+      const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
+      const state = getAtomState(realAtom);
 
       switch (state.status) {
         case "ready":
-          return state.value as AtomValue<A[number]>;
-
+          return {
+            key: key as keyof R & string,
+            value: state.value as AtomValue<R[keyof R]>,
+          };
         case "error":
           throw state.error;
-
         case "loading":
-          if (!firstLoadingPromise) {
-            firstLoadingPromise = state.promise;
-          }
+          loadingPromises.push(state.promise!);
           break;
       }
     }
 
-    // All loading → throw first Promise
-    if (firstLoadingPromise) {
-      throw firstLoadingPromise;
+    if (loadingPromises.length > 0) {
+      throw createCombinedPromise("race", loadingPromises);
     }
 
     throw new Error("race() called with no atoms");
@@ -419,42 +861,39 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
   /**
    * any() - like Promise.any
    */
-  const any = <A extends Atom<unknown>[]>(
-    ...atoms: A
-  ): AtomValue<A[number]> => {
-    assertExecuting("any");
+  const any = <R extends Record<string, Atom<unknown>>>(
+    atoms: R
+  ): KeyedResult<keyof R & string, AtomValue<R[keyof R]>> => {
+    assertSelecting("any");
 
     const errors: unknown[] = [];
-    let firstLoadingPromise: Promise<unknown> | null = null;
+    const loadingPromises: Promise<unknown>[] = [];
+    const entries = Object.entries(atoms);
 
-    for (const atom of atoms) {
-      dependencies.add(atom);
-
-      // For any(), we need raw state without fallback handling
-      const state = getAtomState(atom);
+    for (const [key, atom] of entries) {
+      track(atom);
+      const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
+      const state = getAtomState(realAtom);
 
       switch (state.status) {
         case "ready":
-          return state.value as AtomValue<A[number]>;
-
+          return {
+            key: key as keyof R & string,
+            value: state.value as AtomValue<R[keyof R]>,
+          };
         case "error":
           errors.push(state.error);
           break;
-
         case "loading":
-          if (!firstLoadingPromise) {
-            firstLoadingPromise = state.promise;
-          }
+          loadingPromises.push(state.promise!);
           break;
       }
     }
 
-    // If any loading → throw Promise (might still fulfill)
-    if (firstLoadingPromise) {
-      throw firstLoadingPromise;
+    if (loadingPromises.length > 0) {
+      throw createCombinedPromise("race", loadingPromises);
     }
 
-    // All errored → throw AggregateError
     throw new AggregateErrorClass(errors, "All atoms rejected");
   };
 
@@ -462,38 +901,33 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
    * settled() - like Promise.allSettled
    */
   const settled = <A extends Atom<unknown>[]>(
-    ...atoms: A
+    atoms: A
   ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> } => {
-    assertExecuting("settled");
+    assertSelecting("settled");
 
     const results: SettledResult<unknown>[] = [];
-    let pendingPromise: Promise<unknown> | null = null;
+    const loadingPromises: Promise<unknown>[] = [];
 
     for (const atom of atoms) {
-      dependencies.add(atom);
-      const state = getAtomState(atom);
+      track(atom);
+      const realAtom = isScopedAtom(atom) ? atom._getAtom() : atom;
+      const state = getAtomState(realAtom);
 
       switch (state.status) {
         case "ready":
           results.push({ status: "ready", value: state.value });
           break;
-
         case "error":
           results.push({ status: "error", error: state.error });
           break;
-
         case "loading":
-          // Loading without fallback → will throw
-          if (!pendingPromise) {
-            pendingPromise = state.promise;
-          }
+          loadingPromises.push(state.promise!);
           break;
       }
     }
 
-    // If any loading without fallback → throw Promise
-    if (pendingPromise) {
-      throw pendingPromise;
+    if (loadingPromises.length > 0) {
+      throw createCombinedPromise("allSettled", loadingPromises);
     }
 
     return results as { [K in keyof A]: SettledResult<AtomValue<A[K]>> };
@@ -502,68 +936,326 @@ export function select<T>(fn: ReactiveSelector<T>): SelectResult<T> {
   /**
    * safe() - Execute function with error handling, preserving Suspense
    */
-  const safe = <T>(fn: () => T): SafeResult<T> => {
-    assertExecuting("safe");
+  const safe = <S>(safeFn: () => S): SafeResult<S> => {
+    assertSelecting("safe");
 
     try {
-      const result = fn();
+      const result = safeFn();
       return [undefined, result];
     } catch (e) {
-      // Re-throw Promises to preserve Suspense behavior
       if (isPromiseLike(e)) {
         throw e;
       }
-      // Return errors as tuple instead of throwing
       return [e, undefined];
     }
   };
 
+  /**
+   * state() - Get async state without throwing
+   */
+  function state<S>(atom: Atom<S>): SelectStateResult<Awaited<S>>;
+  function state<S>(selector: () => S): SelectStateResult<S>;
+  function state<S>(
+    atomOrSelector: Atom<S> | (() => S)
+  ): SelectStateResult<Awaited<S>> | SelectStateResult<S> {
+    assertSelecting("state");
+
+    if (isAtom(atomOrSelector)) {
+      track(atomOrSelector as Atom<unknown>);
+      const realAtom = isScopedAtom(atomOrSelector)
+        ? atomOrSelector._getAtom()
+        : atomOrSelector;
+      const atomState = getAtomState(realAtom);
+
+      switch (atomState.status) {
+        case "ready":
+          return {
+            status: "ready",
+            value: atomState.value,
+            error: undefined,
+          } as SelectStateResult<Awaited<S>>;
+        case "error":
+          return {
+            status: "error",
+            value: undefined,
+            error: atomState.error,
+          } as SelectStateResult<Awaited<S>>;
+        case "loading":
+          return {
+            status: "loading",
+            value: undefined,
+            error: undefined,
+          } as SelectStateResult<Awaited<S>>;
+      }
+    }
+
+    try {
+      const value = atomOrSelector();
+      return {
+        status: "ready",
+        value,
+        error: undefined,
+      } as SelectStateResult<S>;
+    } catch (e) {
+      if (isPromiseLike(e)) {
+        return {
+          status: "loading",
+          value: undefined,
+          error: undefined,
+        } as SelectStateResult<S>;
+      }
+      return {
+        status: "error",
+        value: undefined,
+        error: e,
+      } as SelectStateResult<S>;
+    }
+  }
+
+  /**
+   * Evaluates a single condition and returns its boolean value.
+   * Handles boolean, atom, and lazy function inputs.
+   *
+   * @param cond - The condition to evaluate
+   * @returns The boolean value of the condition
+   */
+  const evaluateCondition = (cond: Condition): boolean => {
+    if (typeof cond === "boolean") {
+      return cond;
+    }
+
+    if (typeof cond === "function") {
+      const result = cond();
+      if (typeof result === "boolean") {
+        return result;
+      }
+      // It's an atom returned from the function
+      return Boolean(read(result));
+    }
+
+    // It's an atom
+    return Boolean(read(cond));
+  };
+
+  /**
+   * and() - Logical AND with short-circuit evaluation
+   *
+   * ## Evaluation Flow
+   *
+   * ```
+   * and([a, b, () => c])
+   *      │
+   *      ▼
+   *   a truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   b truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   call () => c
+   *   c truthy? ─No──→ return false
+   *      │Yes
+   *      ▼
+   *   return true
+   * ```
+   */
+  const and = (conditions: Condition[]): boolean => {
+    assertSelecting("and");
+
+    for (const cond of conditions) {
+      if (!evaluateCondition(cond)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  /**
+   * or() - Logical OR with short-circuit evaluation
+   *
+   * ## Evaluation Flow
+   *
+   * ```
+   * or([a, b, () => c])
+   *     │
+   *     ▼
+   *  a truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  b truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  call () => c
+   *  c truthy? ─Yes─→ return true
+   *     │No
+   *     ▼
+   *  return false
+   * ```
+   */
+  const or = (conditions: Condition[]): boolean => {
+    assertSelecting("or");
+
+    for (const cond of conditions) {
+      if (evaluateCondition(cond)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  /**
+   * untrack() - Read atoms or execute functions without tracking dependencies.
+   *
+   * ## Flow Diagram
+   *
+   * ```
+   * untrack(input)
+   *       │
+   *       ▼
+   *   Is input an Atom?
+   *       │
+   *   ┌───┴───┐
+   *   │Yes    │No (function)
+   *   ▼       ▼
+   *  Read    Set isUntracking = true
+   *  without  │
+   *  tracking ▼
+   *   │      Execute fn()
+   *   │       │
+   *   │       ▼
+   *   │      Set isUntracking = false
+   *   │       │
+   *   └───────┴──→ Return value
+   * ```
+   */
+  function untrack<U>(atom: Atom<U>): Awaited<U>;
+  function untrack<U>(fn: () => U): U;
+  function untrack<U>(atomOrFn: Atom<U> | (() => U)): Awaited<U> | U {
+    assertSelecting("untrack");
+
+    if (isAtom(atomOrFn)) {
+      // For atom: read value without tracking (don't call track())
+      const realAtom = isScopedAtom(atomOrFn) ? atomOrFn._getAtom() : atomOrFn;
+      const state = getAtomState(realAtom);
+
+      switch (state.status) {
+        case "ready":
+          return state.value as Awaited<U>;
+        case "error":
+          throw state.error;
+        case "loading":
+          throw state.promise; // Suspense pattern
+      }
+    }
+
+    // For function: execute with tracking disabled
+    const previousUntracking = isUntracking;
+    isUntracking = true;
+    try {
+      return atomOrFn();
+    } finally {
+      isUntracking = previousUntracking;
+    }
+  }
+
   // Create the context
   const context: SelectContext = withUse({
     read,
+    from,
+    track,
     all,
     any,
     race,
     settled,
     safe,
+    state,
+    and,
+    or,
+    untrack,
   });
 
-  // Execute the selector function
-  try {
-    const result = fn(context);
+  // Execute the selector function and build result
+  let result: SelectResult<T>;
 
-    // Selector must return synchronous value, not a Promise
-    if (isPromiseLike(result)) {
+  try {
+    const value = fn(context);
+
+    if (isPromiseLike(value)) {
       throw new Error(
         "select() selector must return a synchronous value, not a Promise. " +
-          "For async data, create an async atom with atom(Promise) and use get() to read it."
+          "For async data, create an async atom with atom(Promise) and use read() to read it."
       );
     }
 
-    return {
-      value: result,
+    result = {
+      value,
       error: undefined,
       promise: undefined,
-      dependencies,
+      dependencies: atomDeps, // Backward compatibility
+      _atomDeps: atomDeps,
+      _poolDeps: poolDeps,
     };
   } catch (thrown) {
     if (isPromiseLike(thrown)) {
-      return {
+      result = {
         value: undefined,
         error: undefined,
         promise: thrown,
-        dependencies,
+        dependencies: atomDeps,
+        _atomDeps: atomDeps,
+        _poolDeps: poolDeps,
       };
     } else {
-      return {
+      result = {
         value: undefined,
         error: thrown,
         promise: undefined,
-        dependencies,
+        dependencies: atomDeps,
+        _atomDeps: atomDeps,
+        _poolDeps: poolDeps,
       };
     }
   } finally {
-    // Mark execution as complete to catch async misuse
-    isExecuting = false;
+    // Mark execution as complete
+    isSelecting = false;
+
+    // Dispose all ScopedAtoms
+    for (const virtual of virtualAtoms.values()) {
+      virtual._dispose();
+    }
+    virtualAtoms.clear();
   }
+
+  /**
+   * Start tracking dependencies.
+   * Sets up subscriptions to all atom and pool dependencies.
+   *
+   * Note: This subscribes to ALL current dependencies.
+   * Diff-based optimization (unsubscribing removed deps) should be handled
+   * by the consumer (e.g., derived.ts) if needed.
+   */
+  const startTracking = (onNotify: VoidFunction): VoidFunction => {
+    const subscriptions: VoidFunction[] = [];
+
+    // Subscribe to all atom changes
+    for (const atom of atomDeps) {
+      subscriptions.push(atom.on(onNotify));
+    }
+
+    // Subscribe to pool entry removals
+    for (const [pool, paramsSet] of poolDeps) {
+      for (const params of paramsSet) {
+        subscriptions.push(pool._onRemove(params, onNotify));
+      }
+    }
+
+    // Return cleanup function
+    return () => {
+      for (const unsub of subscriptions) {
+        unsub();
+      }
+    };
+  };
+
+  return { result, startTracking };
 }

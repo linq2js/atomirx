@@ -16,6 +16,16 @@ export const SYMBOL_ATOM = Symbol.for("atomirx.atom");
 export const SYMBOL_DERIVED = Symbol.for("atomirx.derived");
 
 /**
+ * Symbol to identify scoped atoms (temporary wrappers for pool atoms).
+ */
+export const SYMBOL_SCOPED = Symbol.for("atomirx.scoped");
+
+/**
+ * Symbol to identify pool instances.
+ */
+export const SYMBOL_POOL = Symbol.for("atomirx.pool");
+
+/**
  * Interface for objects that support the `.use()` plugin pattern.
  *
  * The `.use()` method enables chainable transformations via plugins.
@@ -42,14 +52,17 @@ export interface Pipeable {
         ? TNew
         : Pipeable & TNew
       : TNew;
+
+  use<TPlugin extends object>(
+    plugin: TPlugin
+  ): TPlugin extends any[] ? this : this & TPlugin;
 }
 
 /**
  * Optional metadata for atoms.
  */
-export interface AtomMeta {
+export interface AtomMeta extends AtomirxMeta {
   key?: string;
-  [key: string]: unknown;
 }
 
 /**
@@ -129,6 +142,12 @@ export interface MutableAtom<T> extends Atom<T>, Pipeable {
    * ```
    */
   dirty(): boolean;
+
+  /**
+   * Dispose the atom, aborting any pending operations and running cleanup functions.
+   * @internal - Used by pool when removing entries.
+   */
+  _dispose(): void;
 }
 
 /**
@@ -173,6 +192,12 @@ export interface DerivedAtom<T, F extends boolean = false> extends Atom<
    * - With fallback: T (guaranteed)
    */
   readonly staleValue: F extends true ? T : T | undefined;
+
+  /**
+   * Dispose the derived atom, cleaning up all subscriptions.
+   * @internal - Reserved for future use.
+   */
+  _dispose(): void;
 }
 
 /**
@@ -211,6 +236,38 @@ export type AtomState<T> =
       error?: undefined;
     };
 
+/**
+ * Result type for SelectContext.state() - simplified AtomState without promise.
+ *
+ * All properties (`status`, `value`, `error`) are always present:
+ * - `value` is `T` when ready, `undefined` otherwise
+ * - `error` is the error when errored, `undefined` otherwise
+ *
+ * This enables easy destructuring without type narrowing:
+ * ```ts
+ * const { status, value, error } = state(atom$);
+ * ```
+ *
+ * Equality comparisons work correctly (no promise reference issues).
+ */
+export type SelectStateResult<T> =
+  | { status: "ready"; value: T; error: undefined }
+  | { status: "error"; value: undefined; error: unknown }
+  | { status: "loading"; value: undefined; error: undefined };
+
+/**
+ * Result type for race() and any() - includes winning key.
+ *
+ * @template K - The key type (string literal union)
+ * @template V - The value type
+ */
+export type KeyedResult<K extends string, V> = {
+  /** The key that won the race/any */
+  key: K;
+  /** The resolved value */
+  value: V;
+};
+
 export type AtomPlugin = <T extends Atom<any>>(atom: T) => T | void;
 
 /**
@@ -246,15 +303,66 @@ export interface DerivedOptions<T> {
   meta?: DerivedAtomMeta;
   /** Equality strategy for change detection (default: "strict") */
   equals?: Equality<T>;
+  /**
+   * Callback invoked when the derived computation throws an error.
+   * This is called for actual errors, NOT for Promise throws (Suspense).
+   *
+   * @param error - The error thrown during computation
+   *
+   * @example
+   * ```ts
+   * const data$ = derived(
+   *   ({ read }) => {
+   *     const raw = read(source$);
+   *     return JSON.parse(raw); // May throw SyntaxError
+   *   },
+   *   {
+   *     onError: (error) => {
+   *       console.error('Derived computation failed:', error);
+   *       reportToSentry(error);
+   *     }
+   *   }
+   * );
+   * ```
+   */
+  onError?: (error: unknown) => void;
 }
 
 /**
  * Configuration options for effects.
  */
 export interface EffectOptions {
-  /** Optional key for debugging */
+  meta?: EffectMeta;
+  /**
+   * Callback invoked when the effect computation throws an error.
+   * This is called for actual errors, NOT for Promise throws (Suspense).
+   *
+   * @param error - The error thrown during effect execution
+   *
+   * @example
+   * ```ts
+   * effect(
+   *   ({ read }) => {
+   *     const data = read(source$);
+   *     riskyOperation(data); // May throw
+   *   },
+   *   {
+   *     onError: (error) => {
+   *       console.error('Effect failed:', error);
+   *       showErrorNotification(error);
+   *     }
+   *   }
+   * );
+   * ```
+   */
+  onError?: (error: unknown) => void;
+}
+
+export interface AtomirxMeta {
   key?: string;
 }
+
+export interface EffectMeta extends AtomirxMeta {}
 
 /**
  * A function that returns a value when called.
@@ -305,3 +413,231 @@ export interface ModuleMeta {}
 export type Listener<T> = (value: T) => void;
 
 export type SingleOrMultipleListeners<T> = Listener<T> | Listener<T>[];
+
+// ============================================================================
+// Pool Types
+// ============================================================================
+
+/**
+ * Event emitted by pool's `on()` method.
+ *
+ * @template P - The type of params used to index entries
+ * @template T - The type of value stored in each entry
+ */
+export type PoolEvent<P, T> =
+  | { type: "create"; params: P; value: T }
+  | { type: "change"; params: P; value: T }
+  | { type: "remove"; params: P; value: T };
+
+/**
+ * A scoped atom is a temporary wrapper around a real atom from a pool.
+ * It is only valid during a select() context and throws if accessed outside.
+ *
+ * ScopedAtoms prevent memory leaks by ensuring pool atom references
+ * cannot be stored and used after the computation completes.
+ *
+ * @template T - The type of value stored in the underlying atom
+ */
+export interface ScopedAtom<T> extends Atom<T> {
+  /** Symbol marker to identify scoped atom instances */
+  readonly [SYMBOL_SCOPED]: true;
+
+  /**
+   * Get the underlying real atom.
+   * @internal
+   * @throws Error if called outside select() context
+   */
+  _getAtom(): Atom<T>;
+
+  /**
+   * Mark this scoped atom as disposed.
+   * After disposal, any method call will throw.
+   * @internal
+   */
+  _dispose(): void;
+}
+
+/**
+ * Configuration options for creating a pool.
+ *
+ * @template P - The type of params used to index pool entries (must be object)
+ */
+export interface PoolOptions<P> {
+  /**
+   * Time in milliseconds before an unused entry is garbage collected.
+   * The GC timer resets on:
+   * - Entry creation
+   * - Value change
+   * - Access (get/set)
+   *
+   * GC is paused while the entry's value is a pending Promise.
+   */
+  gcTime: number;
+
+  /**
+   * Equality strategy for params comparison (default: "shallow").
+   * Used to determine if two params objects refer to the same cache entry.
+   *
+   * With default "shallow" equality:
+   * - `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` are considered equal (same entry)
+   * - Property order doesn't matter
+   *
+   * @example
+   * ```ts
+   * // Default shallow equality
+   * const userPool = pool((params: { id: string }) => fetchUser(params.id), {
+   *   gcTime: 60_000,
+   * });
+   * userPool.get({ id: "1" });
+   * userPool.get({ id: "1" }); // Same entry (shallow equal)
+   *
+   * // Custom equality
+   * const pool = pool((params: { a: number; b: number }) => params.a + params.b, {
+   *   gcTime: 60_000,
+   *   equals: (a, b) => a.a === b.a && a.b === b.b,
+   * });
+   * ```
+   */
+  equals?: Equality<P>;
+
+  /**
+   * Optional metadata for the pool.
+   */
+  meta?: PoolMeta;
+}
+
+/**
+ * Metadata for pool instances.
+ */
+export interface PoolMeta extends AtomirxMeta {
+  key?: string;
+}
+
+/**
+ * A pool is a collection of atoms indexed by params.
+ * Similar to atomFamily in Jotai/Recoil, but with automatic GC
+ * and ScopedAtom pattern to prevent memory leaks.
+ *
+ * @template P - The type of params used to index entries
+ * @template T - The type of value stored in each entry
+ *
+ * @example
+ * ```ts
+ * // Create a pool
+ * const userPool = pool(
+ *   (id: string) => fetchUser(id),
+ *   { gcTime: 60_000 }
+ * );
+ *
+ * // Public API (value-based)
+ * userPool.get("user-1");  // T | undefined
+ * userPool.set("user-1", newUser);
+ * userPool.remove("user-1");
+ *
+ * // In reactive context
+ * derived(({ read, from }) => {
+ *   const user$ = from(userPool, "user-1");
+ *   return read(user$);
+ * });
+ * ```
+ */
+export interface Pool<P, T> {
+  /** Symbol marker to identify pool instances */
+  readonly [SYMBOL_POOL]: true;
+
+  /** Optional metadata for the pool */
+  readonly meta?: PoolMeta;
+
+  /**
+   * Get the current value for params.
+   * Creates entry if it doesn't exist.
+   * Extends GC timer on access.
+   *
+   * @param params - The params to look up
+   * @returns The current value
+   */
+  get(params: P): T;
+
+  /**
+   * Set the value for params.
+   * Creates entry if it doesn't exist.
+   * Extends GC timer on access.
+   *
+   * @param params - The params to set
+   * @param value - The new value or reducer function
+   */
+  set(params: P, value: T | ((prev: T) => T)): void;
+
+  /**
+   * Check if an entry exists for params.
+   *
+   * @param params - The params to check
+   * @returns true if entry exists
+   */
+  has(params: P): boolean;
+
+  /**
+   * Remove an entry from the pool.
+   * Triggers onRemove listeners.
+   *
+   * @param params - The params to remove
+   */
+  remove(params: P): void;
+
+  /**
+   * Remove all entries from the pool.
+   * Triggers onRemove listeners for each entry.
+   */
+  clear(): void;
+
+  size(): number;
+
+  /**
+   * Iterate over all entries in the pool.
+   *
+   * @param callback - Called for each entry with (value, params)
+   */
+  forEach(callback: (value: T, params: P) => void): void;
+
+  /**
+   * Subscribe to pool events.
+   *
+   * Event types:
+   * - `create` - New entry created
+   * - `change` - Existing entry value changed
+   * - `remove` - Entry removed (manual or GC)
+   *
+   * @param listener - Called with event object containing type, params, and value
+   * @returns Unsubscribe function
+   *
+   * @example
+   * ```ts
+   * const unsub = userPool.on((event) => {
+   *   switch (event.type) {
+   *     case "create":
+   *       console.log("Created:", event.params, event.value);
+   *       break;
+   *     case "change":
+   *       console.log("Changed:", event.params, event.value);
+   *       break;
+   *     case "remove":
+   *       console.log("Removed:", event.params, event.value);
+   *       break;
+   *   }
+   * });
+   * ```
+   */
+  on(listener: (event: PoolEvent<P, T>) => void): VoidFunction;
+
+  /**
+   * Get the underlying atom for params.
+   * @internal - Use `from(pool, params)` in SelectContext instead.
+   */
+  _getAtom(params: P): MutableAtom<T>;
+
+  /**
+   * Subscribe to removal of a specific entry.
+   * @internal - Used by SelectContext for automatic recomputation.
+   */
+  _onRemove(params: P, listener: VoidFunction): VoidFunction;
+}

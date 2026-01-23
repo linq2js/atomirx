@@ -7,7 +7,8 @@
     "management",
     "atom",
     "derived",
-    "effect"
+    "effect",
+    "devtools"
   ],
   "author": "Gignuyen",
   "license": "MIT",
@@ -16,21 +17,31 @@
     "url": "https://github.com/linq2js/atomirx"
   },
   "homepage": "https://github.com/linq2js/atomirx",
-  "version": "0.0.2",
+  "version": "0.0.8",
   "type": "module",
-  "main": "./dist/atomirx.umd.cjs",
-  "module": "./dist/atomirx.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/atomirx.js",
-      "require": "./dist/atomirx.umd.cjs",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
       "types": "./dist/index.d.ts"
     },
     "./react": {
       "import": "./dist/react/index.js",
       "require": "./dist/react/index.cjs",
       "types": "./dist/react/index.d.ts"
+    },
+    "./devtools": {
+      "import": "./dist/devtools/index.js",
+      "require": "./dist/devtools/index.cjs",
+      "types": "./dist/devtools/index.d.ts"
+    },
+    "./react-devtools": {
+      "import": "./dist/react-devtools/index.js",
+      "require": "./dist/react-devtools/index.cjs",
+      "types": "./dist/react-devtools/index.d.ts"
     }
   },
   "scripts": {
@@ -49,8 +60,8 @@
     "lodash": "^4.17.21"
   },
   "peerDependencies": {
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {
     "react": {

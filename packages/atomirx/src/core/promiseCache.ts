@@ -1,5 +1,80 @@
+import { shallow2Equal } from "./equality";
 import { isPromiseLike } from "./isPromiseLike";
-import { DerivedAtom, SYMBOL_DERIVED } from "./types";
+import { AnyFunc, DerivedAtom, SYMBOL_DERIVED } from "./types";
+
+/**
+ * Metadata attached to combined promises for comparison.
+ */
+export interface CombinedPromiseMeta {
+  type: "all" | "race" | "allSettled";
+  promises: Promise<unknown>[];
+}
+
+/**
+ * WeakMap cache for combined promise metadata.
+ * Using WeakMap allows promises to be garbage collected when no longer referenced.
+ */
+const combinedPromiseCache = new WeakMap<
+  PromiseLike<unknown>,
+  CombinedPromiseMeta
+>();
+
+/**
+ * Gets the metadata for a combined promise, if any.
+ * Used internally by promisesEqual for comparison.
+ */
+export function getCombinedPromiseMetadata(
+  promise: PromiseLike<unknown>
+): CombinedPromiseMeta | undefined {
+  return combinedPromiseCache.get(promise);
+}
+
+/**
+ * Create a combined promise with metadata for comparison.
+ * If only one promise, returns it directly (no metadata needed).
+ */
+export function createCombinedPromise(
+  type: "all" | "race" | "allSettled",
+  promises: Promise<unknown>[]
+): PromiseLike<unknown> {
+  if (promises.length === 1) {
+    // Single promise - no need for metadata, just return it
+    // For allSettled, we still need to wrap to prevent rejection propagation
+    if (type === "allSettled") {
+      const combined = Promise.allSettled(promises).then(() => undefined);
+      combinedPromiseCache.set(combined, { type, promises });
+      return combined;
+    }
+    return promises[0];
+  }
+
+  const combined = (Promise[type] as AnyFunc)(promises);
+  // Attach no-op catch to prevent unhandled rejection warnings
+  combined.catch(() => {});
+  combinedPromiseCache.set(combined, { type, promises });
+  return combined;
+}
+
+/**
+ * Compare two promises, considering combined promise metadata.
+ * Returns true if promises are considered equal.
+ */
+export function promisesEqual(
+  a: PromiseLike<unknown> | undefined,
+  b: PromiseLike<unknown> | undefined
+): boolean {
+  // Same reference
+  if (a === b) return true;
+
+  // One is undefined
+  if (!a || !b) return false;
+
+  // Compare by metadata (type + source promises array)
+  const metaA = getCombinedPromiseMetadata(a);
+  const metaB = getCombinedPromiseMetadata(b);
+
+  return !!metaA && !!metaB && shallow2Equal(metaA, metaB);
+}
 
 /**
  * Represents the state of a tracked Promise.

@@ -1,7 +1,10 @@
 import { useReducer, useCallback, useRef, useEffect } from "react";
 import { isPromiseLike } from "../core/isPromiseLike";
-import { useValue } from "./useValue";
+import { useSelector } from "./useSelector";
 import { isAtom } from "../core/isAtom";
+import { AtomirxMeta, Pipeable } from "../core/types";
+import { withUse } from "../core/withUse";
+import { onDispatchHook } from "./onDispatchHook";
 
 /**
  * State for an action that hasn't been dispatched yet.
@@ -61,6 +64,8 @@ export type ActionStateWithoutIdle<T> = Exclude<
  */
 export type AbortablePromise<T> = PromiseLike<T> & { abort: () => void };
 
+export interface ActionMeta extends AtomirxMeta {}
+
 /**
  * Options for useAction hook.
  */
@@ -76,16 +81,18 @@ export interface UseActionOptions {
   /**
    * Dependencies array. When lazy is false, re-executes when deps change.
    * - Regular values: compared by reference (like useEffect deps)
-   * - Atoms: automatically tracked via useValue, re-executes when atom values change
+   * - Atoms: automatically tracked via useSelector, re-executes when atom values change
    * @default []
    */
   deps?: unknown[];
+
+  meta?: ActionMeta;
 }
 
 /**
  * Context passed to the action function.
  */
-export interface ActionContext {
+export interface ActionContext extends Pipeable {
   /** AbortSignal for cancellation. New signal per dispatch. */
   signal: AbortSignal;
 }
@@ -309,7 +316,7 @@ function reducer<T>(
  *     { lazy: false, deps: [userIdAtom] }
  *   );
  *   // Automatically re-fetches when userIdAtom changes
- *   // Atoms in deps are tracked reactively via useValue
+ *   // Atoms in deps are tracked reactively via useSelector
  * }
  * ```
  *
@@ -487,8 +494,8 @@ export function useAction<TResult, TLazy extends boolean = true>(
   // Get atoms from deps for reactive tracking
   const atomDeps = (lazy ? [] : (deps ?? [])).filter(isAtom);
 
-  // Use useValue to track atom deps and get their values for effect deps comparison
-  const atomValues = useValue(({ read }) => {
+  // Use useSelector to track atom deps and get their values for effect deps comparison
+  const atomValues = useSelector(({ read }) => {
     return atomDeps.map((atom) => read(atom));
   });
 
@@ -503,13 +510,20 @@ export function useAction<TResult, TLazy extends boolean = true>(
     currentAbortControllerRef.current = abortController;
 
     dispatchAction({ type: "START" });
+    onDispatchHook.current?.({ type: "start", meta: options.meta, deps });
 
     let result: TResult;
     try {
-      result = fnRef.current({ signal: abortController.signal });
+      result = fnRef.current(withUse({ signal: abortController.signal }));
     } catch (error) {
       // Sync error - update state and return rejected promise
       dispatchAction({ type: "ERROR", error });
+      onDispatchHook.current?.({
+        type: "error",
+        meta: options.meta,
+        deps,
+        error,
+      });
       return Object.assign(Promise.reject(error), {
         abort: () => abortController.abort(),
       });
@@ -518,12 +532,23 @@ export function useAction<TResult, TLazy extends boolean = true>(
     // Handle async result
     if (isPromiseLike(result)) {
       const promise = result as PromiseLike<Awaited<TResult>>;
+      onDispatchHook.current?.({
+        type: "loading",
+        meta: options.meta,
+        deps,
+      });
 
       promise.then(
         (value) => {
           // Ignore stale results (a new dispatch has started)
           if (currentAbortControllerRef.current !== abortController) return;
           dispatchAction({ type: "SUCCESS", result: value });
+          onDispatchHook.current &&
+            onDispatchHook.current({
+              type: "resolved",
+              meta: options.meta,
+              deps,
+            });
         },
         (error) => {
           // Check if this was an abort error
@@ -539,6 +564,13 @@ export function useAction<TResult, TLazy extends boolean = true>(
               currentAbortControllerRef.current === abortController
             ) {
               dispatchAction({ type: "ERROR", error });
+              onDispatchHook.current &&
+                onDispatchHook.current({
+                  type: "abort",
+                  meta: options.meta,
+                  deps,
+                  error,
+                });
             }
             return;
           }
@@ -546,6 +578,13 @@ export function useAction<TResult, TLazy extends boolean = true>(
           // For non-abort errors, ignore stale results
           if (currentAbortControllerRef.current !== abortController) return;
           dispatchAction({ type: "ERROR", error });
+          onDispatchHook.current &&
+            onDispatchHook.current({
+              type: "rejected",
+              meta: options.meta,
+              deps,
+              error,
+            });
         }
       );
 
@@ -559,6 +598,13 @@ export function useAction<TResult, TLazy extends boolean = true>(
           }
         },
       }) as AbortablePromise<Awaited<TResult>>;
+    } else {
+      onDispatchHook.current &&
+        onDispatchHook.current({
+          type: "success",
+          meta: options.meta,
+          deps,
+        });
     }
 
     // Sync success - wrap in resolved promise

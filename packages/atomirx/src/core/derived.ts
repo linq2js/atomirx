@@ -1,8 +1,14 @@
-import { onCreateHook } from "./onCreateHook";
+import { CreateInfo, DerivedInfo, onCreateHook } from "./onCreateHook";
 import { emitter } from "./emitter";
 import { resolveEquality } from "./equality";
+import { onErrorHook } from "./onErrorHook";
 import { scheduleNotifyHook } from "./scheduleNotifyHook";
-import { ReactiveSelector, select, SelectContext } from "./select";
+import {
+  ReactiveSelector,
+  select,
+  SelectContext,
+  SelectResult,
+} from "./select";
 import {
   Atom,
   AtomState,
@@ -12,6 +18,20 @@ import {
   SYMBOL_ATOM,
   SYMBOL_DERIVED,
 } from "./types";
+import { withReady, WithReadyContext } from "./withReady";
+
+/**
+ * Internal options for derived atoms.
+ * These are not part of the public API.
+ * @internal
+ */
+export interface DerivedInternalOptions {
+  /**
+   * Override the error source for onErrorHook.
+   * Used by effect() to attribute errors to the effect instead of the internal derived.
+   */
+  _errorSource?: CreateInfo;
+}
 
 /**
  * Context object passed to derived atom selector functions.
@@ -20,7 +40,7 @@ import {
  * Currently identical to `SelectContext`, but defined separately to allow
  * future derived-specific extensions without breaking changes.
  */
-export interface DerivedContext extends SelectContext {}
+export interface DerivedContext extends SelectContext, WithReadyContext {}
 
 /**
  * Creates a derived (computed) atom from source atom(s).
@@ -146,19 +166,19 @@ export interface DerivedContext extends SelectContext {}
 // Overload: Without fallback - staleValue is T | undefined
 export function derived<T>(
   fn: ReactiveSelector<T, DerivedContext>,
-  options?: DerivedOptions<T>
+  options?: DerivedOptions<T> & DerivedInternalOptions
 ): DerivedAtom<T, false>;
 
 // Overload: With fallback - staleValue is guaranteed T
 export function derived<T>(
   fn: ReactiveSelector<T, DerivedContext>,
-  options: DerivedOptions<T> & { fallback: T }
+  options: DerivedOptions<T> & { fallback: T } & DerivedInternalOptions
 ): DerivedAtom<T, true>;
 
 // Implementation
 export function derived<T>(
   fn: ReactiveSelector<T, DerivedContext>,
-  options: DerivedOptions<T> & { fallback?: T } = {}
+  options: DerivedOptions<T> & { fallback?: T } & DerivedInternalOptions = {}
 ): DerivedAtom<T, boolean> {
   const changeEmitter = emitter();
   const eq = resolveEquality(options.equals as Equality<unknown>);
@@ -173,10 +193,34 @@ export function derived<T>(
   let currentPromise: Promise<T> | null = null;
   let isInitialized = false;
   let isLoading = false;
+  let isDisposed = false;
   let version = 0;
+
+  // Store resolve/reject to allow reusing the same promise across recomputations
+  let resolvePromise: ((value: T) => void) | null = null;
+  let rejectPromise: ((error: unknown) => void) | null = null;
 
   // Track current subscriptions (atom -> unsubscribe function)
   const subscriptions = new Map<Atom<unknown>, VoidFunction>();
+  // Pool removal subscriptions
+  let poolCleanups: VoidFunction[] = [];
+
+  // CreateInfo for this derived - stored for onErrorHook
+  // Will be set after derivedAtom is created
+  let createInfo: DerivedInfo;
+
+  /**
+   * Handles errors by calling both the user's onError callback and the global onErrorHook.
+   */
+  const handleError = (error: unknown) => {
+    // Invoke user's error callback if provided
+    options.onError?.(error);
+
+    // Invoke global error hook
+    // Use _errorSource if provided (for effect), otherwise use this derived's createInfo
+    const source = options._errorSource ?? createInfo;
+    onErrorHook.current?.({ source, error });
+  };
 
   /**
    * Schedules notification to all subscribers.
@@ -188,9 +232,12 @@ export function derived<T>(
   };
 
   /**
-   * Updates subscriptions based on new dependencies.
+   * Updates subscriptions based on new dependencies from SelectResult.
    */
-  const updateSubscriptions = (newDeps: Set<Atom<unknown>>) => {
+  const updateSubscriptions = (result: SelectResult<T>) => {
+    const newDeps = result._atomDeps;
+    const newPoolDeps = result._poolDeps;
+
     // Unsubscribe from atoms that are no longer accessed
     for (const [atom, unsubscribe] of subscriptions) {
       if (!newDeps.has(atom)) {
@@ -208,79 +255,109 @@ export function derived<T>(
         subscriptions.set(atom, unsubscribe);
       }
     }
+
+    // Clean up old pool removal subscriptions
+    for (const cleanup of poolCleanups) {
+      cleanup();
+    }
+    poolCleanups = [];
+
+    // Subscribe to pool entry removals
+    for (const [pool, paramsSet] of newPoolDeps) {
+      for (const params of paramsSet) {
+        const cleanup = pool._onRemove(params, () => {
+          compute();
+        });
+        poolCleanups.push(cleanup);
+      }
+    }
   };
 
   /**
    * Computes the derived value.
-   * Creates a new Promise that resolves when the computation completes.
+   * Reuses the existing Promise if loading (to prevent orphaned promises
+   * that React Suspense might be waiting on).
    */
   const compute = (silent = false) => {
-    // If already loading, don't create new Promise - reuse existing one
-    // The current computation will complete and retry, picking up new dependency values
-    // This prevents orphaned promises that React is waiting on
-    if (isLoading && currentPromise) {
-      return currentPromise;
-    }
-
     const computeVersion = ++version;
     isLoading = true;
     lastError = undefined; // Clear error when starting new computation
 
-    // Create a new promise for this computation
-    currentPromise = new Promise<T>((resolve, reject) => {
-      // Run select to compute value and track dependencies
-      const attemptCompute = () => {
-        const result = select(fn);
+    // Create a new promise if:
+    // 1. We don't have one yet, OR
+    // 2. The previous computation completed (resolved/rejected) and we need a new one
+    // This ensures we reuse promises while loading (for Suspense) but create fresh
+    // promises for new computations after completion
+    if (!resolvePromise) {
+      currentPromise = new Promise<T>((resolve, reject) => {
+        resolvePromise = resolve;
+        rejectPromise = reject;
+      });
+      // Prevent unhandled rejection warnings - errors are accessible via:
+      // 1. onError callback (if provided)
+      // 2. state() returning { status: "error", error }
+      // 3. .get().catch() by consumers
+      currentPromise.catch(() => {});
+    }
 
-        // Update subscriptions based on accessed deps
-        updateSubscriptions(result.dependencies);
+    // Async computation loop - simpler than recursive attemptCompute
+    (async () => {
+      while (true) {
+        // Check if superseded by newer computation
+        if (version !== computeVersion) return;
+
+        const { result } = select((context) => fn(context.use(withReady())));
+        updateSubscriptions(result);
 
         if (result.promise) {
-          // Notify subscribers that we're now in loading state
-          // This allows downstream derived atoms and useValue to suspend
           if (!silent) notify();
-          // Promise thrown - wait for it and retry
-          result.promise.then(
-            () => {
-              // Check if we're still the current computation
-              if (version !== computeVersion) return;
-              attemptCompute();
-            },
-            (error) => {
-              // Check if we're still the current computation
-              if (version !== computeVersion) return;
-              isLoading = false;
-              lastError = error;
-              reject(error);
-              if (!silent) notify();
-            }
-          );
-        } else if (result.error !== undefined) {
-          // Error thrown
+          try {
+            await result.promise;
+            if (version !== computeVersion) return;
+            continue;
+          } catch (error) {
+            if (version !== computeVersion) return;
+            isLoading = false;
+            lastError = error;
+            rejectPromise?.(error);
+            resolvePromise = null;
+            rejectPromise = null;
+            handleError(error);
+            notify();
+            return;
+          }
+        }
+
+        if (result.error !== undefined) {
           isLoading = false;
           lastError = result.error;
-          reject(result.error);
+          rejectPromise?.(result.error);
+          resolvePromise = null;
+          rejectPromise = null;
+          handleError(result.error);
           if (!silent) notify();
-        } else {
-          // Success - update lastResolved and resolve
-          const newValue = result.value as T;
-          isLoading = false;
-          lastError = undefined;
-
-          // Only update and notify if value changed
-          if (!lastResolved || !eq(newValue, lastResolved.value)) {
-            lastResolved = { value: newValue };
-            if (!silent) notify();
-          }
-
-          resolve(newValue);
+          return;
         }
-      };
 
-      attemptCompute();
-    });
+        // Success
+        const newValue = result.value as T;
+        const wasFirstResolve = !lastResolved;
+        isLoading = false;
+        lastError = undefined;
 
-    return currentPromise;
+        if (!lastResolved || !eq(newValue, lastResolved.value)) {
+          lastResolved = { value: newValue };
+          if (wasFirstResolve || !silent) notify();
+        }
+
+        resolvePromise?.(newValue);
+        resolvePromise = null;
+        rejectPromise = null;
+        return;
+      }
+    })();
+
+    return currentPromise!;
   };
 
   /**
@@ -354,6 +431,7 @@ export function derived<T>(
      * Re-run the computation.
      */
     refresh(): void {
+      if (isDisposed) return;
       if (!isInitialized) {
         init();
       } else {
@@ -363,20 +441,50 @@ export function derived<T>(
 
     /**
      * Subscribe to value changes.
+     * Returns no-op unsubscribe if atom is disposed.
      */
     on(listener: VoidFunction): VoidFunction {
+      if (isDisposed) return () => {};
       init();
       return changeEmitter.on(listener);
     },
+
+    /**
+     * Dispose the derived atom, cleaning up all subscriptions.
+     * After disposal, refresh is a no-op and new subscriptions return no-op unsubscribe.
+     * @internal - Reserved for future use.
+     */
+    _dispose(): void {
+      if (isDisposed) return;
+      isDisposed = true;
+
+      // Unsubscribe from all atom dependencies
+      for (const unsubscribe of subscriptions.values()) {
+        unsubscribe();
+      }
+      subscriptions.clear();
+
+      // Clean up pool removal subscriptions
+      for (const cleanup of poolCleanups) {
+        cleanup();
+      }
+      poolCleanups = [];
+
+      // Clear all change listeners
+      changeEmitter.clear();
+    },
   };
 
-  // Notify devtools/plugins of derived atom creation
-  onCreateHook.current?.({
+  // Store createInfo for use in onErrorHook
+  createInfo = {
     type: "derived",
     key: options.meta?.key,
     meta: options.meta,
-    atom: derivedAtom,
-  });
+    instance: derivedAtom,
+  };
+
+  // Notify devtools/plugins of derived atom creation
+  onCreateHook.current?.(createInfo);
 
   return derivedAtom;
 }

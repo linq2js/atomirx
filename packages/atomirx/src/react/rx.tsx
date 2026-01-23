@@ -1,14 +1,58 @@
-import { memo } from "react";
+import {
+  Component,
+  memo,
+  ReactElement,
+  ReactNode,
+  Suspense,
+  ErrorInfo,
+  useCallback,
+  useRef,
+} from "react";
 import { Atom, Equality } from "../core/types";
-import { useValue } from "./useValue";
+import { useSelector } from "./useSelector";
 import { shallowEqual } from "../core/equality";
 import { isAtom } from "../core/isAtom";
-import { ReactiveSelector } from "../core/select";
+import { ReactiveSelector, SelectContext } from "../core/select";
+
+/**
+ * Options for rx() with inline loading/error handling and memoization control.
+ */
+export interface RxOptions<T> {
+  /** Equality function for value comparison */
+  equals?: Equality<T>;
+  /** Render function for loading state */
+  loading?: () => ReactNode;
+  /** Render function for error state */
+  error?: (props: { error: unknown }) => ReactNode;
+
+  /**
+   * Dependencies array for selector memoization.
+   *
+   * Controls when the selector callback is recreated:
+   * - **Atom shorthand** (`rx(atom$)`): Always memoized by atom reference (deps ignored)
+   * - **Function selector without deps**: No memoization (recreated every render)
+   * - **Function selector with `deps: []`**: Stable forever (never recreated)
+   * - **Function selector with `deps: [a, b]`**: Recreated when deps change
+   *
+   * @example
+   * ```tsx
+   * // No memoization (default for functions) - selector recreated every render
+   * rx(({ read }) => read(count$) * 2)
+   *
+   * // Stable selector - never recreated
+   * rx(({ read }) => read(count$) * 2, { deps: [] })
+   *
+   * // Recreate when multiplier changes
+   * rx(({ read }) => read(count$) * multiplier, { deps: [multiplier] })
+   * ```
+   */
+  deps?: unknown[];
+}
 
 /**
  * Reactive inline component that renders atom values directly in JSX.
  *
- * `rx` is a convenience wrapper around `useValue` that returns a memoized
+ * `rx` is a convenience wrapper around `useSelector` that returns a memoized
  * React component instead of a value. This enables fine-grained reactivity
  * without creating separate components for each reactive value.
  *
@@ -65,7 +109,7 @@ import { ReactiveSelector } from "../core/select";
  * Without `rx`, you need a separate component to subscribe to an atom:
  * ```tsx
  * function PostsList() {
- *   const posts = useValue(postsAtom);
+ *   const posts = useSelector(postsAtom);
  *   return posts.map((post) => <Post post={post} />);
  * }
  *
@@ -102,7 +146,7 @@ import { ReactiveSelector } from "../core/select";
  *
  * ## Async Atoms (Suspense-Style API)
  *
- * `rx` inherits the Suspense-style API from `useValue`:
+ * `rx` inherits the Suspense-style API from `useSelector`:
  * - **Loading state**: The getter throws a Promise (triggers Suspense)
  * - **Error state**: The getter throws the error (triggers ErrorBoundary)
  * - **Resolved state**: The getter returns the value
@@ -138,6 +182,30 @@ import { ReactiveSelector } from "../core/select";
  *                 Defaults to "shallow".
  * @returns A React element that renders the selected value
  * @throws Error if selector returns a Promise or PromiseLike
+ *
+ * ## IMPORTANT: Atom Value Must Be ReactNode
+ *
+ * When using the shorthand `rx(atom)`, the atom's value must be a valid `ReactNode`
+ * (string, number, boolean, null, undefined, or React element). Objects and arrays
+ * are NOT valid ReactNode values and will cause React to throw an error.
+ *
+ * ```tsx
+ * // ✅ CORRECT - Atom contains ReactNode (number)
+ * const count$ = atom(5);
+ * rx(count$);
+ *
+ * // ✅ CORRECT - Atom contains ReactNode (string)
+ * const name$ = atom("John");
+ * rx(name$);
+ *
+ * // ❌ WRONG - Atom contains object (not ReactNode)
+ * const user$ = atom({ name: "John", age: 30 });
+ * rx(user$); // React error: "Objects are not valid as a React child"
+ *
+ * // ✅ CORRECT - Use selector to extract ReactNode from object
+ * rx(({ read }) => read(user$).name);
+ * rx(({ read }) => <UserCard user={read(user$)} />);
+ * ```
  *
  * @example Shorthand - render atom value directly
  * ```tsx
@@ -250,7 +318,7 @@ import { ReactiveSelector } from "../core/select";
  *     <Suspense fallback={<Loading />}>
  *       {rx(({ all }) => {
  *         // Use all() to wait for multiple atoms
- *         const [user, posts] = all([userAtom, postsAtom]);
+ *         const [user, posts] = all([user$, posts$]);
  *         return <DashboardContent user={user} posts={posts} />;
  *       })}
  *     </Suspense>
@@ -281,23 +349,133 @@ import { ReactiveSelector } from "../core/select";
  * ```
  */
 // Overload: Pass atom directly to get its value (shorthand)
-export function rx<T>(atom: Atom<T>, equals?: Equality<Awaited<T>>): Awaited<T>;
+export function rx<T extends ReactNode | PromiseLike<ReactNode>>(
+  atom: Atom<T>,
+  options?: Equality<T> | RxOptions<T>
+): ReactElement;
 
 // Overload: Context-based selector function
-export function rx<T>(selector: ReactiveSelector<T>, equals?: Equality<T>): T;
+export function rx<T extends ReactNode | PromiseLike<ReactNode>>(
+  selector: ReactiveSelector<T>,
+  options?: Equality<T> | RxOptions<T>
+): ReactElement;
 
 export function rx<T>(
   selectorOrAtom: ReactiveSelector<T> | Atom<T>,
-  equals?: Equality<unknown>
-): T {
+  options?: Equality<unknown> | RxOptions<unknown>
+): ReactElement {
+  // Normalize options
+  const normalizedOptions: RxOptions<unknown> | undefined =
+    options === undefined
+      ? undefined
+      : typeof options === "object" &&
+          options !== null &&
+          !Array.isArray(options) &&
+          ("equals" in options || "loading" in options || "error" in options)
+        ? (options as RxOptions<unknown>)
+        : { equals: options as Equality<unknown> };
+
   return (
     <Rx
       selectorOrAtom={
         selectorOrAtom as ReactiveSelector<unknown> | Atom<unknown>
       }
-      equals={equals}
+      options={normalizedOptions}
     />
-  ) as unknown as T;
+  );
+}
+
+/**
+ * Internal ErrorBoundary for rx with error handler.
+ */
+interface RxErrorBoundaryProps {
+  children: ReactNode;
+  onError?: (props: { error: unknown }) => ReactNode;
+}
+
+interface RxErrorBoundaryState {
+  error: unknown | null;
+}
+
+class RxErrorBoundary extends Component<
+  RxErrorBoundaryProps,
+  RxErrorBoundaryState
+> {
+  state: RxErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: unknown): RxErrorBoundaryState {
+    return { error };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  componentDidCatch(_error: Error, _errorInfo: ErrorInfo) {
+    // Error already captured in state
+  }
+
+  render() {
+    if (this.state.error !== null && this.props.onError) {
+      return <>{this.props.onError({ error: this.state.error })}</>;
+    }
+
+    if (this.state.error !== null) {
+      // No handler - re-throw to parent ErrorBoundary
+      throw this.state.error;
+    }
+
+    return this.props.children;
+  }
+}
+
+/**
+ * Internal component that renders the selector value.
+ */
+function RxInner(props: {
+  selector: ReactiveSelector<unknown>;
+  equals?: Equality<unknown>;
+}) {
+  const selected = useSelector(props.selector, props.equals);
+  return <>{selected ?? null}</>;
+}
+
+/**
+ * Wrapper component to defer loading() call until actually needed.
+ */
+function RxLoadingFallback(props: { render: () => ReactNode }) {
+  return <>{props.render()}</>;
+}
+
+/**
+ * Optional Suspense wrapper - only wraps if fallback is provided.
+ */
+function RxSuspenseWrapper(props: {
+  fallback?: () => ReactNode;
+  children: ReactNode;
+}) {
+  if (props.fallback) {
+    return (
+      <Suspense fallback={<RxLoadingFallback render={props.fallback} />}>
+        {props.children}
+      </Suspense>
+    );
+  }
+  return <>{props.children}</>;
+}
+
+/**
+ * Optional ErrorBoundary wrapper - only wraps if onError is provided.
+ */
+function RxErrorWrapper(props: {
+  onError?: (props: { error: unknown }) => ReactNode;
+  children: ReactNode;
+}) {
+  if (props.onError) {
+    return (
+      <RxErrorBoundary onError={props.onError}>
+        {props.children}
+      </RxErrorBoundary>
+    );
+  }
+  return <>{props.children}</>;
 }
 
 /**
@@ -306,24 +484,48 @@ export function rx<T>(
  * Memoized with React.memo to ensure:
  * 1. Parent components don't cause unnecessary re-renders
  * 2. Only atom changes trigger re-renders
- * 3. Props comparison is shallow (selectorOrAtom, equals references)
+ * 3. Props comparison is shallow (selectorOrAtom, options references)
  *
  * Renders `selected ?? null` to handle null/undefined values gracefully in JSX.
  */
 const Rx = memo(
   function Rx(props: {
     selectorOrAtom: ReactiveSelector<unknown> | Atom<unknown>;
-    equals?: Equality<unknown>;
+    options?: RxOptions<unknown>;
   }) {
-    // Convert atom shorthand to context selector
-    const selector: ReactiveSelector<unknown> = isAtom(props.selectorOrAtom)
-      ? ({ read }) => read(props.selectorOrAtom as Atom<unknown>)
-      : (props.selectorOrAtom as ReactiveSelector<unknown>);
+    // Store latest selector/atom in ref to avoid stale closures
+    const selectorRef = useRef(props.selectorOrAtom);
+    selectorRef.current = props.selectorOrAtom;
 
-    const selected = useValue(selector, props.equals);
-    return <>{selected ?? null}</>;
+    // Compute memoization dependencies:
+    // - Atom: always include atom reference for stability
+    // - Function + no deps: new object each render (no memoization)
+    // - Function + deps: use provided deps for controlled memoization
+    const isAtomInput = isAtom(props.selectorOrAtom);
+    const userDeps = props.options?.deps;
+    const deps = isAtomInput
+      ? [props.selectorOrAtom, ...(userDeps ?? [])] // Atom: stable + optional user deps
+      : (userDeps ?? [{}]); // Function: user deps or no memoization
+
+    // Memoized selector that reads from ref to always get latest value
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const selector = useCallback(
+      (context: SelectContext) =>
+        isAtom(selectorRef.current)
+          ? context.read(selectorRef.current as Atom<unknown>)
+          : (selectorRef.current as ReactiveSelector<unknown>)(context),
+      deps
+    );
+
+    return (
+      <RxErrorWrapper onError={props.options?.error}>
+        <RxSuspenseWrapper fallback={props.options?.loading}>
+          <RxInner selector={selector} equals={props.options?.equals} />
+        </RxSuspenseWrapper>
+      </RxErrorWrapper>
+    );
   },
   (prev, next) =>
     shallowEqual(prev.selectorOrAtom, next.selectorOrAtom) &&
-    prev.equals === next.equals
+    shallowEqual(prev.options, next.options)
 );

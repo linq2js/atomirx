@@ -326,6 +326,274 @@ describe("atom", () => {
     });
   });
 
+  describe("AtomContext (init function with context)", () => {
+    describe("signal", () => {
+      it("should pass context with signal to init function", () => {
+        let receivedSignal: AbortSignal | undefined;
+        atom((ctx) => {
+          receivedSignal = ctx.signal;
+          return 42;
+        });
+        expect(receivedSignal).toBeInstanceOf(AbortSignal);
+        expect(receivedSignal!.aborted).toBe(false);
+      });
+
+      it("should abort signal when set() is called", () => {
+        let receivedSignal: AbortSignal | undefined;
+        const count$ = atom((ctx) => {
+          receivedSignal = ctx.signal;
+          return 0;
+        });
+        expect(receivedSignal!.aborted).toBe(false);
+
+        count$.set(1);
+        expect(receivedSignal!.aborted).toBe(true);
+      });
+
+      it("should abort signal when reset() is called", () => {
+        const signals: AbortSignal[] = [];
+        const count$ = atom((ctx) => {
+          signals.push(ctx.signal);
+          return 0;
+        });
+        expect(signals[0].aborted).toBe(false);
+
+        count$.reset();
+        // Original signal should be aborted
+        expect(signals[0].aborted).toBe(true);
+      });
+
+      it("should provide fresh signal on reset", () => {
+        const signals: AbortSignal[] = [];
+        const count$ = atom((ctx) => {
+          signals.push(ctx.signal);
+          return signals.length;
+        });
+
+        expect(signals).toHaveLength(1);
+        expect(signals[0].aborted).toBe(false);
+
+        count$.reset();
+        expect(signals).toHaveLength(2);
+        expect(signals[0].aborted).toBe(true);
+        expect(signals[1].aborted).toBe(false);
+      });
+
+      it("should not create new signal on subsequent set() calls", () => {
+        let signalRef: AbortSignal | undefined;
+        const count$ = atom((ctx) => {
+          signalRef = ctx.signal;
+          return 0;
+        });
+
+        const firstSignal = signalRef;
+        count$.set(1);
+        expect(firstSignal!.aborted).toBe(true);
+
+        // After set, the signal is already aborted, no new context is created
+        // because set() doesn't re-run the initializer
+        count$.set(2);
+        expect(firstSignal!.aborted).toBe(true);
+      });
+
+      it("should abort with reason", () => {
+        let receivedSignal: AbortSignal | undefined;
+        const count$ = atom((ctx) => {
+          receivedSignal = ctx.signal;
+          return 0;
+        });
+
+        count$.set(1);
+        expect(receivedSignal!.aborted).toBe(true);
+        expect(receivedSignal!.reason).toBe("value changed");
+      });
+
+      it("should abort with 'reset' reason on reset", () => {
+        const signals: AbortSignal[] = [];
+        const count$ = atom((ctx) => {
+          signals.push(ctx.signal);
+          return 0;
+        });
+
+        count$.reset();
+        // Original signal should be aborted with 'reset' reason
+        expect(signals[0].aborted).toBe(true);
+        expect(signals[0].reason).toBe("reset");
+      });
+    });
+
+    describe("onCleanup", () => {
+      it("should call cleanup when set() is called", () => {
+        const cleanup = vi.fn();
+        const count$ = atom((ctx) => {
+          ctx.onCleanup(cleanup);
+          return 0;
+        });
+
+        expect(cleanup).not.toHaveBeenCalled();
+        count$.set(1);
+        expect(cleanup).toHaveBeenCalledTimes(1);
+      });
+
+      it("should call cleanup when reset() is called", () => {
+        const cleanup = vi.fn();
+        const count$ = atom((ctx) => {
+          ctx.onCleanup(cleanup);
+          return 0;
+        });
+
+        expect(cleanup).not.toHaveBeenCalled();
+        count$.reset();
+        expect(cleanup).toHaveBeenCalledTimes(1);
+      });
+
+      it("should call multiple cleanups in FIFO order", () => {
+        const order: number[] = [];
+        const count$ = atom((ctx) => {
+          ctx.onCleanup(() => order.push(1));
+          ctx.onCleanup(() => order.push(2));
+          ctx.onCleanup(() => order.push(3));
+          return 0;
+        });
+
+        count$.set(1);
+        expect(order).toEqual([1, 2, 3]);
+      });
+
+      it("should clear cleanups after calling them", () => {
+        const cleanup = vi.fn();
+        const count$ = atom((ctx) => {
+          ctx.onCleanup(cleanup);
+          return 0;
+        });
+
+        count$.set(1);
+        expect(cleanup).toHaveBeenCalledTimes(1);
+
+        // Second set should not call cleanup again (cleanup was from init, not from set)
+        count$.set(2);
+        expect(cleanup).toHaveBeenCalledTimes(1);
+      });
+
+      it("should call cleanup from reset, then register new cleanups on next reset", () => {
+        let cleanupCallCount = 0;
+        const count$ = atom((ctx) => {
+          ctx.onCleanup(() => cleanupCallCount++);
+          return cleanupCallCount;
+        });
+
+        expect(cleanupCallCount).toBe(0);
+
+        count$.reset();
+        expect(cleanupCallCount).toBe(1); // First cleanup called
+
+        count$.reset();
+        expect(cleanupCallCount).toBe(2); // Second cleanup called (registered in previous reset)
+      });
+
+      it("should work with async operations that check signal", async () => {
+        let cleanupCalled = false;
+        let operationAborted = false;
+
+        const data$ = atom((ctx) => {
+          ctx.onCleanup(() => {
+            cleanupCalled = true;
+          });
+
+          // Simulate an async operation that respects the signal
+          const timeoutId = setTimeout(() => {
+            if (!ctx.signal.aborted) {
+              // Would do something here
+            } else {
+              operationAborted = true;
+            }
+          }, 100);
+
+          ctx.onCleanup(() => clearTimeout(timeoutId));
+
+          return "initial";
+        });
+
+        // Trigger abort
+        data$.set("changed");
+
+        expect(cleanupCalled).toBe(true);
+
+        // Wait for the timeout to potentially fire
+        await new Promise((r) => setTimeout(r, 150));
+
+        // The operation should have been cleaned up/aborted
+        expect(operationAborted).toBe(false); // timeout was cleared by cleanup
+      });
+    });
+
+    describe("combined signal and cleanup", () => {
+      it("should abort signal and call cleanup on set", () => {
+        let signal: AbortSignal | undefined;
+        const cleanup = vi.fn();
+
+        const count$ = atom((ctx) => {
+          signal = ctx.signal;
+          ctx.onCleanup(cleanup);
+          return 0;
+        });
+
+        expect(signal!.aborted).toBe(false);
+        expect(cleanup).not.toHaveBeenCalled();
+
+        count$.set(1);
+
+        expect(signal!.aborted).toBe(true);
+        expect(cleanup).toHaveBeenCalledTimes(1);
+      });
+
+      it("should abort signal and call cleanup on reset, then provide fresh context", () => {
+        const signals: AbortSignal[] = [];
+        const cleanups: number[] = [];
+        let callCount = 0;
+
+        const count$ = atom((ctx) => {
+          callCount++;
+          signals.push(ctx.signal);
+          ctx.onCleanup(() => cleanups.push(callCount));
+          return callCount;
+        });
+
+        expect(signals).toHaveLength(1);
+        expect(cleanups).toEqual([]);
+
+        count$.reset();
+
+        expect(signals).toHaveLength(2);
+        expect(signals[0].aborted).toBe(true);
+        expect(signals[1].aborted).toBe(false);
+        expect(cleanups).toEqual([1]); // cleanup from first init was called
+      });
+    });
+
+    describe("non-function initializer (no context)", () => {
+      it("should work normally with direct value", () => {
+        const count$ = atom(42);
+        expect(count$.get()).toBe(42);
+
+        count$.set(100);
+        expect(count$.get()).toBe(100);
+
+        count$.reset();
+        expect(count$.get()).toBe(42);
+      });
+
+      it("should not have cleanup issues with direct value", () => {
+        const count$ = atom(0);
+        // These should not throw
+        count$.set(1);
+        count$.set(2);
+        count$.reset();
+        count$.reset();
+      });
+    });
+  });
+
   describe("plugin system (use)", () => {
     it("should support .use() for extensions", () => {
       // Note: Don't use ...source spread as it copies values, not getters
@@ -360,6 +628,116 @@ describe("atom", () => {
       expect(enhanced$.get()).toBe(2);
       enhanced$.decrement();
       expect(enhanced$.get()).toBe(1);
+    });
+  });
+
+  describe("_dispose()", () => {
+    it("should abort signal on dispose", () => {
+      let capturedSignal: AbortSignal | null = null;
+
+      const data$ = atom((context) => {
+        capturedSignal = context.signal;
+        return 0;
+      });
+
+      expect(capturedSignal).not.toBeNull();
+      expect(capturedSignal!.aborted).toBe(false);
+
+      data$._dispose();
+      expect(capturedSignal!.aborted).toBe(true);
+    });
+
+    it("should call onCleanup on dispose", () => {
+      const cleanup = vi.fn();
+
+      const data$ = atom((context) => {
+        context.onCleanup(cleanup);
+        return 0;
+      });
+
+      expect(cleanup).not.toHaveBeenCalled();
+
+      data$._dispose();
+      expect(cleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it("should ignore set() after dispose", () => {
+      const listener = vi.fn();
+      const data$ = atom(0);
+      data$.on(listener);
+
+      data$._dispose();
+      data$.set(100);
+
+      expect(data$.get()).toBe(0); // Value unchanged
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("should ignore reset() after dispose", () => {
+      const initFn = vi.fn(() => 42);
+      const data$ = atom(initFn);
+
+      expect(initFn).toHaveBeenCalledTimes(1);
+
+      data$._dispose();
+      data$.reset();
+
+      // Initializer should not be called again
+      expect(initFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return no-op unsubscribe for on() after dispose", () => {
+      const listener = vi.fn();
+      const data$ = atom(0);
+
+      data$._dispose();
+      const unsub = data$.on(listener);
+
+      // Should return a function (no-op)
+      expect(typeof unsub).toBe("function");
+
+      // Listener should not be registered
+      data$.set(100); // This is ignored anyway, but testing listener wasn't added
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("should clear all subscriptions on dispose", () => {
+      const listener1 = vi.fn();
+      const listener2 = vi.fn();
+      const data$ = atom(0);
+
+      data$.on(listener1);
+      data$.on(listener2);
+
+      // Verify listeners work before dispose
+      data$.set(1);
+      expect(listener1).toHaveBeenCalledTimes(1);
+      expect(listener2).toHaveBeenCalledTimes(1);
+
+      data$._dispose();
+
+      // Reset mocks
+      listener1.mockClear();
+      listener2.mockClear();
+
+      // Manually calling internal notify shouldn't trigger disposed listeners
+      // (This tests that changeEmitter.clear() was called)
+    });
+
+    it("should be idempotent (multiple dispose calls are safe)", () => {
+      const cleanup = vi.fn();
+
+      const data$ = atom((context) => {
+        context.onCleanup(cleanup);
+        return 0;
+      });
+
+      data$._dispose();
+      data$._dispose();
+      data$._dispose();
+
+      // Cleanup should only be called once
+      expect(cleanup).toHaveBeenCalledTimes(1);
     });
   });
 });

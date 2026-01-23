@@ -28,9 +28,7 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
     it("should execute on mount when lazy is false", () => {
       const fn = vi.fn(() => "result");
 
-      const { result } = renderHook(() =>
-        useAction(fn, { lazy: false })
-      );
+      const { result } = renderHook(() => useAction(fn, { lazy: false }));
 
       // Sync function completes immediately, so status is success
       expect(result.current.status).toBe("success");
@@ -47,9 +45,7 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
           })
       );
 
-      const { result } = renderHook(() =>
-        useAction(fn, { lazy: false })
-      );
+      const { result } = renderHook(() => useAction(fn, { lazy: false }));
 
       expect(result.current.status).toBe("loading");
       // In strict mode, effects run twice
@@ -248,7 +244,9 @@ describe.each(wrappers)("useAction - $mode", ({ mode, renderHook }) => {
         result.current();
       });
 
-      expect(fn).toHaveBeenCalledWith({ signal: expect.any(AbortSignal) });
+      expect(fn).toHaveBeenCalledWith(
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
     });
 
     it("should create new AbortSignal per call", () => {

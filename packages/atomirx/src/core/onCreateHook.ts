@@ -1,3 +1,4 @@
+import { Effect } from "./effect";
 import { hook } from "./hook";
 import {
   MutableAtomMeta,
@@ -5,12 +6,15 @@ import {
   MutableAtom,
   DerivedAtom,
   ModuleMeta,
+  EffectMeta,
+  PoolMeta,
+  Pool,
 } from "./types";
 
 /**
  * Information provided when a mutable atom is created.
  */
-export interface MutableAtomCreateInfo {
+export interface MutableInfo {
   /** Discriminator for mutable atoms */
   type: "mutable";
   /** Optional key from atom options (for debugging/devtools) */
@@ -18,13 +22,13 @@ export interface MutableAtomCreateInfo {
   /** Optional metadata from atom options */
   meta: MutableAtomMeta | undefined;
   /** The created mutable atom instance */
-  atom: MutableAtom<unknown>;
+  instance: MutableAtom<unknown>;
 }
 
 /**
  * Information provided when a derived atom is created.
  */
-export interface DerivedAtomCreateInfo {
+export interface DerivedInfo {
   /** Discriminator for derived atoms */
   type: "derived";
   /** Optional key from derived options (for debugging/devtools) */
@@ -32,18 +36,32 @@ export interface DerivedAtomCreateInfo {
   /** Optional metadata from derived options */
   meta: DerivedAtomMeta | undefined;
   /** The created derived atom instance */
-  atom: DerivedAtom<unknown, boolean>;
+  instance: DerivedAtom<unknown, boolean>;
 }
 
 /**
- * Union type for atom creation info (mutable or derived).
+ * Information provided when an effect is created.
  */
-export type AtomCreateInfo = MutableAtomCreateInfo | DerivedAtomCreateInfo;
+export interface EffectInfo {
+  /** Discriminator for effects */
+  type: "effect";
+  /** Optional key from effect options (for debugging/devtools) */
+  key: string | undefined;
+  /** Optional metadata from effect options */
+  meta: EffectMeta | undefined;
+  /** The created effect instance */
+  instance: Effect;
+}
+
+/**
+ * Union type for atom/derived/effect creation info.
+ */
+export type CreateInfo = MutableInfo | DerivedInfo | EffectInfo | PoolInfo;
 
 /**
  * Information provided when a module (via define()) is created.
  */
-export interface ModuleCreateInfo {
+export interface ModuleInfo {
   /** Discriminator for modules */
   type: "module";
   /** Optional key from define options (for debugging/devtools) */
@@ -51,9 +69,23 @@ export interface ModuleCreateInfo {
   /** Optional metadata from define options */
   meta: ModuleMeta | undefined;
   /** The created module instance */
-  module: unknown;
+  instance: unknown;
 }
 
+/**
+ * Information provided when a pool is created.
+ */
+export interface PoolInfo {
+  /** Discriminator for pools */
+  type: "pool";
+  /** Optional key from pool options (for debugging/devtools) */
+  key: string | undefined;
+
+  /** Optional metadata from pool options */
+  meta: PoolMeta | undefined;
+  /** The created pool instance */
+  instance: Pool<any, any>;
+}
 /**
  * Global hook that fires whenever an atom or module is created.
  *
@@ -62,31 +94,30 @@ export interface ModuleCreateInfo {
  * - **Debugging** - log atom creation for troubleshooting
  * - **Testing** - verify expected atoms are created
  *
+ * **IMPORTANT**: Always use `.override()` to preserve the hook chain.
+ * Direct assignment to `.current` will break existing handlers.
+ *
  * @example Basic logging
  * ```ts
- * onCreateHook.current = (info) => {
+ * onCreateHook.override((prev) => (info) => {
+ *   prev?.(info); // call existing handlers first
  *   console.log(`Created ${info.type}: ${info.key ?? "anonymous"}`);
- * };
+ * });
  * ```
  *
  * @example DevTools integration
  * ```ts
- * const atoms = new Map();
- * const modules = new Map();
+ * const registry = new Map();
  *
- * onCreateHook.current = (info) => {
- *   if (info.type === "module") {
- *     modules.set(info.key, info.module);
- *   } else {
- *     atoms.set(info.key, info.atom);
- *   }
- * };
+ * onCreateHook.override((prev) => (info) => {
+ *   prev?.(info); // preserve chain
+ *   registry.set(info.key, info.instance);
+ * });
  * ```
  *
- * @example Cleanup (disable hook)
+ * @example Reset to default (disable all handlers)
  * ```ts
- * onCreateHook.current = undefined;
+ * onCreateHook.reset();
  * ```
  */
-export const onCreateHook =
-  hook<(info: AtomCreateInfo | ModuleCreateInfo) => void>();
+export const onCreateHook = hook<(info: CreateInfo | ModuleInfo) => void>();

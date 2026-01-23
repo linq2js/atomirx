@@ -1,14 +1,18 @@
 import { batch } from "./batch";
 import { derived } from "./derived";
 import { emitter } from "./emitter";
+import { EffectInfo, onCreateHook } from "./onCreateHook";
 import { ReactiveSelector, SelectContext } from "./select";
-import { EffectOptions } from "./types";
+import { EffectMeta, EffectOptions } from "./types";
+import { withAbort, WithAbortContext } from "./withAbort";
+import { WithReadyContext } from "./withReady";
 
 /**
  * Context object passed to effect functions.
  * Extends `SelectContext` with cleanup utilities.
  */
-export interface EffectContext extends SelectContext {
+export interface EffectContext
+  extends SelectContext, WithReadyContext, WithAbortContext {
   /**
    * Register a cleanup function that runs before the next execution or on dispose.
    * Multiple cleanup functions can be registered; they run in FIFO order.
@@ -24,6 +28,11 @@ export interface EffectContext extends SelectContext {
    * ```
    */
   onCleanup: (cleanup: VoidFunction) => void;
+}
+
+export interface Effect {
+  dispose: VoidFunction;
+  meta?: EffectMeta;
 }
 
 /**
@@ -119,41 +128,64 @@ export interface EffectContext extends SelectContext {
  */
 export function effect(
   fn: ReactiveSelector<void, EffectContext>,
-  _options?: EffectOptions
-): VoidFunction {
+  options?: EffectOptions
+): Effect {
   let disposed = false;
   const cleanupEmitter = emitter();
 
+  // Create the Effect object early so we can build EffectInfo
+  const e: Effect = {
+    meta: options?.meta,
+    dispose: () => {
+      // Guard against multiple dispose calls
+      if (disposed) return;
+
+      // Mark as disposed
+      disposed = true;
+      // Run final cleanup
+      cleanupEmitter.emitAndClear();
+    },
+  };
+
+  // Create EffectInfo to pass to derived for error attribution
+  const effectInfo: EffectInfo = {
+    type: "effect",
+    key: options?.meta?.key,
+    meta: options?.meta,
+    instance: e,
+  };
+
   // Create a derived atom that runs the effect on each recomputation.
-  const derivedAtom = derived((context) => {
-    // Run previous cleanup before next execution
-    cleanupEmitter.emitAndClear();
+  // Pass _errorSource so errors are attributed to the effect, not the internal derived
+  const derivedAtom = derived(
+    (context) => {
+      // Run previous cleanup before next execution
+      cleanupEmitter.emitAndClear();
 
-    // Skip effect execution if disposed
-    if (disposed) return;
+      // Skip effect execution if disposed
+      if (disposed) return;
 
-    // Run effect in a batch - multiple atom updates will only notify once
-    // Cast to EffectContext since we're adding onCleanup to the DerivedContext
-    const effectContext = {
-      ...context,
-      onCleanup: cleanupEmitter.on,
-    } as unknown as EffectContext;
-    batch(() => fn(effectContext));
-  });
+      // Run effect in a batch - multiple atom updates will only notify once
+      // Cast to EffectContext since we're adding onCleanup to the DerivedContext
+      const onCleanup = cleanupEmitter.on;
+      const effectContext: EffectContext = context
+        .use({ onCleanup })
+        .use(withAbort(onCleanup));
+
+      batch(() => fn(effectContext));
+    },
+    {
+      onError: options?.onError,
+      _errorSource: effectInfo,
+    }
+  );
 
   // Access .get() to trigger initial computation (derived is lazy)
-  // Ignore promise rejection - errors should be handled via safe()
-  derivedAtom.get().catch(() => {
-    // Silently ignore - use safe() for error handling
-  });
+  // Errors are handled via onError callback or safe() in the effect function
+  derivedAtom.get();
 
-  return () => {
-    // Guard against multiple dispose calls
-    if (disposed) return;
+  // Notify devtools/plugins of effect creation
+  onCreateHook.current?.(effectInfo);
 
-    // Mark as disposed
-    disposed = true;
-    // Run final cleanup
-    cleanupEmitter.emitAndClear();
-  };
+  return e;
 }
