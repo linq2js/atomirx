@@ -1,5 +1,11 @@
 import { useRef } from "react";
-import { resolveEquality, tryStabilize, StableFn } from "../core/equality";
+import {
+  resolveEquality,
+  tryStabilize,
+  StableFn,
+  shallowEqual,
+  deepEqual,
+} from "../core/equality";
 import type { AnyFunc, Equality } from "../core/types";
 
 /**
@@ -42,7 +48,7 @@ type PropertyStorage<T> = {
  */
 function getDefaultEquality<T>(value: T): Equality<T> {
   if (value === null || value === undefined) {
-    return "strict";
+    return Object.is;
   }
 
   if (Array.isArray(value)) {
@@ -52,14 +58,14 @@ function getDefaultEquality<T>(value: T): Equality<T> {
   if (value instanceof Date) {
     // Date is handled specially in tryStabilize, but we return deep
     // to ensure proper comparison if tryStabilize doesn't catch it
-    return "deep";
+    return deepEqual;
   }
 
   if (typeof value === "object") {
-    return "shallow";
+    return shallowEqual;
   }
 
-  return "strict";
+  return Object.is;
 }
 
 /**

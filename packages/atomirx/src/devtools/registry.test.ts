@@ -168,20 +168,22 @@ describe("devtools", () => {
       cleanup();
     });
 
-    it("should notify subscribers on changes", () => {
+    it("should notify subscribers on changes", async () => {
       const cleanup = setupDevtools();
       const registry = getDevtoolsRegistry()!;
 
       const listener = vi.fn();
       const unsubscribe = registry.subscribe(listener);
 
-      // Create an atom - should trigger notification
+      // Create an atom - should trigger notification (async via queueMicrotask)
       const count$ = atom(0);
+      await new Promise((r) => queueMicrotask(r));
       expect(listener).toHaveBeenCalled();
 
       // Change value - should trigger notification
       listener.mockClear();
       count$.set(1);
+      await new Promise((r) => queueMicrotask(r));
       expect(listener).toHaveBeenCalled();
 
       unsubscribe();

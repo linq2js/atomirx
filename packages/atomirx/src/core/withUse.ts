@@ -40,22 +40,22 @@ export function withUse<TSource extends object>(
   source: TSource
 ): TSource & Pipeable {
   return Object.assign(source, {
-    use<TNew = void>(plugin: (source: NoInfer<TSource> | object) => TNew): any {
-      if (typeof source === "object") {
-        if (Array.isArray(plugin)) {
-          return source;
-        }
-        return Object.assign(source, { ...plugin });
+    use<TNew = void>(
+      plugin: ((source: NoInfer<TSource> | object) => TNew) | object
+    ): any {
+      // Handle object plugins: merge directly into source
+      if (typeof plugin !== "function") {
+        return withUse(Object.assign({}, source, plugin));
       }
 
+      // Handle function plugins: call them with source
       const result = plugin(source);
       // Void/falsy: return original source (side-effect only plugins)
       if (!result) return source;
-      // Object or function: check if already has .use(), otherwise wrap
+      // Object or function: always wrap with withUse to ensure fresh .use() binding
+      // This is critical because spread operators copy the .use() function reference
+      // but its closure captures the OLD source, breaking chained .use() calls
       if (typeof result === "object" || typeof result === "function") {
-        if ("use" in result) {
-          return result;
-        }
         return withUse(result);
       }
       // Primitive values: return directly (not chainable)

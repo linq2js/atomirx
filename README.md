@@ -442,21 +442,27 @@ function SaveButton() {
 
 ### useStable
 
-Hook for creating stable references to callbacks and objects.
+Hook for creating stable references to callbacks and objects. Replaces `useCallback` and `useMemo`.
 
 ```tsx
 import { useStable } from 'atomirx/react';
 
-function Component({ onSave }) {
-  // Stable callback reference
-  const handleSave = useStable.fn(() => {
-    onSave(data);
+function Component({ onSave, data }) {
+  const stable = useStable({
+    // Stable callback references
+    handleSave() {
+      onSave(data);
+    },
+    handleCancel() {
+      console.log('cancelled');
+    },
+    // Stable object reference
+    config: { timeout: 5000 },
+    // Stable array reference
+    columns: [{ key: 'name', label: 'Name' }],
   });
 
-  // Stable object reference
-  const config = useStable.obj({ timeout: 5000 });
-
-  return <Child onSave={handleSave} config={config} />;
+  return <Child onSave={stable.handleSave} config={stable.config} />;
 }
 ```
 

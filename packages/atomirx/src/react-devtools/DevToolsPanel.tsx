@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useState, useRef } from "react";
-import { createPortal } from "react-dom";
+import { memo, useCallback, useEffect, useState } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { getDevtoolsRegistry, setupDevtools } from "../devtools/setup";
 import type { DevtoolsTab, AtomFilter, PanelPosition } from "../devtools/types";
 import {
@@ -478,19 +478,79 @@ const DevToolsPanelInternal = memo(function DevToolsPanelInternal({
 });
 
 /**
- * DevTools panel wrapper that renders in a separate DOM container.
- * This isolates devtools from the main app's React tree.
+ * Options for renderDevtools function.
  */
-export const DevToolsPanel = memo(function DevToolsPanel(
-  props: DevToolsPanelProps
-) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [mounted, setMounted] = useState(false);
+export interface RenderDevtoolsOptions extends DevToolsPanelProps {
+  /**
+   * Custom container element ID.
+   * @default "atomirx-devtools-root"
+   */
+  containerId?: string;
+  root?: Root;
+}
 
-  useEffect(() => {
-    // Create a separate container for devtools
+/**
+ * Global reference to the devtools React root for cleanup.
+ */
+let devtoolsRoot: Root | null = null;
+let devtoolsContainer: HTMLElement | null = null;
+
+/**
+ * Renders devtools in a separate React root.
+ *
+ * This isolates devtools from the main app's React tree to avoid:
+ * - Concurrent update issues
+ * - Bugs from app impacting devtools and vice versa
+ * - React tree conflicts
+ *
+ * @param options - Configuration options for devtools
+ * @returns Promise that resolves when devtools is mounted
+ *
+ * @example Basic usage
+ * ```tsx
+ * // In main.tsx
+ * import { renderDevtools } from 'atomirx/react-devtools';
+ *
+ * // Render devtools first (optional: wait for completion)
+ * await renderDevtools();
+ *
+ * // Then render your app
+ * ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
+ * ```
+ *
+ * @example With options
+ * ```tsx
+ * renderDevtools({
+ *   defaultPosition: "right",
+ *   defaultOpen: true,
+ *   autoSetup: true,
+ * });
+ * ```
+ */
+export function renderDevtools(
+  options: RenderDevtoolsOptions = {}
+): Promise<void> {
+  return new Promise((resolve) => {
+    const { containerId = "atomirx-devtools-root", ...panelProps } = options;
+
+    // Clean up existing devtools if any
+    if (devtoolsRoot) {
+      devtoolsRoot.unmount();
+      devtoolsRoot = null;
+    }
+    if (devtoolsContainer) {
+      devtoolsContainer.remove();
+      devtoolsContainer = null;
+    }
+
+    // Setup devtools if autoSetup is not explicitly false
+    if (panelProps.autoSetup !== false) {
+      setupDevtools({ enableInProduction: panelProps.enableInProduction });
+    }
+
+    // Create container element
     const container = document.createElement("div");
-    container.id = "atomirx-devtools-root";
+    container.id = containerId;
     container.style.position = "fixed";
     container.style.top = "0";
     container.style.left = "0";
@@ -500,23 +560,68 @@ export const DevToolsPanel = memo(function DevToolsPanel(
     container.style.zIndex = "999999";
     container.style.pointerEvents = "none";
     document.body.appendChild(container);
-    containerRef.current = container;
+    devtoolsContainer = container;
+
+    // Create separate React root for devtools
+    devtoolsRoot = options.root ?? createRoot(container);
+    devtoolsRoot.render(
+      <div style={{ pointerEvents: "auto" }}>
+        <DevToolsPanelInternal {...panelProps} autoSetup={false} />
+      </div>
+    );
+
+    // Resolve after a microtask to ensure render is scheduled
+    queueMicrotask(resolve);
+  });
+}
+
+/**
+ * Unmounts and cleans up devtools.
+ *
+ * @example
+ * ```tsx
+ * import { unmountDevtools } from 'atomirx/react-devtools';
+ *
+ * // Clean up devtools
+ * unmountDevtools();
+ * ```
+ */
+export function unmountDevtools(): void {
+  if (devtoolsRoot) {
+    devtoolsRoot.unmount();
+    devtoolsRoot = null;
+  }
+  if (devtoolsContainer) {
+    devtoolsContainer.remove();
+    devtoolsContainer = null;
+  }
+}
+
+/**
+ * DevTools panel component (legacy - prefer renderDevtools).
+ *
+ * This component renders devtools within the app's React tree.
+ * For better isolation, use renderDevtools() instead.
+ *
+ * @deprecated Use renderDevtools() for better isolation from app React tree
+ */
+export const DevToolsPanel = memo(function DevToolsPanel(
+  props: DevToolsPanelProps
+) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // Render devtools in separate root
+    renderDevtools({ ...props, autoSetup: props.autoSetup });
     setMounted(true);
 
     return () => {
-      document.body.removeChild(container);
-      containerRef.current = null;
+      unmountDevtools();
     };
+    // Only run on mount/unmount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!mounted || !containerRef.current) {
-    return null;
-  }
-
-  return createPortal(
-    <div style={{ pointerEvents: "auto" }}>
-      <DevToolsPanelInternal {...props} />
-    </div>,
-    containerRef.current
-  );
+  // This component doesn't render anything - devtools renders in separate root
+  return mounted ? null : null;
 });

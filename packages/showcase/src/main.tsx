@@ -1,8 +1,8 @@
 import "./index.css";
 
-// Setup devtools FIRST using top-level await
-const { setupDevtools } = await import("atomirx/devtools");
-setupDevtools();
+// Render devtools in separate React root FIRST
+const { renderDevtools } = await import("atomirx/react-devtools");
+await renderDevtools();
 
 // THEN import React and App (which contains atoms)
 const React = await import("react");

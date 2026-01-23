@@ -28,6 +28,76 @@ function MyComponent() {
 
 **This is why naming doesn't use `Async$` suffix** — the abstraction makes it irrelevant.
 
+## Bootstrap Pattern (DevTools)
+
+**DevTools must initialize BEFORE any atoms are created** to properly track all reactive primitives.
+
+```typescript
+// main.tsx
+async function main() {
+  // 1. Render devtools FIRST (before any atom imports)
+  if (process.env.NODE_ENV !== 'production') {
+    const { renderDevtools } = await import("atomirx/react-devtools");
+    await renderDevtools();
+  }
+
+  // 2. THEN import React and App (which contains atoms)
+  const React = await import("react");
+  const ReactDOM = await import("react-dom/client");
+  const { default: App } = await import("./App");
+
+  // 3. Render app
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}
+
+main();
+```
+
+**Why this order matters:**
+- `onCreateHook` must be set up before atoms are created
+- DevTools uses `onCreateHook` to track atom/derived/effect creation
+- If atoms are imported before devtools, they won't appear in the panel
+
+**For apps with bootstrap logic:**
+
+```typescript
+// bootstrap.ts
+export async function bootstrap() {
+  // Initialize services, fetch config, etc.
+  await initializeServices();
+}
+
+// main.tsx
+async function main() {
+  // 1. DevTools first
+  if (process.env.NODE_ENV !== 'production') {
+    const { renderDevtools } = await import("atomirx/react-devtools");
+    await renderDevtools();
+  }
+
+  // 2. Bootstrap (may create atoms)
+  const { bootstrap } = await import("./bootstrap");
+  await bootstrap();
+
+  // 3. Import and render app
+  const React = await import("react");
+  const ReactDOM = await import("react-dom/client");
+  const { default: App } = await import("./App");
+
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}
+
+main();
+```
+
 ## Core Primitives
 
 | Primitive          | Purpose                        | Subscription |
@@ -315,6 +385,7 @@ onErrorHook.override((prev) => (info) => {
 | Pool entry missing     | GC'd before access         | Increase gcTime                 |
 | ScopedAtom error       | Used outside context       | Only use from() inside derived  |
 | Too many re-computes   | Tracking unnecessary deps  | Use `untrack()` for config      |
+| DevTools missing atoms | Atoms created before hook  | Use bootstrap pattern (see above)|
 
 ## Naming Conventions
 
