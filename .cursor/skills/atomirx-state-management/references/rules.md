@@ -4,19 +4,27 @@
 
 **All state/logic MUST use `define()`. Services = stateless. Stores = atoms.**
 
-| Type        | Purpose        | Variable      | File              | Contains            |
-| ----------- | -------------- | ------------- | ----------------- | ------------------- |
-| **Service** | Stateless I/O  | `authService` | `auth.service.ts` | Pure functions      |
+| Type        | Purpose        | Variable      | File              | Contains                |
+| ----------- | -------------- | ------------- | ----------------- | ----------------------- |
+| **Service** | Stateless I/O  | `authService` | `auth.service.ts` | Pure functions          |
 | **Store**   | Reactive state | `authStore`   | `auth.store.ts`   | Atoms, derived, effects |
 
 ### Service
 
 ```typescript
-export const authService = define((): AuthService => ({
-  checkSupport: async () => { /* WebAuthn API */ },
-  register: async (opts) => { /* credential creation */ },
-  authenticate: async (opts) => { /* credential assertion */ },
-}));
+export const authService = define(
+  (): AuthService => ({
+    checkSupport: async () => {
+      /* WebAuthn API */
+    },
+    register: async (opts) => {
+      /* credential creation */
+    },
+    authenticate: async (opts) => {
+      /* credential assertion */
+    },
+  })
+);
 ```
 
 ### Store
@@ -87,11 +95,11 @@ const user = useSelector(user$);
 const settings = useSelector(settings$);
 ```
 
-| Multiple Calls     | Single Grouped     |
-| ------------------ | ------------------ |
-| N subscriptions    | 1 subscription     |
-| N checks per change| 1 check            |
-| Scattered values   | Related together   |
+| Multiple Calls      | Single Grouped   |
+| ------------------- | ---------------- |
+| N subscriptions     | 1 subscription   |
+| N checks per change | 1 check          |
+| Scattered values    | Related together |
 
 **Single `useSelector(atom$)` OK when:** only one atom needed.
 
@@ -115,7 +123,10 @@ const { val1, val2 } = useSelector(({ read }) => ({
   val1: read(atom1$), // Suspends before useAction
   val2: read(atom2$),
 }));
-const load = useAction(async () => val1 + val2, { deps: [val1, val2], lazy: false });
+const load = useAction(async () => val1 + val2, {
+  deps: [val1, val2],
+  lazy: false,
+});
 ```
 
 ## define() Isolation (CRITICAL)
@@ -139,13 +150,13 @@ export const counterStore = define(() => {
 const count$ = atom(0); // Global, not testable
 ```
 
-| Benefit           | Description                      |
-| ----------------- | -------------------------------- |
-| Testing/Mocking   | Override for unit tests          |
-| Lazy init         | Only when first accessed         |
-| DI                | Depend on services/stores        |
-| Environment       | Override per platform            |
-| Encapsulation     | `readonly()` prevents mutations  |
+| Benefit         | Description                     |
+| --------------- | ------------------------------- |
+| Testing/Mocking | Override for unit tests         |
+| Lazy init       | Only when first accessed        |
+| DI              | Depend on services/stores       |
+| Environment     | Override per platform           |
+| Encapsulation   | `readonly()` prevents mutations |
 
 ### Override Pattern
 
@@ -155,10 +166,12 @@ const storageService = define((): StorageService => {
 });
 
 // Platform implementations
-const webStorage = define((): StorageService => ({
-  get: (key) => localStorage.getItem(key),
-  set: (key, val) => localStorage.setItem(key, val),
-}));
+const webStorage = define(
+  (): StorageService => ({
+    get: (key) => localStorage.getItem(key),
+    set: (key, val) => localStorage.setItem(key, val),
+  })
+);
 
 // Override based on environment
 if (isWeb) storageService.override(webStorage);
@@ -183,16 +196,16 @@ batch(() => {
 }); // Single notification
 
 // ❌ DON'T
-user$.set(newUser);       // Notification 1
+user$.set(newUser); // Notification 1
 settings$.set(newSettings); // Notification 2
 lastUpdated$.set(Date.now()); // Notification 3
 ```
 
-| Without batch      | With batch         |
-| ------------------ | ------------------ |
-| N notifications    | 1 notification     |
-| Intermediate states| Only final state   |
-| UI flicker         | Clean update       |
+| Without batch       | With batch       |
+| ------------------- | ---------------- |
+| N notifications     | 1 notification   |
+| Intermediate states | Only final state |
+| UI flicker          | Clean update     |
 
 ## Single Effect, Single Workflow (CRITICAL)
 
@@ -209,27 +222,36 @@ effect(({ read }) => {
 });
 
 // ✅ CORRECT
-effect(({ read }) => {
-  const id = read(currentId$);
-  if (id) fetchEntity(id);
-}, { meta: { key: "fetch.entity" } });
+effect(
+  ({ read }) => {
+    const id = read(currentId$);
+    if (id) fetchEntity(id);
+  },
+  { meta: { key: "fetch.entity" } }
+);
 
-effect(({ read }) => {
-  localStorage.setItem("filter", read(filter$));
-}, { meta: { key: "persist.filter" } });
+effect(
+  ({ read }) => {
+    localStorage.setItem("filter", read(filter$));
+  },
+  { meta: { key: "persist.filter" } }
+);
 
-effect(({ read }) => {
-  const id = read(currentId$);
-  if (id) trackPageView(id);
-}, { meta: { key: "analytics.pageView" } });
+effect(
+  ({ read }) => {
+    const id = read(currentId$);
+    if (id) trackPageView(id);
+  },
+  { meta: { key: "analytics.pageView" } }
+);
 ```
 
-| Multiple Workflows | Single Workflow     |
-| ------------------ | ------------------- |
-| Hard to trace      | Clear cause → effect|
-| Combined triggers  | Independent         |
-| Hard to test       | Test in isolation   |
-| Hard to disable    | Comment one effect  |
+| Multiple Workflows | Single Workflow      |
+| ------------------ | -------------------- |
+| Hard to trace      | Clear cause → effect |
+| Combined triggers  | Independent          |
+| Hard to test       | Test in isolation    |
+| Hard to disable    | Comment one effect   |
 
 ## meta.key (CRITICAL)
 
@@ -340,8 +362,15 @@ derived(({ read, safe }) => {
 ## Naming Conventions
 
 ```typescript
-// Atoms: $ suffix
+// All atoms: $ suffix
 const count$ = atom(0);
+const user$ = atom<User | null>(null);
+const productList$ = atom(fetchProducts()); // Async — still just $
+const config$ = atom(loadConfig());
+
+// Derived: $ suffix
+const doubled$ = derived(({ read }) => read(count$) * 2);
+const userName$ = derived(({ read }) => read(user$).name);
 
 // Services: *Service (NO atoms)
 const authService = define((): AuthService => ...);
@@ -352,6 +381,16 @@ const authStore = define(() => ...);
 // Actions: verb-led
 navigateTo, invalidate, refresh, fetchUser, logout
 ```
+
+| Type                 | Suffix    | Example                  |
+| -------------------- | --------- | ------------------------ |
+| Atom (sync or async) | `$`       | `count$`, `productList$` |
+| Derived              | `$`       | `doubled$`, `userName$`  |
+| Pool                 | `Pool`    | `userPool`               |
+| Service              | `Service` | `authService`            |
+| Store                | `Store`   | `authStore`              |
+
+**Why no `Async$`?** Atomirx abstracts async/sync — you don't care in SelectContext (Suspense handles it), and services receive values as parameters.
 
 ### File Structure
 

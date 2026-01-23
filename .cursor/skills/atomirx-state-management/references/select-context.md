@@ -4,19 +4,22 @@ SelectContext provides methods for `derived`, `effect`, `useSelector`, and `rx`.
 
 ## Methods
 
-| Method        | Returns                    | Description                    |
-| ------------- | -------------------------- | ------------------------------ |
-| `read(atom)`  | `T`                        | Get value, suspends if loading |
-| `ready(atom)` | `T` (non-nullable)         | Block until truthy             |
-| `state(atom)` | `AtomState<T>`             | Get state without suspending   |
-| `safe(fn)`    | `[error?, value?]`         | Catch errors, rethrow Promise  |
-| `all(atoms)`  | `T[]`                      | Wait for all                   |
-| `any(record)` | `{ key, value }`           | First to resolve               |
-| `race(record)`| `{ key, value }`           | First to settle                |
-| `settled()`   | `SettledResult<T>[]`       | All with status                |
-| `from(pool)`  | `ScopedAtom<T>`            | Get atom from pool             |
-| `and(conds)`  | `boolean`                  | Logical AND                    |
-| `or(conds)`   | `boolean`                  | Logical OR                     |
+| Method          | Returns                    | Description                    |
+| --------------- | -------------------------- | ------------------------------ |
+| `read(atom)`    | `T`                        | Get value, suspends if loading |
+| `ready(atom)`   | `T` (non-nullable)         | Block until truthy             |
+| `state(atom)`   | `AtomState<T>`             | Get state without suspending   |
+| `untrack(atom)` | `T`                        | Read without tracking dep      |
+| `untrack(fn)`   | `T`                        | Execute fn without tracking    |
+| `safe(fn)`      | `[error?, value?]`         | Catch errors, rethrow Promise  |
+| `all(atoms)`    | `T[]`                      | Wait for all                   |
+| `any(record)`   | `{ key, value }`           | First to resolve               |
+| `race(record)`  | `{ key, value }`           | First to settle                |
+| `settled()`     | `SettledResult<T>[]`       | All with status                |
+| `from(pool)`    | `ScopedAtom<T>`            | Get atom from pool             |
+| `track(atom)`   | `void`                     | Track without reading          |
+| `and(conds)`    | `boolean`                  | Logical AND                    |
+| `or(conds)`     | `boolean`                  | Logical OR                     |
 
 ## CRITICAL Rules
 
@@ -72,6 +75,62 @@ derived(({ read, from }) => {
 });
 ```
 
+### untrack() — Read Without Tracking
+
+**Read atoms or execute functions without creating dependencies.**
+
+Use `untrack()` when you need a value but don't want re-computation when it changes.
+
+```typescript
+// Form 1: Pass atom directly
+const combined$ = derived(({ read, untrack }) => {
+  const count = read(count$);       // ✅ Tracked — re-computes on change
+  const config = untrack(config$);  // ❌ NOT tracked — no re-compute
+  return count * config.multiplier;
+});
+
+// Form 2: Pass function for multiple reads
+const snapshot$ = derived(({ read, untrack }) => {
+  const liveData = read(liveData$);  // Tracked
+  const snapshot = untrack(() => {
+    // None of these create dependencies
+    return { a: read(a$), b: read(b$), c: read(c$) };
+  });
+  return { liveData, snapshot };
+});
+```
+
+**When to use:**
+
+| Scenario | Use |
+| -------- | --- |
+| Need latest value, re-compute on change | `read()` |
+| Need value once, ignore future changes | `untrack()` |
+| Initial value / config that rarely changes | `untrack()` |
+| Snapshot of multiple atoms | `untrack(() => ...)` |
+
+**Flow Diagram:**
+
+```
+untrack(input)
+      │
+      ▼
+  Is input an Atom?
+      │
+  ┌───┴───┐
+  │Yes    │No (function)
+  ▼       ▼
+ Read    Disable tracking
+ value    │
+ (no      ▼
+ track)  Execute fn()
+  │       │
+  │       ▼
+  │      Re-enable tracking
+  │       │
+  └───────┴──→ Return value
+```
+
 ## Type Definitions
 
 ```typescript
@@ -79,12 +138,15 @@ interface SelectContext {
   read<T>(atom: ReadableAtom<T>): T;
   ready<T>(atom: ReadableAtom<T | undefined | null>): T;
   state<T>(atom: ReadableAtom<T>): AtomState<T>;
+  untrack<T>(atom: ReadableAtom<T>): T;
+  untrack<T>(fn: () => T): T;
   safe<T>(fn: () => T): [unknown, undefined] | [undefined, T];
   all<T extends readonly ReadableAtom<unknown>[]>(atoms: T): MapAtomValues<T>;
   any<T extends Record<string, ReadableAtom<unknown>>>(atoms: T): { key: keyof T; value: T[keyof T] };
   race<T extends Record<string, ReadableAtom<unknown>>>(atoms: T): { key: keyof T; value: T[keyof T] };
   settled<T extends readonly ReadableAtom<unknown>[]>(atoms: T): MapSettledResults<T>;
   from<P, T>(pool: Pool<P, T>, params: P): ScopedAtom<T>;
+  track(atom: ReadableAtom<unknown>): void;
   and(conditions: Condition[]): boolean;
   or(conditions: Condition[]): boolean;
 }
@@ -244,3 +306,4 @@ const handleClick = () => {
 6. **Use `settled()`** for graceful degradation
 7. **Use `from()`** only with `read()` — never `.get()`
 8. **Use `read()`** inside selectors, `.get()` outside
+9. **Use `untrack()`** when you need a value but don't want re-computation on change

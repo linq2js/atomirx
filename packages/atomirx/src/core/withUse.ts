@@ -36,9 +36,18 @@ import type { Pipeable } from "./types";
  *   // returns undefined - original source is returned
  * });
  */
-export function withUse<TSource extends object>(source: TSource) {
+export function withUse<TSource extends object>(
+  source: TSource
+): TSource & Pipeable {
   return Object.assign(source, {
-    use<TNew = void>(plugin: (source: NoInfer<TSource>) => TNew): any {
+    use<TNew = void>(plugin: (source: NoInfer<TSource> | object) => TNew): any {
+      if (typeof source === "object") {
+        if (Array.isArray(plugin)) {
+          return source;
+        }
+        return Object.assign(source, { ...plugin });
+      }
+
       const result = plugin(source);
       // Void/falsy: return original source (side-effect only plugins)
       if (!result) return source;

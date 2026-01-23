@@ -52,6 +52,10 @@ export interface Pipeable {
         ? TNew
         : Pipeable & TNew
       : TNew;
+
+  use<TPlugin extends object>(
+    plugin: TPlugin
+  ): TPlugin extends any[] ? this : this & TPlugin;
 }
 
 /**

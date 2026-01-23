@@ -416,6 +416,70 @@ export interface SelectContext extends Pipeable {
    * ```
    */
   or(conditions: Condition[]): boolean;
+
+  /**
+   * Read atoms or execute functions without tracking dependencies.
+   * Useful when you need to read a value but don't want to re-compute when it changes.
+   *
+   * Supports two forms:
+   * - `untrack(atom$)` - Read atom value without tracking
+   * - `untrack(() => expr)` - Execute function without tracking any reads inside
+   *
+   * ## Flow Diagram
+   *
+   * ```
+   * untrack(input)
+   *       │
+   *       ▼
+   *   Is input an Atom?
+   *       │
+   *   ┌───┴───┐
+   *   │Yes    │No (function)
+   *   ▼       ▼
+   *  Read    Set isUntracking = true
+   *  without  │
+   *  tracking ▼
+   *   │      Execute fn()
+   *   │       │
+   *   │       ▼
+   *   │      Set isUntracking = false
+   *   │       │
+   *   └───────┴──→ Return value
+   * ```
+   *
+   * @param atom - Atom to read without tracking
+   * @returns The atom's current value
+   *
+   * @example
+   * ```ts
+   * const combined$ = derived(({ read, untrack }) => {
+   *   const count = read(count$);           // Tracks count$
+   *   const doubled = untrack(doubled$);    // Does NOT track doubled$
+   *   return count + doubled;
+   * });
+   * ```
+   */
+  untrack<T>(atom: Atom<T>): Awaited<T>;
+
+  /**
+   * Execute a function without tracking any atom reads inside.
+   *
+   * @param fn - Function to execute without tracking
+   * @returns The function's return value
+   *
+   * @example
+   * ```ts
+   * const combined$ = derived(({ read, untrack }) => {
+   *   const count = read(count$);           // Tracks count$
+   *   const tripled = untrack(() => {
+   *     // None of these reads are tracked
+   *     return read(a$) + read(b$) + read(c$);
+   *   });
+   *   return count + tripled;
+   * });
+   * ```
+   */
+  untrack<T>(fn: () => T): T;
 }
 
 /**
@@ -639,6 +703,9 @@ export function select<T>(
   // Flag to detect calls outside selection context (e.g., in async callbacks)
   let isSelecting = true;
 
+  // Flag to disable dependency tracking during untrack() execution
+  let isUntracking = false;
+
   /**
    * Throws an error if called outside the synchronous selection context.
    */
@@ -655,9 +722,13 @@ export function select<T>(
 
   /**
    * Track an atom as a dependency (unwraps ScopedAtom if needed).
+   * Skips tracking if inside an untrack() block.
    */
   const track = (atom: Atom<unknown>): void => {
     assertSelecting("track");
+    // Skip tracking when inside untrack() block
+    if (isUntracking) return;
+
     if (isScopedAtom(atom)) {
       atomDeps.add(atom._getAtom());
     } else {
@@ -1032,6 +1103,61 @@ export function select<T>(
     return false;
   };
 
+  /**
+   * untrack() - Read atoms or execute functions without tracking dependencies.
+   *
+   * ## Flow Diagram
+   *
+   * ```
+   * untrack(input)
+   *       │
+   *       ▼
+   *   Is input an Atom?
+   *       │
+   *   ┌───┴───┐
+   *   │Yes    │No (function)
+   *   ▼       ▼
+   *  Read    Set isUntracking = true
+   *  without  │
+   *  tracking ▼
+   *   │      Execute fn()
+   *   │       │
+   *   │       ▼
+   *   │      Set isUntracking = false
+   *   │       │
+   *   └───────┴──→ Return value
+   * ```
+   */
+  function untrack<U>(atom: Atom<U>): Awaited<U>;
+  function untrack<U>(fn: () => U): U;
+  function untrack<U>(atomOrFn: Atom<U> | (() => U)): Awaited<U> | U {
+    assertSelecting("untrack");
+
+    if (isAtom(atomOrFn)) {
+      // For atom: read value without tracking (don't call track())
+      const realAtom = isScopedAtom(atomOrFn) ? atomOrFn._getAtom() : atomOrFn;
+      const state = getAtomState(realAtom);
+
+      switch (state.status) {
+        case "ready":
+          return state.value as Awaited<U>;
+        case "error":
+          throw state.error;
+        case "loading":
+          throw state.promise; // Suspense pattern
+      }
+    }
+
+    // For function: execute with tracking disabled
+    const previousUntracking = isUntracking;
+    isUntracking = true;
+    try {
+      return atomOrFn();
+    } finally {
+      isUntracking = previousUntracking;
+    }
+  }
+
   // Create the context
   const context: SelectContext = withUse({
     read,
@@ -1045,6 +1171,7 @@ export function select<T>(
     state,
     and,
     or,
+    untrack,
   });
 
   // Execute the selector function and build result

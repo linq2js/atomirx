@@ -8,7 +8,7 @@
 [![bundle](https://img.shields.io/bundlephobia/minzip/atomirx?style=flat-square&color=green)](https://bundlephobia.com/package/atomirx)
 [![typescript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square)](https://www.typescriptlang.org/)
 
-**Atoms** · **Derived** · **Effects** · **Suspense** · **React**
+**Atoms** · **Derived** · **Effects** · **Suspense** · **DevTools**
 
 </div>
 
@@ -40,23 +40,31 @@ function App() {
 
 ## Why atomirx?
 
-| Feature              | atomirx                      |
-| -------------------- | ---------------------------- |
-| Simple atoms         | `atom(0)`                    |
-| Computed values      | `derived(({ read }) => ...)` |
-| Async first-class    | Built-in Suspense            |
-| Side effects         | `effect(({ read }) => ...)`  |
-| Fine-grained updates | `{rx(atom$)}`                |
-| TypeScript           | Full inference               |
-| Bundle size          | Tiny                         |
+| Feature               | atomirx                      | Others (Recoil/Jotai/etc)       |
+| --------------------- | ---------------------------- | ------------------------------- |
+| **Philosophy**        | **Mutable & Synchronous**    | often Immutable or Async-forced |
+| **Simple atoms**      | `atom(0)`                    | `atom(0)`                       |
+| **Computed values**   | `derived(({ read }) => ...)` | `atom((get) => ...)`            |
+| **Async first-class** | **Built-in Suspense**        | Plugin / Add-on                 |
+| **Side effects**      | `effect(({ read }) => ...)`  | often `useEffect`               |
+| **Leak-free Pools**   | **Yes (Auto GC)**            | Manual management               |
+| **DevTools**          | **Zero-config**              | Additional setup                |
+| **Bundle size**       | **Tiny**                     | Varies                          |
 
 ---
 
 ## Install
 
-```bash
-npm install atomirx
-```
+<div align="center">
+
+| Package Manager | Command               |
+| :-------------- | :-------------------- |
+| **npm**         | `npm install atomirx` |
+| **pnpm**        | `pnpm add atomirx`    |
+| **yarn**        | `yarn add atomirx`    |
+| **bun**         | `bun add atomirx`     |
+
+</div>
 
 ---
 
@@ -67,6 +75,8 @@ npm install atomirx
 Reactive state containers - the foundation of everything.
 
 ```ts
+import { atom } from "atomirx";
+
 const count$ = atom(0);
 
 count$.get();              // Read current value
@@ -80,9 +90,11 @@ count$.on(() => { ... });  // Subscribe to changes
 Computed values that auto-update when dependencies change.
 
 ```ts
+import { atom, derived } from "atomirx";
+
 // Automatically recomputes when firstName$ or lastName$ changes
 const fullName$ = derived(
-  ({ read }) => `${read(firstName$)} ${read(lastName$)}`
+  ({ read }) => `${read(firstName$)} ${read(lastName$)}`,
 );
 
 await fullName$.get(); // "John Doe"
@@ -93,12 +105,20 @@ await fullName$.get(); // "John Doe"
 Side effects that run when dependencies change.
 
 ```ts
-effect(({ read, onCleanup }) => {
-  const count = read(count$); // Subscribe to count$ changes
-  console.log("Count changed:", count);
+import { effect } from "atomirx";
 
-  // Cleanup runs before each re-run and on dispose
-  onCleanup(() => console.log("Cleanup"));
+effect(({ read, onCleanup }) => {
+  const config = read(config$); // Subscribe to config changes
+
+  // Set up connection based on reactive config
+  const socket = connectToSocket(config.url);
+  console.log("Connected to", config.url);
+
+  // Cleanup runs before next run and on dispose
+  onCleanup(() => {
+    socket.disconnect();
+    console.log("Disconnected");
+  });
 });
 ```
 
@@ -111,6 +131,8 @@ effect(({ read, onCleanup }) => {
 Subscribe to atoms in React components.
 
 ```tsx
+import { useSelector } from "atomirx/react";
+
 function Counter() {
   // Single atom - component re-renders when count$ changes
   const count = useSelector(count$);
@@ -131,6 +153,8 @@ function Counter() {
 Fine-grained updates without re-rendering the parent component.
 
 ```tsx
+import { rx } from "atomirx/react";
+
 function App() {
   return (
     <div>
@@ -177,94 +201,110 @@ derived(({ read, all }) => {
 
 ---
 
-## Modules
-
-Encapsulate state and actions with lazy initialization.
-
-```ts
-const counterModule = define(() => {
-  const count$ = atom(0);
-
-  return {
-    count$: readonly(count$), // Expose read-only
-    increment: () => count$.set((c) => c + 1), // Expose actions
-  };
-});
-
-// Lazy - created on first call
-const { count$, increment } = counterModule();
-```
-
----
-
-## Batching
-
-Combine multiple updates into a single notification.
-
-```ts
-batch(() => {
-  firstName$.set("John");
-  lastName$.set("Doe");
-}); // Subscribers notified once, not twice
-```
-
----
-
-## Pools
+## Pools (Memory-Safe Families)
 
 Parameterized atoms with automatic garbage collection.
 
+**Problem:** Standard "atom families" (atoms created per ID) often leak memory because they leave orphan atoms behind when no longer needed.
+
+**Solution:** `atomirx` Pools automatically garbage collect entries that haven't been used for a specific time (`gcTime`).
+
 ```ts
+import { pool } from "atomirx";
+
 // Create a pool - atoms are created lazily per params
 const userPool = pool(
   (id: string) => fetchUser(id), // Factory function
-  { gcTime: 60_000 } // Auto-cleanup after 60s of inactivity
+  { gcTime: 60_000 }, // Auto-cleanup after 60s of inactivity
 );
-
-// Access pool atoms via select context - never store references
-derived(({ read, from }) => {
-  const user$ = from(userPool, "user-123"); // Get atom for this id
-  return read(user$); // Read its value
-});
 ```
 
-### Design Philosophy
+### Usage in Components
 
-Unlike other libraries where you might store atom references in variables:
+Use the `from` helper in `useSelector` (or `derived`/`effect`) to safely access pool atoms.
+
+```tsx
+function UserCard({ id }) {
+  // ✅ Safe: "from" ensures the atom is marked as used
+  const user = useSelector(({ read, from }) => {
+    const user$ = from(userPool, id);
+    return read(user$);
+  });
+
+  return <div>{user.name}</div>;
+}
+```
+
+---
+
+## DevTools
+
+Atomirx comes with a powerful DevTools suite for debugging.
+
+### 1. Setup (App Entry)
+
+Initialize the devtools registry in your app's entry point (e.g., `main.tsx` or `index.ts`).
 
 ```ts
-// ❌ Other libraries - orphan atoms can leak memory
-const userAtom = userFamily("user-123");
-someMap.set("cached", userAtom); // Orphan reference!
+import { setupDevtools } from "atomirx/devtools";
+
+// Enable devtools tracking
+if (process.env.NODE_ENV === "development") {
+  setupDevtools();
+}
 ```
 
-atomirx enforces access through select context only:
+### 2. React UI Component
 
-```ts
-// ✅ atomirx - atoms only accessible in reactive context
-derived(({ read, from }) => {
-  const user$ = from(userPool, "user-123");
-  return read(user$);
-});
+Add the `<DevToolsPanel />` to your root component.
 
-// ScopedAtom throws if accessed directly
-const virtual = from(userPool, "user-123");
-virtual.get(); // ❌ Throws: use read(virtual) instead
-virtual.on(() => {}); // ❌ Throws: use derived/effect instead
+```tsx
+import { DevToolsPanel } from "atomirx/react-devtools";
+
+function App() {
+  return (
+    <>
+      <YourApp />
+
+      {/* Renders a floating dockable panel */}
+      {process.env.NODE_ENV === "development" && (
+        <DevToolsPanel defaultPosition="bottom-right" />
+      )}
+    </>
+  );
+}
 ```
 
-This prevents:
+---
 
-- **Memory leaks** from stale atom references
-- **Orphan atoms** that bypass garbage collection
-- **Inconsistent state** from multiple references to same entity
+## API Reference
+
+### Core (`atomirx`)
+
+- `atom(initialValue, options?)`: Create a mutable atom.
+- `derived(calculator, options?)`: Create a computed atom.
+- `effect(runner, options?)`: Run side effects.
+- `pool(factory, options)`: Create a garbage-collected atom pool.
+- `batch(fn)`: Batch multiple updates.
+
+### React (`atomirx/react`)
+
+- `useSelector(atom | selector)`: Subscribe to state.
+- `rx(atom | selector)`: Renderless component for fine-grained updates.
+
+### Select Context (inside `derived`, `effect`, `useSelector`)
+
+- `read(atom)`: Get value and subscribe.
+- `from(pool, params)`: Get atom from pool safely.
+- `all([atoms])`: Wait for all promises.
+- `race({ key: atom })`: Race promises.
+- `state(atom)`: Get `{ status, value, error }` without suspending.
 
 ---
 
 ## Links
 
 - [GitHub](https://github.com/linq2js/atomirx) - Source code & issues
-- [Documentation](https://github.com/linq2js/atomirx/tree/main/packages/atomirx/docs) - Full docs
 - [Changelog](https://github.com/linq2js/atomirx/releases) - Release notes
 
 ---

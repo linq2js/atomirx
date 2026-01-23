@@ -615,6 +615,159 @@ describe("select", () => {
     });
   });
 
+  describe("untrack()", () => {
+    it("should read atom without tracking when passed atom directly", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+
+      const { result } = select(({ read, untrack }) => {
+        const a = read(a$); // Tracked
+        const b = untrack(b$); // NOT tracked
+        return a + b;
+      });
+
+      expect(result.value).toBe(3);
+      expect(result.dependencies.size).toBe(1);
+      expect(result.dependencies.has(a$)).toBe(true);
+      expect(result.dependencies.has(b$)).toBe(false);
+    });
+
+    it("should execute function without tracking reads inside", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+      const c$ = atom(3);
+
+      const { result } = select(({ read, untrack }) => {
+        const a = read(a$); // Tracked
+        const sum = untrack(() => {
+          // None of these are tracked
+          return read(b$) + read(c$);
+        });
+        return a + sum;
+      });
+
+      expect(result.value).toBe(6);
+      expect(result.dependencies.size).toBe(1);
+      expect(result.dependencies.has(a$)).toBe(true);
+      expect(result.dependencies.has(b$)).toBe(false);
+      expect(result.dependencies.has(c$)).toBe(false);
+    });
+
+    it("should handle nested untrack calls correctly", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+      const c$ = atom(3);
+
+      const { result } = select(({ read, untrack }) => {
+        const a = read(a$); // Tracked
+        const sum = untrack(() => {
+          const b = read(b$); // NOT tracked (inside untrack)
+          // Nested untrack - still untracked
+          const c = untrack(() => read(c$));
+          return b + c;
+        });
+        return a + sum;
+      });
+
+      expect(result.value).toBe(6);
+      expect(result.dependencies.size).toBe(1);
+      expect(result.dependencies.has(a$)).toBe(true);
+    });
+
+    it("should throw error for pending async atom", () => {
+      const async$ = atom(new Promise<number>(() => {}));
+
+      const { result } = select(({ untrack }) => untrack(async$));
+
+      // Should throw promise (Suspense pattern)
+      expect(result.promise).toBeDefined();
+      expect(result.value).toBe(undefined);
+    });
+
+    it("should throw error for rejected async atom", async () => {
+      const error = new Error("Test error");
+      const rejectedPromise = Promise.reject(error);
+      rejectedPromise.catch(() => {});
+      const async$ = atom(rejectedPromise);
+
+      // Track first to let promise state update
+      select(({ untrack }) => untrack(async$));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const { result } = select(({ untrack }) => untrack(async$));
+
+      expect(result.error).toBe(error);
+    });
+
+    it("should work with untrack inside function and atom form mixed", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+      const c$ = atom(3);
+      const d$ = atom(4);
+
+      const { result } = select(({ read, untrack }) => {
+        const a = read(a$); // Tracked
+        const b = untrack(b$); // NOT tracked
+        const sum = untrack(() => {
+          const c = read(c$); // NOT tracked
+          return c + read(d$); // NOT tracked
+        });
+        return a + b + sum;
+      });
+
+      expect(result.value).toBe(10);
+      expect(result.dependencies.size).toBe(1);
+      expect(result.dependencies.has(a$)).toBe(true);
+    });
+
+    it("should restore tracking after untrack function completes", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+      const c$ = atom(3);
+
+      const { result } = select(({ read, untrack }) => {
+        const a = read(a$); // Tracked
+        untrack(() => read(b$)); // NOT tracked
+        const c = read(c$); // Tracked (after untrack)
+        return a + c;
+      });
+
+      expect(result.value).toBe(4);
+      expect(result.dependencies.size).toBe(2);
+      expect(result.dependencies.has(a$)).toBe(true);
+      expect(result.dependencies.has(b$)).toBe(false);
+      expect(result.dependencies.has(c$)).toBe(true);
+    });
+
+    it("should throw error when called outside selection context", () => {
+      const a$ = atom(1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let capturedUntrack: any = null;
+
+      select(({ untrack }) => {
+        capturedUntrack = untrack;
+        return untrack(a$);
+      });
+
+      expect(() => capturedUntrack(a$)).toThrow(
+        "untrack() was called outside of the selection context"
+      );
+    });
+
+    it("should preserve error thrown inside untrack function", () => {
+      const error = new Error("Test error");
+
+      const { result } = select(({ untrack }) => {
+        return untrack(() => {
+          throw error;
+        });
+      });
+
+      expect(result.error).toBe(error);
+    });
+  });
+
   describe("parallel waiting behavior", () => {
     it("all() should throw combined Promise.all for parallel waiting", async () => {
       let resolve1: (value: number) => void;

@@ -11,23 +11,45 @@
 
 ## useSelector
 
-### CRITICAL: MUST Group
+### CRITICAL: One useSelector Per Component
 
-**MUST** group multiple reads. Each call = separate subscription.
+`useSelector` is **powerful** — handles complex expressions, multiple atoms, computed values. **Almost never need multiple calls.**
 
 ```tsx
-// ✅ REQUIRED
-const { count, user, settings } = useSelector(({ read }) => ({
+// ✅ REQUIRED — Single useSelector, complex selection
+const { count, user, settings, isAdmin, cartTotal } = useSelector(({ read, use }) => ({
   count: read(count$),
   user: read(user$),
   settings: read(settings$),
+  isAdmin: read(user$)?.role === "admin",
+  cartTotal: use(selectCartTotal),
 }));
 
-// ❌ FORBIDDEN
+// ❌ FORBIDDEN — Multiple useSelectors
 const count = useSelector(count$);
 const user = useSelector(user$);
 const settings = useSelector(settings$);
 ```
+
+### Rare Exception: Hook Dependencies
+
+Only use multiple `useSelector` when a selected value must be passed to another hook:
+
+```tsx
+// ✅ OK — Rare case: hook needs selected value
+function useProductDetails() {
+  const productId = useSelector(({ read }) => read(currentProductId$));
+  const analytics = useAnalyticsHook(productId); // Hook needs productId
+  const { product, reviews } = useSelector(({ read, from }) => ({
+    product: read(from(productPool, productId)),
+    reviews: read(from(reviewPool, productId)),
+  }));
+
+  return { product, reviews, analytics };
+}
+```
+
+**If you don't need to pass value to another hook, use single useSelector.**
 
 ### Basic
 

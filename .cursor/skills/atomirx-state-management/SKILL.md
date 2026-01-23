@@ -5,6 +5,29 @@ description: Guide for atomirx reactive state management. Use for atom, derived,
 
 # atomirx State Management
 
+## Philosophy: You Don't Care About Async/Sync
+
+**Atomirx abstracts away the async/sync distinction.** In reactive contexts, you write sync code regardless of whether atoms contain sync values or Promises.
+
+| Context | Your Code | Async Handling |
+|---------|-----------|----------------|
+| `useSelector`, `derived`, `effect` | **Sync** — just `read()` | Suspense handles it |
+| Services | Receive values as **parameters** | Don't read atoms |
+| Outside reactive context | `await .get()` | Explicit when needed |
+
+```typescript
+// You don't care if user$ contains sync value or Promise
+const userName$ = derived(({ read }) => read(user$).name);
+
+// Same pattern works for any atom
+function MyComponent() {
+  const name = useSelector(userName$); // Sync code, Suspense handles async
+  return <div>{name}</div>;
+}
+```
+
+**This is why naming doesn't use `Async$` suffix** — the abstraction makes it irrelevant.
+
 ## Core Primitives
 
 | Primitive          | Purpose                        | Subscription |
@@ -29,6 +52,7 @@ description: Guide for atomirx reactive state management. Use for atom, derived,
 | `ready()`   | `ready(atom$)` or with fn | Wait for non-null (suspends)      |
 | `from()`    | `from(pool, params)`      | Get ScopedAtom from pool          |
 | `track()`   | `track(atom$)`            | Track without reading             |
+| `untrack()` | `untrack(atom$)` or fn    | Read/exec without tracking        |
 | `safe()`    | `safe(() => expr)`        | Catch errors, preserve Suspense   |
 | `all()`     | `all([a$, b$])`           | Wait for all (Promise.all)        |
 | `any()`     | `any({ a: a$, b: b$ })`   | First ready (Promise.any)         |
@@ -187,6 +211,27 @@ const canDelete$ = derived(({ and }) => and([
 const canEdit$ = derived(({ read }) => read(isLoggedIn$) && read(hasPermission$));
 ```
 
+### untrack() for Non-Reactive Reads
+
+```tsx
+// ✅ DO: Use untrack() when you need to read without re-computing
+const combined$ = derived(({ read, untrack }) => {
+  const count = read(count$);       // Tracks count$ - re-computes on change
+  const config = untrack(config$);  // Does NOT track - no re-compute on change
+  return count * config.multiplier;
+});
+
+// Also works with functions for multiple reads
+const snapshot$ = derived(({ read, untrack }) => {
+  const liveData = read(liveData$);  // Tracked
+  const snapshot = untrack(() => {
+    // None of these are tracked
+    return { a: read(a$), b: read(b$), c: read(c$) };
+  });
+  return { liveData, snapshot };
+});
+```
+
 ### define() for Services and Stores
 
 ```tsx
@@ -234,18 +279,19 @@ onErrorHook.override((prev) => (info) => {
 
 ## Finding Things
 
-| To Find          | Search Pattern                                               |
-| ---------------- | ------------------------------------------------------------ |
-| Atom definitions | `atom<` or `atom(`                                           |
-| Derived atoms    | `derived((`                                                  |
-| Effects          | `effect((`                                                   |
-| Pools            | `pool((`                                                     |
-| Stores           | `define(() =>` in `*.store.ts`                               |
-| Services         | `define(() =>` in `*.service.ts`                             |
-| Atom usages      | `read(`, `ready(`, `all([`, `any({`, `race({`, `settled([`   |
-| Pool usages      | `from(poolName,`                                             |
-| Mutations        | Find store owner, check return statement                     |
-| Hook setup       | `onCreateHook.override`, `onErrorHook.override`              |
+| To Find            | Search Pattern                                               |
+| ------------------ | ------------------------------------------------------------ |
+| Atom definitions   | `atom<` or `atom(`                                           |
+| Derived atoms      | `derived((`                                                  |
+| Effects            | `effect((`                                                   |
+| Pools              | `pool((`                                                     |
+| Stores             | `define(() =>` in `*.store.ts`                               |
+| Services           | `define(() =>` in `*.service.ts`                             |
+| Atom usages        | `read(`, `ready(`, `all([`, `any({`, `race({`, `settled([`   |
+| Non-reactive reads | `untrack(`                                                   |
+| Pool usages        | `from(poolName,`                                             |
+| Mutations          | Find store owner, check return statement                     |
+| Hook setup         | `onCreateHook.override`, `onErrorHook.override`              |
 
 ## Debugging "Why doesn't X update?"
 
@@ -268,6 +314,7 @@ onErrorHook.override((prev) => (info) => {
 | Missing hook calls     | Hook chain broken          | Always call `prev?.(info)`      |
 | Pool entry missing     | GC'd before access         | Increase gcTime                 |
 | ScopedAtom error       | Used outside context       | Only use from() inside derived  |
+| Too many re-computes   | Tracking unnecessary deps  | Use `untrack()` for config      |
 
 ## Naming Conventions
 
@@ -276,11 +323,16 @@ onErrorHook.override((prev) => (info) => {
 | **Service** | `authService` | `auth.service.ts` | Pure functions only |
 | **Store**   | `authStore`   | `auth.store.ts`   | Atoms, derived, effects |
 
-- **Atoms**: `$` suffix → `count$`, `user$`
-- **Services**: `*Service` → `authService` (NO atoms)
-- **Stores**: `*Store` → `authStore` (HAS atoms)
-- **Pools**: `*Pool` → `userPool`
-- **Actions**: verb-led → `navigateTo`, `invalidate`
+| Type                 | Suffix    | Example                        |
+| -------------------- | --------- | ------------------------------ |
+| Atom (sync or async) | `$`       | `count$`, `user$`, `products$` |
+| Derived              | `$`       | `doubled$`, `userName$`        |
+| Pool                 | `Pool`    | `userPool`, `productPool`      |
+| Service              | `Service` | `authService` (NO atoms)       |
+| Store                | `Store`   | `authStore` (HAS atoms)        |
+| Actions              | verb-led  | `navigateTo`, `invalidate`     |
+
+**Why no `Async$`?** Atomirx abstracts async/sync — you don't care in SelectContext (Suspense handles it).
 
 ### File Structure
 

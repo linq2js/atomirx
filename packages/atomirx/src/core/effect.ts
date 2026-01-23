@@ -168,11 +168,10 @@ export function effect(
       // Run effect in a batch - multiple atom updates will only notify once
       // Cast to EffectContext since we're adding onCleanup to the DerivedContext
       const onCleanup = cleanupEmitter.on;
-      const effectContext = {
-        ...context,
-        onCleanup,
-        ...withAbort(onCleanup)(context),
-      } as unknown as EffectContext;
+      const effectContext: EffectContext = context
+        .use({ onCleanup })
+        .use(withAbort(onCleanup));
+
       batch(() => fn(effectContext));
     },
     {

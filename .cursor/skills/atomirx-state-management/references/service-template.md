@@ -115,31 +115,6 @@ services/
 | File    | `[name].service.ts`  | `entity.service.ts`  |
 | Methods | verb-led             | `fetch`, `create`    |
 
-## Mocking for Tests
-
-```typescript
-describe("entityStore", () => {
-  beforeEach(() => {
-    entityService.reset();
-    entityStore.reset();
-  });
-
-  it("should fetch entity", async () => {
-    entityService.override(() => ({
-      fetch: async (id) => ({ id, name: "Mock", createdAt: "2024-01-01" }),
-      list: async () => [],
-      create: async () => ({ id: "new", name: "New", createdAt: "2024-01-01" }),
-      update: async (id, input) => ({ id, name: input.name ?? "", createdAt: "2024-01-01" }),
-      delete: async () => {},
-    }));
-
-    const store = entityStore();
-    const entity = await store.fetchEntity("123");
-    expect(entity.name).toBe("Mock");
-  });
-});
-```
-
 ## Platform Override
 
 ```typescript
