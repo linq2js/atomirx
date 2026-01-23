@@ -1,204 +1,197 @@
-# Service Documentation Template
+# Service Template
 
-**MUST** use this JSDoc template when documenting atomirx services to help both humans and AI understand the interface.
+Services = stateless modules. NO atoms. Pure functions only.
 
-## When to Use Service (CRITICAL)
-
-A **Service** is for **stateless** logic that wraps external I/O.
-
-| Criteria                                  | Service          | Store                 |
-| ----------------------------------------- | ---------------- | --------------------- |
-| Contains atoms/derived/effects            | ❌ **FORBIDDEN** | ✅ **REQUIRED**       |
-| Wraps external I/O (API, storage, crypto) | ✅ **REQUIRED**  | ❌ **NEVER**          |
-| Pure functions / async operations         | ✅ Yes           | Actions call services |
-
-## Naming Convention (MUST Follow)
-
-| Element  | Pattern        | Example                                |
-| -------- | -------------- | -------------------------------------- |
-| Variable | `*Service`     | `authService`, `cryptoService`         |
-| File     | `*.service.ts` | `auth.service.ts`, `crypto.service.ts` |
-| Location | `services/`    | `src/services/auth/auth.service.ts`    |
-
-## Key Distinction (CRITICAL)
-
-Services are **stateless** - they **MUST NEVER** contain atoms, derived, or effects. They wrap external I/O (APIs, storage, crypto) and **MUST** be injected into stores via `define()`.
-
-## Full Template
+## Template
 
 ```typescript
-/**
- * @service serviceName
- *
- * @description Brief description of what this service handles
- *
- * @methods
- * - methodName(args) - What it does
- * - anotherMethod() - What it does
- *
- * @throws
- * - ErrorType - When this error occurs
- *
- * @example
- * // Usage in a store
- * const myStore = define(() => {
- *   const svc = serviceName();
- *   // use svc.methodName()
- * });
- */
-export const serviceName = define(
-  (): ServiceInterface => ({
-    methodName: async (args) => {
-      // Implementation
-    },
-  })
-);
-```
+// services/[name]/[name].service.ts
+import { define } from "atomirx";
 
-## Complete Example
+// ==================== Types ====================
 
-```typescript
-/**
- * @service authService
- *
- * @description Handles WebAuthn/Passkey authentication operations.
- * Wraps browser WebAuthn API for credential creation and assertion.
- *
- * @methods
- * - checkSupport() - Check browser WebAuthn/PRF support
- * - register(opts) - Create new passkey credential
- * - authenticate(opts) - Authenticate with existing passkey
- *
- * @throws
- * - AuthError - When WebAuthn operation fails
- * - NotSupportedError - When browser doesn't support WebAuthn
- *
- * @example
- * // In auth.store.ts
- * const authStore = define(() => {
- *   const auth = authService();
- *
- *   const login = async () => {
- *     const result = await auth.authenticate({});
- *     if (result.success) user$.set(result.user);
- *   };
- * });
- */
-export const authService = define(
-  (): AuthService => ({
-    checkSupport: async () => {
-      const webauthn = !!window.PublicKeyCredential;
-      const platformAuthenticator =
-        await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-      return { webauthn, platformAuthenticator };
-    },
+export interface EntityDTO {
+  id: string;
+  name: string;
+  createdAt: string;
+}
 
-    register: async (opts) => {
-      // WebAuthn credential creation
-    },
+export interface CreateEntityInput {
+  name: string;
+}
 
-    authenticate: async (opts) => {
-      // WebAuthn credential assertion
-    },
-  })
-);
-```
+export interface UpdateEntityInput {
+  name?: string;
+}
 
-## Minimal Template (Simple Services)
+export interface EntityService {
+  fetch: (id: string) => Promise<EntityDTO>;
+  list: (params?: { limit?: number; offset?: number }) => Promise<EntityDTO[]>;
+  create: (input: CreateEntityInput) => Promise<EntityDTO>;
+  update: (id: string, input: UpdateEntityInput) => Promise<EntityDTO>;
+  delete: (id: string) => Promise<void>;
+}
 
-For simple services, use condensed format:
+// ==================== Service ====================
 
-```typescript
-/**
- * @service storageService
- * @methods get(key), set(key, value), remove(key)
- */
-export const storageService = define(
-  (): StorageService => ({
-    get: (key) => localStorage.getItem(key),
-    set: (key, val) => localStorage.setItem(key, val),
-    remove: (key) => localStorage.removeItem(key),
-  })
-);
-```
+export const entityService = define((): EntityService => {
+  const BASE_URL = "/api/entities";
 
-## Service with Dependencies
-
-Services can depend on other services:
-
-```typescript
-/**
- * @service apiService
- *
- * @description HTTP client with authentication
- *
- * @dependencies
- * - authService - For getting auth tokens
- *
- * @methods
- * - get(url) - Authenticated GET request
- * - post(url, body) - Authenticated POST request
- */
-export const apiService = define((): ApiService => {
-  const auth = authService(); // Inject dependency
-
-  const getHeaders = async () => ({
-    Authorization: `Bearer ${await auth.getToken()}`,
-  });
+  const handleResponse = async <T>(response: Response): Promise<T> => {
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Request failed" }));
+      throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return response.json();
+  };
 
   return {
-    get: async (url) => {
-      const headers = await getHeaders();
-      return fetch(url, { headers }).then((r) => r.json());
+    fetch: async (id) => {
+      const res = await fetch(`${BASE_URL}/${id}`);
+      return handleResponse<EntityDTO>(res);
     },
-    post: async (url, body) => {
-      const headers = await getHeaders();
-      return fetch(url, {
+
+    list: async (params = {}) => {
+      const searchParams = new URLSearchParams();
+      if (params.limit) searchParams.set("limit", String(params.limit));
+      if (params.offset) searchParams.set("offset", String(params.offset));
+
+      const url = searchParams.toString() ? `${BASE_URL}?${searchParams}` : BASE_URL;
+      const res = await fetch(url);
+      return handleResponse<EntityDTO[]>(res);
+    },
+
+    create: async (input) => {
+      const res = await fetch(BASE_URL, {
         method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }).then((r) => r.json());
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      return handleResponse<EntityDTO>(res);
+    },
+
+    update: async (id, input) => {
+      const res = await fetch(`${BASE_URL}/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      return handleResponse<EntityDTO>(res);
+    },
+
+    delete: async (id) => {
+      const res = await fetch(`${BASE_URL}/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Failed to delete ${id}`);
     },
   };
 });
 ```
 
-## Override Pattern for Testing (REQUIRED)
+## Structure
 
-**MUST** use `define()` to enable testing with `override()`:
+```
+services/
+└── [name]/
+    ├── [name].service.ts  # Service definition
+    └── index.ts           # Export
+```
+
+## Checklist
+
+| Item                  | Required |
+| --------------------- | -------- |
+| Use `define()`        | ✅       |
+| Return type interface | ✅       |
+| Pure functions only   | ✅       |
+| NO atoms              | ✅       |
+| NO side effects       | ✅       |
+| Error handling        | ✅       |
+
+## Naming
+
+| Type    | Pattern              | Example              |
+| ------- | -------------------- | -------------------- |
+| Service | `[name]Service`      | `entityService`      |
+| File    | `[name].service.ts`  | `entity.service.ts`  |
+| Methods | verb-led             | `fetch`, `create`    |
+
+## Mocking for Tests
 
 ```typescript
-// MUST define with interface for type safety
-export const cryptoService = define(
-  (): CryptoService => ({
-    encrypt: async (data, key) => {
-      /* real implementation */
-    },
-    decrypt: async (data, key) => {
-      /* real implementation */
-    },
-  })
-);
+describe("entityStore", () => {
+  beforeEach(() => {
+    entityService.reset();
+    entityStore.reset();
+  });
 
-// In tests: MUST use override() for mocking
-cryptoService.override(() => ({
-  encrypt: jest.fn().mockResolvedValue("encrypted"),
-  decrypt: jest.fn().mockResolvedValue("decrypted"),
-}));
+  it("should fetch entity", async () => {
+    entityService.override(() => ({
+      fetch: async (id) => ({ id, name: "Mock", createdAt: "2024-01-01" }),
+      list: async () => [],
+      create: async () => ({ id: "new", name: "New", createdAt: "2024-01-01" }),
+      update: async (id, input) => ({ id, name: input.name ?? "", createdAt: "2024-01-01" }),
+      delete: async () => {},
+    }));
 
-// MUST reset after tests
-afterEach(() => {
-  cryptoService.reset();
+    const store = entityStore();
+    const entity = await store.fetchEntity("123");
+    expect(entity.name).toBe("Mock");
+  });
 });
 ```
 
-## Service Rules Summary (MUST Follow)
+## Platform Override
 
-| Rule      | Requirement                                                                |
-| --------- | -------------------------------------------------------------------------- |
-| State     | **MUST NEVER** contain atoms, derived, or effects                          |
-| I/O       | **MUST** wrap external I/O (API, storage, crypto)                          |
-| Naming    | **MUST** use `*Service` suffix and `*.service.ts` file                     |
-| Module    | **MUST** use `define()` for testability                                    |
-| Testing   | **MUST** use `override()` for mocking, `reset()` after tests               |
-| Injection | **MUST** be consumed via invocation in stores, **NEVER** imported directly |
+```typescript
+// services/storage/storage.service.ts
+export interface StorageService {
+  get: (key: string) => Promise<string | null>;
+  set: (key: string, value: string) => Promise<void>;
+  remove: (key: string) => Promise<void>;
+}
+
+export const storageService = define((): StorageService => {
+  throw new Error("StorageService not implemented. Override for platform.");
+});
+
+// services/storage/storage.web.ts
+export const webStorageService = define((): StorageService => ({
+  get: async (key) => localStorage.getItem(key),
+  set: async (key, value) => localStorage.setItem(key, value),
+  remove: async (key) => localStorage.removeItem(key),
+}));
+
+// services/storage/storage.native.ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+export const nativeStorageService = define((): StorageService => ({
+  get: (key) => AsyncStorage.getItem(key),
+  set: (key, value) => AsyncStorage.setItem(key, value),
+  remove: (key) => AsyncStorage.removeItem(key),
+}));
+
+// app/init.ts
+import { storageService } from "@/services/storage/storage.service";
+import { webStorageService } from "@/services/storage/storage.web";
+
+storageService.override(webStorageService);
+```
+
+## Usage in Store
+
+```typescript
+import { entityService } from "@/services/entity/entity.service";
+
+export const entityStore = define(() => {
+  const api = entityService(); // Inject via invocation
+
+  const entities$ = atom<EntityDTO[]>([], { meta: { key: "entity.list" } });
+
+  const loadEntities = async () => {
+    const data = await api.list();
+    entities$.set(data);
+  };
+
+  return { ...readonly({ entities$ }), loadEntities };
+});
+```

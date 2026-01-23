@@ -1,43 +1,34 @@
 # Async Patterns
 
-atomirx provides powerful utilities for working with multiple async atoms.
-
 ## Summary
 
-| Utility     | Input           | Output                   | Behavior                           |
-| ----------- | --------------- | ------------------------ | ---------------------------------- |
-| `all()`     | Array of atoms  | Array of values          | Suspends until all ready           |
-| `any()`     | Record of atoms | `{ key, value }` (first) | First to resolve wins              |
-| `race()`    | Record of atoms | `{ key, value }` (first) | First to settle (ready/error) wins |
-| `settled()` | Array of atoms  | Array of SettledResult   | Suspends until all settled         |
-| `and()`     | Array of conds  | boolean                  | Logical AND with short-circuit     |
-| `or()`      | Array of conds  | boolean                  | Logical OR with short-circuit      |
+| Utility     | Input           | Output                 | Behavior                   |
+| ----------- | --------------- | ---------------------- | -------------------------- |
+| `all()`     | Array of atoms  | Array of values        | Waits for all              |
+| `any()`     | Record of atoms | `{ key, value }`       | First to resolve           |
+| `race()`    | Record of atoms | `{ key, value }`       | First to settle            |
+| `settled()` | Array of atoms  | Array of SettledResult | Waits for all settled      |
+| `and()`     | Array of conds  | boolean                | AND with short-circuit     |
+| `or()`      | Array of conds  | boolean                | OR with short-circuit      |
 
-## all() - Wait for All (like Promise.all)
+## all() — Promise.all
 
-Suspends until ALL atoms resolve. Returns array of values.
+Waits for ALL atoms. Returns array.
 
 ```typescript
-const user$ = atom(fetchUser());
-const posts$ = atom(fetchPosts());
-const comments$ = atom(fetchComments());
-
 const dashboard$ = derived(({ all }) => {
   const [user, posts, comments] = all([user$, posts$, comments$]);
   return { user, posts, comments };
 });
 ```
 
-**Use when:** You need all data before rendering.
+**Use when:** Need all data before rendering.
 
-## any() - First Ready (like Promise.any)
+## any() — Promise.any
 
-Returns first successfully resolved value. Uses object input for key identification.
+Returns first resolved. Uses object for key identification.
 
 ```typescript
-const primaryApi$ = atom(fetchFromPrimary());
-const fallbackApi$ = atom(fetchFromFallback());
-
 const data$ = derived(({ any }) => {
   const result = any({ primary: primaryApi$, fallback: fallbackApi$ });
   // result: { key: "primary" | "fallback", value: T }
@@ -45,36 +36,28 @@ const data$ = derived(({ any }) => {
 });
 ```
 
-**Use when:** You have redundant data sources and want the fastest.
+**Use when:** Multiple redundant sources, want fastest.
 
-## race() - First Settled (like Promise.race)
+## race() — Promise.race
 
-Returns first to settle (ready OR error). Uses object input for key identification.
+Returns first settled (ready OR error). Uses object.
 
 ```typescript
-const cache$ = atom(checkCache());
-const api$ = atom(fetchFromApi());
-
 const data$ = derived(({ race }) => {
   const result = race({ cache: cache$, api: api$ });
-  // result: { key: "cache" | "api", value: T }
   return result.value;
 });
 ```
 
-**Use when:** You want to show whatever resolves first, including errors.
+**Use when:** Show whatever resolves first.
 
-## settled() - All Results (like Promise.allSettled)
+## settled() — Promise.allSettled
 
-Returns status for each atom. Suspends until all are settled.
+Returns status for each. Waits until all settled.
 
 ```typescript
-const user$ = atom(fetchUser());
-const posts$ = atom(fetchPosts());
-
 const results$ = derived(({ settled }) => {
   const [userResult, postsResult] = settled([user$, posts$]);
-
   return {
     user: userResult.status === "ready" ? userResult.value : null,
     posts: postsResult.status === "ready" ? postsResult.value : [],
@@ -83,7 +66,7 @@ const results$ = derived(({ settled }) => {
 });
 ```
 
-**Use when:** You want to handle partial failures gracefully.
+**Use when:** Handle partial failures gracefully.
 
 ### SettledResult Type
 
@@ -93,25 +76,18 @@ type SettledResult<T> =
   | { status: "error"; error: unknown };
 ```
 
-## state() - Get State Without Throwing
+## state() — No Throwing
 
-Get atom state without triggering Suspense. Returns state object directly.
+Get state without Suspense.
 
 ```typescript
 const data$ = derived(({ state }) => {
   const userState = state(user$);
-
-  if (userState.status === "loading") {
-    return { loading: true };
-  }
-  if (userState.status === "error") {
-    return { error: userState.error };
-  }
+  if (userState.status === "loading") return { loading: true };
+  if (userState.status === "error") return { error: userState.error };
   return { user: userState.value };
 });
 ```
-
-**Use when:** You want to handle loading/error manually without Suspense.
 
 ### AtomState Type
 
@@ -124,25 +100,18 @@ type AtomState<T> =
 
 ## Combining Patterns
 
-### Graceful Degradation with settled()
+### Graceful Degradation
 
 ```typescript
 const dashboard$ = derived(({ read, settled }) => {
-  // Required data
-  const user = read(user$);
+  const user = read(user$); // Required
 
-  // Optional data with graceful degradation
-  const [analyticsResult, notificationsResult] = settled([
-    analytics$,
-    notifications$,
-  ]);
+  const [analyticsResult, notificationsResult] = settled([analytics$, notifications$]);
 
   return {
     user,
-    analytics:
-      analyticsResult.status === "ready" ? analyticsResult.value : null,
-    notifications:
-      notificationsResult.status === "ready" ? notificationsResult.value : [],
+    analytics: analyticsResult.status === "ready" ? analyticsResult.value : null,
+    notifications: notificationsResult.status === "ready" ? notificationsResult.value : [],
     warnings: [analyticsResult, notificationsResult]
       .filter((r) => r.status === "error")
       .map((r) => r.error),
@@ -150,96 +119,70 @@ const dashboard$ = derived(({ read, settled }) => {
 });
 ```
 
-### Cache-First with race()
+### Cache-First
 
 ```typescript
 const article$ = derived(({ race }) => {
-  const result = race({
-    cache: cachedArticle$,
-    network: fetchedArticle$,
-  });
-
-  console.log(`Data from: ${result.key}`);
+  const result = race({ cache: cachedArticle$, network: fetchedArticle$ });
+  console.log(`From: ${result.key}`);
   return result.value;
 });
 ```
 
-### Parallel Loading with all()
+### Parallel Loading
 
 ```typescript
-// In React
 const [user, posts, comments] = useSelector(({ all }) =>
   all([user$, posts$, comments$])
 );
-
-// All three load in parallel, component renders when all ready
 ```
 
-## and() - Logical AND
+## and() — Logical AND
 
-Short-circuit AND evaluation. Returns true if ALL conditions are truthy.
+Short-circuit. Returns true if ALL truthy.
 
 ```typescript
 const canEdit$ = derived(({ and }) => and([isLoggedIn$, hasPermission$]));
 
-// With lazy evaluation (only check if previous is true)
-const canDelete$ = derived(({ and }) =>
-  and([
-    isLoggedIn$, // Always evaluated
-    () => hasDeletePermission$, // Only evaluated if logged in
-  ])
-);
+// Lazy evaluation
+const canDelete$ = derived(({ and }) => and([
+  isLoggedIn$,
+  () => hasDeletePermission$, // Only if logged in
+]));
 ```
-
-**Use when:** You need boolean logic with atoms, especially with expensive conditions.
 
 ### Condition Types
 
 ```typescript
 type Condition =
-  | boolean // Static value
-  | Atom<unknown> // Always read
-  | (() => boolean | Atom<unknown>); // Lazy evaluation
+  | boolean              // Static
+  | Atom<unknown>        // Always read
+  | (() => boolean | Atom<unknown>); // Lazy
 ```
 
-## or() - Logical OR
+## or() — Logical OR
 
-Short-circuit OR evaluation. Returns true if ANY condition is truthy.
+Short-circuit. Returns true if ANY truthy.
 
 ```typescript
 const hasData$ = derived(({ or }) => or([cacheData$, apiData$]));
 
-// With lazy fallback chain
-const data$ = derived(({ or }) =>
-  or([
-    () => primaryData$, // Try primary first
-    () => fallbackData$, // Only if primary is falsy
-  ])
-);
+// Lazy fallback
+const data$ = derived(({ or }) => or([
+  () => primaryData$,
+  () => fallbackData$,
+]));
 ```
 
-**Use when:** You want to check multiple sources in order, stopping at first truthy.
-
-## Combining Boolean and Async Patterns
-
-### Complex Conditional Logic
+## Boolean + Async
 
 ```typescript
 // (A && B) || C
 const result$ = derived(({ or, and }) => or([and([a$, b$]), c$]));
 
-// A || (B && C)
-const result2$ = derived(({ or, and }) => or([a$, and([b$, c$])]));
-```
-
-### Guard Expensive Operations
-
-```typescript
+// Guard expensive ops
 const data$ = derived(({ and, read }) => {
-  // Only read expensive atom if conditions met
-  if (!and([isLoggedIn$, hasPermission$])) {
-    return null;
-  }
+  if (!and([isLoggedIn$, hasPermission$])) return null;
   return read(expensiveData$);
 });
 ```

@@ -1,215 +1,205 @@
-# Store Documentation Template
+# Store Template
 
-**MUST** use this JSDoc template when documenting atomirx stores to help both humans and AI understand the reactive structure.
+Stores = stateful modules with atoms. Use `define()`.
 
-## When to Use Store (CRITICAL)
-
-A **Store** is for **stateful** reactive containers that manage atoms.
-
-| Criteria                       | Store                      | Service          |
-| ------------------------------ | -------------------------- | ---------------- |
-| Contains atoms/derived/effects | ✅ **REQUIRED**            | ❌ **FORBIDDEN** |
-| Manages reactive state         | ✅ **REQUIRED**            | ❌ **NEVER**     |
-| Wraps external I/O             | ❌ **NEVER** (use service) | ✅ **REQUIRED**  |
-
-## Naming Convention (MUST Follow)
-
-| Element  | Pattern               | Example                           |
-| -------- | --------------------- | --------------------------------- |
-| Variable | `*Store`              | `authStore`, `todosStore`         |
-| File     | `*.store.ts`          | `auth.store.ts`, `todos.store.ts` |
-| Location | `stores/` or `state/` | `src/stores/auth.store.ts`        |
-
-## Full Template
+## Template
 
 ```typescript
-/**
- * @store storeName
- *
- * @description Brief description of what this store manages
- *
- * @atoms
- * - atomName$ - Description of what this atom stores
- * - anotherAtom$ - Description
- *
- * @derived
- * - derivedName$ - What it computes (depends on: atom1$, atom2$)
- *
- * @effects (single effect = single workflow)
- * - effectName - What it does (watches: atom1$, atom2$) (writes: atom3$)
- *
- * @actions
- * - actionName(args) - What it does (writes: atom1$, atom2$)
- * - anotherAction() - What it does (reads: atom1$, writes: atom2$)
- *
- * @reactive-flow
- * trigger → atom$ → [derived$] + [effect] → result
- *
- * @example
- * // Usage example
- * const { action, state$ } = myStore();
- * action(args);
- * const value = useSelector(state$);
- */
-const storeName = define(() => {
-  // Implementation
-});
-```
+// features/[feature]/stores/[name].store.ts
+import { atom, derived, effect, readonly, batch, define } from "atomirx";
+import { someService } from "@/services/some/some.service";
 
-## Reactive Flow Notation
+// ==================== Types ====================
 
-Use arrows to show data flow direction:
+interface EntityState {
+  id: string;
+  name: string;
+  status: "idle" | "loading" | "error";
+}
 
-```
-action() → atom$ → derived$ → UI
-                 → effect → external system
-```
+// ==================== Store ====================
 
-### Common Flow Patterns
+export const entityStore = define(() => {
+  // ---------- Dependencies ----------
+  const api = someService();
 
-```
-// Simple: action updates atom, UI reflects
-updateUser(data) → user$ → UI
+  // ---------- State ----------
+  const entities$ = atom<Map<string, EntityState>>(new Map(), {
+    meta: { key: "entity.entities" },
+  });
 
-// Derived chain: atom feeds derived
-setFilter(f) → filter$ → filteredItems$ → UI
+  const currentId$ = atom<string | undefined>(undefined, {
+    meta: { key: "entity.currentId" },
+  });
 
-// Effect side effect: atom triggers async
-login(creds) → credentials$ → [auth effect] → authToken$
+  const filter$ = atom("", {
+    meta: { key: "entity.filter" },
+  });
 
-// Deferred loading: ready() suspends until data
-navigateTo(id) → currentId$ → [currentEntity$ suspends] + [effect fetches]
-                            → cache$ updated → currentEntity$ resolves
-```
+  // ---------- Derived ----------
+  const currentEntity$ = derived(
+    ({ read, ready }) => {
+      const id = ready(currentId$);
+      return read(entities$).get(id) ?? null;
+    },
+    { meta: { key: "entity.current" }, fallback: null }
+  );
 
-## Dependency Graph Comment
+  const filteredEntities$ = derived(
+    ({ read }) => {
+      const entities = read(entities$);
+      const filter = read(filter$).toLowerCase();
+      if (!filter) return [...entities.values()];
+      return [...entities.values()].filter((e) =>
+        e.name.toLowerCase().includes(filter)
+      );
+    },
+    { meta: { key: "entity.filtered" } }
+  );
 
-For complex stores, include ASCII graph at top:
+  // ---------- Effects ----------
+  effect(
+    ({ read }) => {
+      const current = read(currentEntity$);
+      if (current) localStorage.setItem("lastEntity", current.id);
+    },
+    { meta: { key: "entity.persistLast" } }
+  );
 
-```typescript
-const articleStore = define(() => {
-  // ┌─────────────────────────────────────────────────────────┐
-  // │ Dependency Graph:                                       │
-  // │                                                         │
-  // │  currentArticleId$                                      │
-  // │         │                                               │
-  // │         ├──────────────┬─────────────────┐              │
-  // │         ▼              ▼                 ▼              │
-  // │  currentArticle$   fetchEffect      (subscribers)       │
-  // │   (ready waits)    (auto-fetch)                         │
-  // │         │              │                                │
-  // │         ▼              ▼                                │
-  // │      articleCache$ ◄───┘                                │
-  // │                                                         │
-  // │  Legend:                                                │
-  // │  ─▶ reactive dependency (read/ready)                    │
-  // │  ◄─ writes to                                           │
-  // └─────────────────────────────────────────────────────────┘
-  // ... implementation
-});
-```
+  // ---------- Actions ----------
+  const setFilter = (value: string) => filter$.set(value);
 
-## Inline Action Documentation
+  const selectEntity = (id: string | undefined) => currentId$.set(id);
 
-Document each action with its reactive flow:
-
-```typescript
-return {
-  // ─────────────────────────────────────────────────────────────
-  // navigateTo(id) - Navigate to entity
-  // ─────────────────────────────────────────────────────────────
-  // Flow:
-  // 1. Set currentId$ to new ID
-  // 2. If cached: derived resolves immediately
-  //    If not cached: derived suspends → effect fetches
-  // 3. When cache updated, derived resolves → UI updates
-  navigateTo: (id: string) => currentId$.set(id),
-
-  // ─────────────────────────────────────────────────────────────
-  // refresh() - Force refetch current entity
-  // ─────────────────────────────────────────────────────────────
-  // Flow:
-  // 1. Remove current from cache
-  // 2. Derived suspends → UI shows loading
-  // 3. Effect detects miss → fetches
-  // 4. Cache updated → UI shows fresh data
-  refresh: () => {
-    cache$.set((prev) => {
-      const { [currentId$.get()]: _, ...rest } = prev;
-      return rest;
+  const fetchEntity = async (id: string) => {
+    batch(() => {
+      entities$.set((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(id);
+        next.set(id, { ...(existing ?? { id, name: "" }), status: "loading" });
+        return next;
+      });
     });
-  },
-};
-```
 
-## Minimal Template (Small Stores)
+    try {
+      const data = await api.fetch(id);
+      entities$.set((prev) => {
+        const next = new Map(prev);
+        next.set(id, { ...data, status: "idle" });
+        return next;
+      });
+      return data;
+    } catch (error) {
+      entities$.set((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(id);
+        if (existing) next.set(id, { ...existing, status: "error" });
+        return next;
+      });
+      throw error;
+    }
+  };
 
-For simple stores, use condensed format. **MUST still include `meta.key` and `readonly()`:**
+  const updateEntity = async (id: string, updates: Partial<EntityState>) => {
+    const prev = entities$.get().get(id);
+    if (!prev) throw new Error(`Entity ${id} not found`);
 
-```typescript
-/**
- * @store counterStore
- * @atoms count$ - Current count value
- * @actions increment(), decrement(), reset()
- */
-const counterStore = define(() => {
-  // MUST define meta.key
-  const count$ = atom(0, { meta: { key: "counter.count" } });
+    // Optimistic
+    entities$.set((map) => {
+      const next = new Map(map);
+      next.set(id, { ...prev, ...updates });
+      return next;
+    });
+
+    try {
+      await api.update(id, updates);
+    } catch (error) {
+      // Rollback
+      entities$.set((map) => {
+        const next = new Map(map);
+        next.set(id, prev);
+        return next;
+      });
+      throw error;
+    }
+  };
+
+  const reset = () => {
+    batch(() => {
+      entities$.reset();
+      currentId$.reset();
+      filter$.reset();
+    });
+  };
+
+  // ---------- Return ----------
   return {
-    // MUST use readonly() to prevent external mutations
-    ...readonly({ count$ }),
-    increment: () => count$.set((c) => c + 1),
-    decrement: () => count$.set((c) => c - 1),
-    reset: () => count$.set(0),
+    // Read-only state
+    ...readonly({ entities$, currentId$, filter$, currentEntity$, filteredEntities$ }),
+
+    // Actions
+    setFilter,
+    selectEntity,
+    fetchEntity,
+    updateEntity,
+    reset,
   };
 });
 ```
 
-## Key Naming Convention (CRITICAL)
+## Structure
 
-**MUST define `meta.key` for ALL atoms, derived, and effects. NEVER skip this.**
-
-```typescript
-// ✅ REQUIRED - Atoms with meta.key
-const user$ = atom<User | null>(null, {
-  meta: { key: "auth.user" },
-});
-
-// ✅ REQUIRED - Derived with meta.key
-const isAuthenticated$ = derived(({ read }) => read(user$) !== null, {
-  meta: { key: "auth.isAuthenticated" },
-});
-
-// ✅ REQUIRED - Effects with meta.key
-effect(
-  ({ read }) => {
-    const id = read(currentId$);
-    if (id) fetchEntity(id);
-  },
-  { meta: { key: "article.autoFetch" } }
-);
-
-// ❌ FORBIDDEN - Missing meta.key (hard to debug)
-const user$ = atom<User | null>(null);
-const isAuth$ = derived(({ read }) => read(user$) !== null);
-effect(({ read }) => { ... });
+```
+features/
+└── [feature]/
+    └── stores/
+        ├── [name].store.ts    # Store definition
+        └── index.ts           # Export
 ```
 
-| Pattern                 | Example                    |
-| ----------------------- | -------------------------- |
-| `storeName.atomName`    | `auth.user`, `todos.items` |
-| `storeName.derivedName` | `auth.isAuthenticated`     |
-| `storeName.effectName`  | `sync.autoSave`            |
+## Checklist
 
-## Store Rules Summary (MUST Follow)
+| Item                     | Required |
+| ------------------------ | -------- |
+| Use `define()`           | ✅       |
+| `meta.key` on ALL atoms  | ✅       |
+| `meta.key` on derived    | ✅       |
+| `meta.key` on effects    | ✅       |
+| `readonly()` for state   | ✅       |
+| Actions return Promises  | When async |
+| Use `batch()` multi-update | ✅     |
+| Inject services via call | ✅       |
+| Optimistic + rollback    | For UX   |
 
-| Rule      | Requirement                                                          |
-| --------- | -------------------------------------------------------------------- |
-| State     | **MUST** contain atoms, derived, and/or effects                      |
-| I/O       | **MUST NEVER** wrap I/O directly - inject services instead           |
-| Naming    | **MUST** use `*Store` suffix and `*.store.ts` file                   |
-| meta.key  | **MUST** define for ALL atoms, derived, and effects                  |
-| readonly  | **MUST** export atoms via `readonly()` to prevent external mutations |
-| Mutations | **MUST** co-locate all `.set()` calls in the store                   |
-| Module    | **MUST** use `define()` for testability                              |
-| Effects   | **MUST** have single effect per workflow                             |
+## Naming
+
+| Type      | Pattern          | Example                |
+| --------- | ---------------- | ---------------------- |
+| Store     | `[name]Store`    | `entityStore`          |
+| File      | `[name].store.ts`| `entity.store.ts`      |
+| Atoms     | `[name]$`        | `entities$`, `filter$` |
+| Derived   | `[computed]$`    | `currentEntity$`       |
+| Actions   | verb-led         | `fetchEntity`, `reset` |
+
+## Usage
+
+```tsx
+function EntityList() {
+  const store = entityStore();
+
+  const entities = useSelector(({ read }) => read(store.filteredEntities$));
+  const stable = useStable({
+    onSelect: (id: string) => store.selectEntity(id),
+  });
+
+  return (
+    <ul>
+      {entities.map((e) => (
+        <li key={e.id} onClick={() => stable.onSelect(e.id)}>
+          {e.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```

@@ -1,6 +1,4 @@
-# Atom Patterns - MutableAtom Features
-
-The `atom()` function creates a mutable state container with several advanced features.
+# Atom Patterns
 
 ## Overview
 
@@ -12,57 +10,43 @@ const data$ = atom(() => expensiveInit());
 
 ## Core API
 
-| Method       | Signature                    | Description                        |
-| ------------ | ---------------------------- | ---------------------------------- |
-| `get()`      | `() => T`                    | Get current value                  |
-| `set()`      | `(value \| reducer) => void` | Update value                       |
-| `reset()`    | `() => void`                 | Reset to initial value             |
-| `dirty()`    | `() => boolean`              | Check if modified since init/reset |
-| `on()`       | `(listener) => unsub`        | Subscribe to changes               |
-| `_dispose()` | `() => void`                 | Internal: cleanup (used by pool)   |
+| Method       | Signature                  | Description              |
+| ------------ | -------------------------- | ------------------------ |
+| `get()`      | `() => T`                  | Get current value        |
+| `set()`      | `(value \| reducer)`       | Update value             |
+| `reset()`    | `() => void`               | Reset to initial         |
+| `dirty()`    | `() => boolean`            | Changed since init/reset |
+| `on()`       | `(listener) => unsub`      | Subscribe to changes     |
+| `_dispose()` | `() => void`               | Cleanup (used by pool)   |
 
 ## Lazy Initialization
 
-Pass a function to defer computation until atom creation:
-
 ```typescript
-// Computed at creation time
 const config$ = atom(() => parseExpensiveConfig());
 
-// reset() re-runs the initializer for fresh values
+// reset() re-runs initializer
 const timestamp$ = atom(() => Date.now());
-timestamp$.reset(); // Gets new timestamp
+timestamp$.reset(); // New timestamp
 
-// To store a function as value, wrap it:
+// Store function as value
 const callback$ = atom(() => () => console.log("hello"));
 ```
 
 ## Dirty Tracking
 
-Track if value has changed since initialization or last reset:
-
 ```typescript
 const form$ = atom({ name: "", email: "" }, { meta: { key: "form" } });
 
-form$.dirty(); // false - just initialized
-
+form$.dirty(); // false
 form$.set({ name: "John", email: "" });
-form$.dirty(); // true - value changed
-
+form$.dirty(); // true
 form$.reset();
-form$.dirty(); // false - reset clears dirty flag
+form$.dirty(); // false
 ```
-
-### Use Cases
-
-- Enable/disable save buttons
-- Warn on unsaved changes
-- Track form modifications
 
 ```tsx
 function FormButtons() {
   const isDirty = useSelector(() => form$.dirty());
-
   return (
     <div>
       <button disabled={!isDirty}>Save</button>
@@ -72,173 +56,129 @@ function FormButtons() {
 }
 ```
 
-## AtomContext - Signal & Cleanup
+## AtomContext — Signal & Cleanup
 
-When using lazy initialization, the initializer receives a context with abort signal and cleanup registration:
+Lazy initializer receives context:
 
 ```typescript
 interface AtomContext {
-  /** AbortSignal aborted when atom value changes via set() or reset() */
-  signal: AbortSignal;
-
-  /** Register cleanup function that runs on value change or reset */
-  onCleanup(cleanup: VoidFunction): void;
+  signal: AbortSignal;           // Aborted on set()/reset()
+  onCleanup(fn: VoidFunction): void; // Runs on value change
 }
 ```
 
 ### Abort Signal
 
-Cancel pending operations when atom value changes:
-
 ```typescript
-const data$ = atom((context) => {
+const data$ = atom((ctx) => {
   const controller = new AbortController();
-
-  // Abort our controller when atom changes
-  context.signal.addEventListener("abort", () => controller.abort());
-
+  ctx.signal.addEventListener("abort", () => controller.abort());
   return fetch("/api/data", { signal: controller.signal });
 });
 
-// When set() is called, previous fetch is aborted
-data$.set(fetch("/api/data/new"));
+data$.set(fetch("/api/data/new")); // Previous fetch aborted
 ```
 
-### Cleanup Registration
-
-Run cleanup when value changes:
+### Cleanup
 
 ```typescript
-const subscription$ = atom((context) => {
+const subscription$ = atom((ctx) => {
   const sub = websocket.subscribe("channel");
-
-  // Cleanup runs before value changes
-  context.onCleanup(() => sub.unsubscribe());
-
+  ctx.onCleanup(() => sub.unsubscribe());
   return sub;
 });
 
-// When reset() or set() is called:
-// 1. Previous subscription is unsubscribed
-// 2. New subscription is created
-subscription$.reset();
+subscription$.reset(); // Unsubscribes, creates new
 ```
 
-### Combined Pattern
+### Combined
 
 ```typescript
-const realtime$ = atom((context) => {
+const realtime$ = atom((ctx) => {
   const socket = new WebSocket("wss://api.example.com");
-
-  // Cleanup socket on atom change
-  context.onCleanup(() => socket.close());
-
-  // Also abort any fetch using the signal
-  fetchInitialData({ signal: context.signal });
-
+  ctx.onCleanup(() => socket.close());
+  fetchInitialData({ signal: ctx.signal });
   return socket;
 });
 ```
 
 ## Equality Options
 
-Control when subscribers are notified:
-
 ```typescript
-// Default: strict equality (Object.is)
+// Default: strict (Object.is)
 const count$ = atom(0);
 
-// Shallow equality for objects
+// Shallow
 const user$ = atom({ name: "", email: "" }, { equals: "shallow" });
-user$.set((prev) => ({ ...prev })); // No notification (shallow equal)
+user$.set((prev) => ({ ...prev })); // No notification
 
-// Deep equality for nested objects
+// Deep
 const config$ = atom({ nested: { value: 1 } }, { equals: "deep" });
 
-// Custom equality function
+// Custom
 const data$ = atom(
   { id: 1, timestamp: Date.now() },
-  { equals: (a, b) => a.id === b.id } // Only compare by id
+  { equals: (a, b) => a.id === b.id }
 );
 ```
 
-### Equality Shorthands
+| Shorthand    | Description                  |
+| ------------ | ---------------------------- |
+| `"strict"`   | Object.is (default, fastest) |
+| `"shallow"`  | Compare keys with Object.is  |
+| `"shallow2"` | 2 levels deep                |
+| `"shallow3"` | 3 levels deep                |
+| `"deep"`     | Full recursive (slowest)     |
 
-| Shorthand    | Description                                    |
-| ------------ | ---------------------------------------------- |
-| `"strict"`   | Object.is (default, fastest)                   |
-| `"shallow"`  | Compare object keys/array items with Object.is |
-| `"shallow2"` | 2 levels deep                                  |
-| `"shallow3"` | 3 levels deep                                  |
-| `"deep"`     | Full recursive comparison (slowest)            |
+## readonly() (REQUIRED)
 
-## readonly() Utility (IMPORTANT)
-
-**MUST** expose atoms as read-only to prevent external mutations:
+**MUST** expose atoms as read-only:
 
 ```typescript
 const myModule = define(() => {
-  const count$ = atom(0);
+  const count$ = atom(0, { meta: { key: "counter" } });
 
   return {
-    // Expose as read-only - consumers can't call set() or reset()
-    count$: readonly(count$),
-    // Mutations only through explicit actions
-    increment: () => count$.set((prev) => prev + 1),
-    decrement: () => count$.set((prev) => prev - 1),
+    count$: readonly(count$), // Consumers can't set()
+    increment: () => count$.set((p) => p + 1),
   };
 });
 
-// Usage:
+// Usage
 const { count$, increment } = myModule();
-count$.get(); // ✅ OK
-count$.on(console.log); // ✅ OK
-count$.set(5); // ❌ TypeScript error
-increment(); // ✅ Use action instead
+count$.get();   // ✅ OK
+count$.set(5);  // ❌ TypeScript error
+increment();    // ✅ Use action
 ```
 
-### Multiple atoms at once
+Multiple atoms:
 
 ```typescript
-return {
-  ...readonly({ count$, name$ }),
-  setName: (name: string) => name$.set(name),
-};
+return { ...readonly({ count$, name$ }), setName: (n) => name$.set(n) };
 ```
 
 ## Async Values
 
-Atom stores values as-is, including Promises:
+Atom stores Promises as-is:
 
 ```typescript
-// Store Promise directly
 const posts$ = atom(fetchPosts());
 posts$.get(); // Promise<Post[]>
-
-// Refetch
 posts$.set(fetchPosts()); // Store new Promise
 
-// With lazy init - reset() re-runs initializer
+// With lazy init
 const lazyPosts$ = atom(() => fetchPosts());
-lazyPosts$.reset(); // Refetches!
+lazyPosts$.reset(); // Refetches
 ```
 
-**Note:** MutableAtom does not unwrap Promises. Use `derived()` with `read()` for automatic Promise handling and Suspense integration.
+**Note:** Use `derived()` with `read()` for automatic Promise unwrapping and Suspense.
 
 ## Plugin System (.use())
 
-Atoms implement `Pipeable` for extension:
-
 ```typescript
 const count$ = atom(0)
-  .use((source) => ({
-    ...source,
-    double: () => source.get() * 2,
-  }))
-  .use((source) => ({
-    ...source,
-    triple: () => source.get() * 3,
-  }));
+  .use((src) => ({ ...src, double: () => src.get() * 2 }))
+  .use((src) => ({ ...src, triple: () => src.get() * 3 }));
 
 count$.double(); // 0
 count$.triple(); // 0
@@ -249,93 +189,50 @@ count$.triple(); // 0
 ### Form State
 
 ```typescript
-interface FormState {
-  values: Record<string, string>;
-  errors: Record<string, string>;
-  touched: Record<string, boolean>;
-}
-
 const form$ = atom<FormState>(
-  {
-    values: {},
-    errors: {},
-    touched: {},
-  },
+  { values: {}, errors: {}, touched: {} },
   { meta: { key: "contactForm" }, equals: "shallow" }
 );
 
-// Update single field
 const setField = (name: string, value: string) => {
-  form$.set((prev) => ({
-    ...prev,
-    values: { ...prev.values, [name]: value },
-    touched: { ...prev.touched, [name]: true },
+  form$.set((p) => ({
+    ...p,
+    values: { ...p.values, [name]: value },
+    touched: { ...p.touched, [name]: true },
   }));
 };
-
-// Check if form has unsaved changes
-const hasUnsavedChanges = () => form$.dirty();
 ```
 
 ### Cache with Expiration
 
 ```typescript
-const cache$ = atom((context) => {
+const cache$ = atom((ctx) => {
   const data = new Map<string, unknown>();
-
-  // Clear cache after 5 minutes
   const timeout = setTimeout(() => data.clear(), 300_000);
-  context.onCleanup(() => clearTimeout(timeout));
-
+  ctx.onCleanup(() => clearTimeout(timeout));
   return data;
 });
 ```
 
-### WebSocket Connection
+### WebSocket
 
 ```typescript
-const ws$ = atom((context) => {
+const ws$ = atom((ctx) => {
   const socket = new WebSocket("wss://api.example.com");
-
   socket.onopen = () => console.log("Connected");
-  socket.onerror = (e) => console.error("WS Error", e);
-
-  context.onCleanup(() => {
-    socket.close();
-    console.log("Disconnected");
-  });
-
+  ctx.onCleanup(() => socket.close());
   return socket;
 });
 
-// Reconnect
 ws$.reset(); // Closes old, creates new
 ```
 
-### Interval-based Updates
+## When to Use
 
-```typescript
-const clock$ = atom((context) => {
-  let time = new Date();
-
-  const interval = setInterval(() => {
-    time = new Date();
-    // Note: This pattern requires external notification
-    // Consider using effect() for interval-based updates
-  }, 1000);
-
-  context.onCleanup(() => clearInterval(interval));
-
-  return time;
-});
-```
-
-## When to Use MutableAtom vs Derived
-
-| Use Case                  | Use MutableAtom | Use Derived |
-| ------------------------- | --------------- | ----------- |
-| User input/form state     | ✅              | ❌          |
-| API response storage      | ✅              | ❌          |
-| Computed from other atoms | ❌              | ✅          |
-| Transformed async data    | ❌              | ✅          |
-| Cached calculations       | ❌              | ✅          |
+| Use Case                | MutableAtom | Derived |
+| ----------------------- | ----------- | ------- |
+| User input/form state   | ✅          | ❌      |
+| API response storage    | ✅          | ❌      |
+| Computed from atoms     | ❌          | ✅      |
+| Transformed async data  | ❌          | ✅      |
+| Cached calculations     | ❌          | ✅      |

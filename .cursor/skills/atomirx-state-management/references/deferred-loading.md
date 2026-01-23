@@ -1,207 +1,191 @@
-# Deferred Entity Loading Pattern
+# Deferred Loading with ready()
 
-Complete pattern for route-based entity loading with Suspense integration.
+## The Problem
 
-## Overview
-
-```mermaid
-graph TB
-    subgraph DependencyGraph["Reactive Dependency Graph"]
-        currentId["currentId$<br/>(set by route/action)"]
-
-        currentId --> currentEntity["currentEntity$<br/>(ready waits)"]
-        currentId --> effectFetch["effect()<br/>(fetches)"]
-        currentId --> UI["(UI components)"]
-
-        currentEntity --> cache["cache$"]
-        effectFetch -->|writes to| cache
-    end
-```
-
-## Complete Implementation
+When atom value is `undefined`/`null` during initialization:
 
 ```typescript
-import { atom, derived, effect, readonly, define } from "atomirx";
+// ❌ Problem: id starts undefined
+const currentUserId$ = atom<string | undefined>(undefined);
 
-interface Article {
-  id: string;
-  title: string;
-  content: string;
-}
-
-/**
- * @store articleStore
- *
- * @atoms
- * - currentArticleId$ - The ID from route params
- * - articleCache$ - Normalized cache of fetched articles
- * - currentArticle$ - Derived: current article (suspends via ready())
- *
- * @effects
- * - Auto-fetches article when ID changes and not cached
- *
- * @actions
- * - navigateTo(id) - Navigate to article
- * - invalidate(id) - Mark article stale (won't disrupt current view)
- * - refresh() - Force refetch current article
- *
- * @reactive-flow
- * navigateTo(id) → currentArticleId$ → [currentArticle$ suspends] + [effect fetches]
- *                                     → articleCache$ updated → currentArticle$ resolves
- */
-const articleStore = define(() => {
-  // Current article ID - set from route
-  const currentArticleId$ = atom<string | undefined>(undefined);
-
-  // Article cache - normalized storage
-  const articleCache$ = atom<Record<string, Article>>({});
-
-  // Current article - uses ready() to wait for both ID and cached data
-  const currentArticle$ = derived(({ ready }) => {
-    const id = ready(currentArticleId$);
-    return ready(articleCache$, (cache) => cache[id]);
-  });
-
-  // Fetch article when ID changes
-  effect(({ read }) => {
-    const id = read(currentArticleId$);
-    if (!id) return;
-
-    const cache = read(articleCache$);
-    if (cache[id]) return;
-
-    fetch(`/api/articles/${id}`)
-      .then((r) => r.json())
-      .then((article) => {
-        articleCache$.set((prev) => ({ ...prev, [id]: article }));
-      });
-  });
-
-  return {
-    ...readonly({ currentArticleId$, currentArticle$ }),
-
-    // Navigate to article
-    // Flow: Set ID → derived suspends (if not cached) → effect fetches → cache updated → UI shows
-    navigateTo: (id: string) => currentArticleId$.set(id),
-
-    // Soft invalidation - won't disrupt current view
-    // Flow: Remove from cache → next navigateTo will refetch
-    invalidate: (id: string) => {
-      if (id === currentArticleId$.get()) return;
-      articleCache$.set((prev) => {
-        const { [id]: _, ...rest } = prev;
-        return rest;
-      });
-    },
-
-    // Hard refresh - shows skeleton, refetches
-    // Flow: Remove current from cache → derived suspends → effect fetches → UI shows fresh
-    refresh() {
-      articleCache$.set((prev) => {
-        const { [currentArticleId$.get()]: _, ...rest } = prev;
-        return rest;
-      });
-    },
-  };
+const userProfile$ = derived(({ read, from }) => {
+  const userId = read(currentUserId$); // undefined initially
+  const user$ = from(userPool, userId); // Error: can't create entry
+  return read(user$);
 });
 ```
 
-## Action Flows
+## Solution: ready()
 
-### navigateTo(id)
+`ready()` returns `never` when value is `undefined`/`null`, blocking computation until value exists:
 
-```
-1. currentArticleId$.set(id)
-2. currentArticle$ recomputes:
-   - If cached: ready() succeeds → UI shows immediately
-   - If not cached: ready() suspends → UI shows <Skeleton />
-3. effect() runs in parallel:
-   - If cached: early return
-   - If not cached: fetch → update cache
-4. When cache updated, currentArticle$ resolves → UI shows data
+```typescript
+// ✅ Correct
+const userProfile$ = derived(({ read, ready, from }) => {
+  const userId = ready(currentUserId$); // Blocks until truthy
+  const user$ = from(userPool, userId);
+  return read(user$);
+});
 ```
 
-### invalidate(id)
+## How It Works
 
-```
-1. Guard: Skip if id === currentArticleId (don't disrupt view)
-2. Remove article from cache
-3. No immediate UI effect
-4. Next navigateTo(id) will trigger fresh fetch
+| Input                         | Output          |
+| ----------------------------- | --------------- |
+| `ready(atom<T \| undefined>)` | `T` when truthy |
+| Value is `undefined`/`null`   | Returns `never` |
+| Value is truthy               | Returns `T`     |
+
+```typescript
+const id$ = atom<string | undefined>(undefined);
+
+derived(({ ready }) => {
+  const id = ready(id$);
+  //    ^? string (not string | undefined)
+  return fetchUser(id);
+});
 ```
 
-### refresh()
+## Behavior
 
-```
-1. Remove current article from cache
-2. currentArticle$ suspends → UI shows <Skeleton />
-3. effect() detects cache miss → fetches
-4. Cache updated → UI shows fresh data
+```typescript
+const userId$ = atom<string | undefined>(undefined);
+
+const profile$ = derived(({ read, ready, from }) => {
+  const userId = ready(userId$);
+  const user$ = from(userPool, userId);
+  return read(user$);
+});
+
+// Initially:
+profile$.get(); // Promise never resolves (blocked)
+profile$.staleValue; // fallback if set, else undefined
+
+// After:
+userId$.set("user-123");
+await profile$.get(); // { name: "John", ... }
 ```
 
-## React Integration
+## Use Cases
+
+### Pool with Optional Params
+
+```typescript
+const currentEntityId$ = atom<string | undefined>(undefined);
+
+const entityDetails$ = derived(({ read, ready, from }) => {
+  const id = ready(currentEntityId$);
+  const entity$ = from(entityPool, id);
+  return read(entity$);
+}, { fallback: null });
+```
+
+### Dependent Computation
+
+```typescript
+const config$ = atom<Config | null>(null);
+const apiUrl$ = atom<string | undefined>(undefined);
+
+const data$ = derived(({ read, ready }) => {
+  const config = ready(config$);
+  const url = ready(apiUrl$);
+  return read(atom(() => fetch(`${url}/data?version=${config.version}`)));
+});
+```
+
+### Conditional UI
+
+```typescript
+function UserDashboard() {
+  const user = useSelector(({ read, ready }) => {
+    return ready(currentUser$);
+  });
+
+  return <Dashboard user={user} />;
+}
+
+// With state() fallback
+function UserCard() {
+  const result = useSelector(({ state }) => state(currentUser$));
+
+  if (result.status === "loading") return <Skeleton />;
+  if (result.status === "error") return <Error />;
+  if (!result.value) return <LoginPrompt />;
+  return <Card user={result.value} />;
+}
+```
+
+### Effect with Guard
+
+```typescript
+effect(({ read, ready }) => {
+  const userId = ready(currentUserId$);
+  analytics.identify(userId);
+}, { meta: { key: "analytics.identify" } });
+```
+
+### Multi-ready
+
+```typescript
+const report$ = derived(({ read, ready, from }) => {
+  const userId = ready(currentUserId$);
+  const projectId = ready(currentProjectId$);
+  const teamId = ready(currentTeamId$);
+
+  const user$ = from(userPool, userId);
+  const project$ = from(projectPool, projectId);
+  const team$ = from(teamPool, teamId);
+
+  const [user, project, team] = [read(user$), read(project$), read(team$)];
+  return { user, project, team };
+});
+```
+
+## ready() vs Manual Check
+
+```typescript
+// ❌ Verbose, TypeScript still sees string | undefined
+const profile$ = derived(({ read }) => {
+  const id = read(currentUserId$);
+  if (!id) return null;
+  return read(from(userPool, id)); // Type: still string | undefined
+});
+
+// ✅ Concise, TypeScript narrows to string
+const profile$ = derived(({ ready, read, from }) => {
+  const id = ready(currentUserId$);
+  //    ^? string
+  return read(from(userPool, id));
+});
+```
+
+## With Suspense
 
 ```tsx
-function ArticlePage() {
-  const { navigateTo } = articleStore();
-  const { id } = useParams();
-
-  useEffect(() => {
-    navigateTo(id);
-  }, [id]);
-
+function EntityPage() {
   return (
-    <Suspense fallback={<ArticleSkeleton />}>
-      <ArticleContent />
+    <Suspense fallback={<Skeleton />}>
+      <EntityDetails />
     </Suspense>
   );
 }
 
-function ArticleContent() {
-  const article = useSelector(articleStore().currentArticle$);
-  return (
-    <article>
-      <h1>{article.title}</h1>
-      <p>{article.content}</p>
-    </article>
-  );
+function EntityDetails() {
+  const entity = useSelector(({ read, ready, from }) => {
+    const id = ready(currentEntityId$); // Suspends until ID set
+    return read(from(entityPool, id));
+  });
+
+  return <Details entity={entity} />;
 }
 ```
 
-## Extended: With Loading/Error States
+## Summary
 
-For more control beyond Suspense:
-
-```typescript
-type CacheEntry<T> =
-  | { status: "loading" }
-  | { status: "error"; error: Error }
-  | { status: "success"; data: T };
-
-const articleCache$ = atom<Record<string, CacheEntry<Article>>>({});
-
-effect(({ read }) => {
-  const id = read(currentArticleId$);
-  if (!id) return;
-
-  const cache = read(articleCache$);
-  if (cache[id]) return;
-
-  articleCache$.set((prev) => ({ ...prev, [id]: { status: "loading" } }));
-
-  fetch(`/api/articles/${id}`)
-    .then((r) => r.json())
-    .then((article) =>
-      articleCache$.set((prev) => ({
-        ...prev,
-        [id]: { status: "success", data: article },
-      }))
-    )
-    .catch((error) =>
-      articleCache$.set((prev) => ({
-        ...prev,
-        [id]: { status: "error", error },
-      }))
-    );
-});
-```
+| Scenario                        | Solution                    |
+| ------------------------------- | --------------------------- |
+| Pool with optional params       | `ready(params$)` + `from()` |
+| Dependent chains                | `ready()` per dependency    |
+| Wait for auth state             | `ready(currentUser$)`       |
+| Multi-value gate                | Multiple `ready()` calls    |
+| Type narrowing                  | `ready()` removes `null`    |

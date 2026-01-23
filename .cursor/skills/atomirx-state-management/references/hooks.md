@@ -1,61 +1,56 @@
-# Hooks - Core Object Manipulation & Global Error Handling
-
-Hooks provide extension points for middleware, devtools, monitoring, and cross-cutting concerns in atomirx.
+# Hooks — Creation Tracking & Error Handling
 
 ## Overview
 
-| Hook           | Purpose                                       | Fires When                        |
-| -------------- | --------------------------------------------- | --------------------------------- |
-| `onCreateHook` | Track atom/derived/effect/module creation     | Any reactive primitive is created |
-| `onErrorHook`  | Global error handling for derived and effects | Error thrown in derived or effect |
-| `hook()`       | Create custom hooks (advanced)                | N/A - factory for creating hooks  |
+| Hook           | Purpose                          | Fires When             |
+| -------------- | -------------------------------- | ---------------------- |
+| `onCreateHook` | Track atom/derived/effect/module | Primitive created      |
+| `onErrorHook`  | Global error handling            | Error in derived/effect|
+| `hook()`       | Create custom hooks              | N/A (factory)          |
 
-## CRITICAL Rule: MUST Use `.override()` - NEVER Direct Assignment
+## CRITICAL: MUST Use .override()
 
-**NEVER** assign directly to `.current` - it **BREAKS** the hook chain.
+**NEVER** assign `.current` directly — breaks hook chain.
 
 ```typescript
-// ❌ FORBIDDEN: Breaks existing handlers
+// ❌ FORBIDDEN
 onCreateHook.current = (info) => { ... };
-onErrorHook.current = (info) => { ... };
 
-// ✅ REQUIRED: Preserves hook chain
+// ✅ REQUIRED
 onCreateHook.override((prev) => (info) => {
-  prev?.(info); // call existing handlers first
-  // your code here
+  prev?.(info);
+  // your code
 });
 
 onErrorHook.override((prev) => (info) => {
-  prev?.(info); // call existing handlers first
-  // your code here
+  prev?.(info);
+  // your code
 });
 ```
 
 ## Hook API
 
-| Method       | Signature                   | Description                             |
-| ------------ | --------------------------- | --------------------------------------- |
-| `.current`   | `T \| undefined`            | Read-only current value                 |
-| `.override() | `(reducer: (prev) => next)` | Set new value using reducer (chainable) |
-| `.reset()`   | `() => void`                | Reset to initial value (clears all)     |
-| `hook.use()` | `(setups[], fn) => T`       | Temporarily set hooks during fn         |
+| Method       | Signature               | Description            |
+| ------------ | ----------------------- | ---------------------- |
+| `.current`   | `T \| undefined`        | Read-only value        |
+| `.override()`| `(reducer) => void`     | Set via reducer        |
+| `.reset()`   | `() => void`            | Reset to initial       |
+| `hook.use()` | `(setups[], fn) => T`   | Temporary hooks in fn  |
 
-## onCreateHook - Object Creation Tracking
+## onCreateHook
 
-Fires when atoms, derived, effects, or modules are created.
+Fires on atom, derived, effect, module creation.
 
 ### CreateInfo Types
 
 ```typescript
-// Mutable atom
 interface MutableCreateInfo {
   type: "mutable";
-  key: string | undefined; // from meta.key
+  key: string | undefined;
   meta: MutableAtomMeta | undefined;
-  atom: MutableAtom<unknown>; // the created atom
+  atom: MutableAtom<unknown>;
 }
 
-// Derived atom
 interface DerivedCreateInfo {
   type: "derived";
   key: string | undefined;
@@ -63,7 +58,6 @@ interface DerivedCreateInfo {
   atom: DerivedAtom<unknown, boolean>;
 }
 
-// Effect
 interface EffectCreateInfo {
   type: "effect";
   key: string | undefined;
@@ -71,7 +65,6 @@ interface EffectCreateInfo {
   effect: Effect;
 }
 
-// Module (from define())
 interface ModuleCreateInfo {
   type: "module";
   key: string | undefined;
@@ -82,273 +75,153 @@ interface ModuleCreateInfo {
 
 ### Use Cases
 
-#### 1. DevTools Registry
+#### DevTools Registry
 
 ```typescript
-import { onCreateHook } from "atomirx";
-
 const registry = {
-  atoms: new Map<string, MutableAtom<unknown>>(),
-  derived: new Map<string, DerivedAtom<unknown, boolean>>(),
-  effects: new Map<string, Effect>(),
-  modules: new Map<string, unknown>(),
+  atoms: new Map(),
+  derived: new Map(),
+  effects: new Map(),
+  modules: new Map(),
 };
 
 onCreateHook.override((prev) => (info) => {
   prev?.(info);
-
-  const key = info.key ?? `anonymous-${Date.now()}`;
-
+  const key = info.key ?? `anon-${Date.now()}`;
   switch (info.type) {
-    case "mutable":
-      registry.atoms.set(key, info.atom);
-      break;
-    case "derived":
-      registry.derived.set(key, info.atom);
-      break;
-    case "effect":
-      registry.effects.set(key, info.effect);
-      break;
-    case "module":
-      registry.modules.set(key, info.module);
-      break;
+    case "mutable": registry.atoms.set(key, info.atom); break;
+    case "derived": registry.derived.set(key, info.atom); break;
+    case "effect": registry.effects.set(key, info.effect); break;
+    case "module": registry.modules.set(key, info.module); break;
   }
 });
 
-// Export for devtools panel
 window.__ATOMIRX_DEVTOOLS__ = registry;
 ```
 
-#### 2. Persistence Middleware
+#### Persistence
 
 ```typescript
-import { onCreateHook } from "atomirx";
-
-// Extend meta type
 declare module "atomirx" {
-  interface MutableAtomMeta {
-    persisted?: boolean;
-  }
+  interface MutableAtomMeta { persisted?: boolean; }
 }
 
 onCreateHook.override((prev) => (info) => {
   prev?.(info);
-
-  // Only handle mutable atoms with persisted flag
-  if (info.type !== "mutable" || !info.meta?.persisted || !info.key) {
-    return;
-  }
+  if (info.type !== "mutable" || !info.meta?.persisted || !info.key) return;
 
   const storageKey = `app:${info.key}`;
 
-  // Restore from localStorage on creation
   if (!info.atom.dirty()) {
     const stored = localStorage.getItem(storageKey);
-    if (stored) {
-      try {
-        info.atom.set(JSON.parse(stored));
-      } catch {
-        // Invalid JSON, ignore
-      }
-    }
+    if (stored) try { info.atom.set(JSON.parse(stored)); } catch {}
   }
 
-  // Save to localStorage on every change
-  info.atom.on(() => {
-    localStorage.setItem(storageKey, JSON.stringify(info.atom.get()));
-  });
+  info.atom.on(() => localStorage.setItem(storageKey, JSON.stringify(info.atom.get())));
 });
 
 // Usage
-const settings$ = atom(
-  { theme: "dark" },
-  {
-    meta: { key: "user.settings", persisted: true },
-  }
-);
+const settings$ = atom({ theme: "dark" }, { meta: { key: "user.settings", persisted: true } });
 ```
 
-#### 3. Validation Middleware
+#### Validation
 
 ```typescript
-import { onCreateHook } from "atomirx";
-
 declare module "atomirx" {
-  interface MutableAtomMeta {
-    validate?: (value: unknown) => boolean;
-  }
+  interface MutableAtomMeta { validate?: (v: unknown) => boolean; }
 }
 
 onCreateHook.override((prev) => (info) => {
   prev?.(info);
-
-  if (info.type !== "mutable" || !info.meta?.validate) {
-    return;
-  }
+  if (info.type !== "mutable" || !info.meta?.validate) return;
 
   const validate = info.meta.validate;
   const originalSet = info.atom.set.bind(info.atom);
 
-  // Wrap set() with validation
   info.atom.set = (valueOrReducer) => {
-    const nextValue =
-      typeof valueOrReducer === "function"
-        ? (valueOrReducer as (prev: unknown) => unknown)(info.atom.get())
-        : valueOrReducer;
+    const next = typeof valueOrReducer === "function"
+      ? (valueOrReducer as Function)(info.atom.get())
+      : valueOrReducer;
 
-    if (!validate(nextValue)) {
-      console.warn(`Validation failed for ${info.key}:`, nextValue);
-      return; // Reject update
+    if (!validate(next)) {
+      console.warn(`Validation failed for ${info.key}:`, next);
+      return;
     }
-
     originalSet(valueOrReducer);
   };
 });
-
-// Usage
-const age$ = atom(25, {
-  meta: {
-    key: "user.age",
-    validate: (v) => typeof v === "number" && v >= 0 && v <= 150,
-  },
-});
 ```
 
-#### 4. Debug Logging
+#### Debug Logging
 
 ```typescript
-import { onCreateHook } from "atomirx";
-
-// Only in development
 if (process.env.NODE_ENV === "development") {
   onCreateHook.override((prev) => (info) => {
     prev?.(info);
-    console.log(`[atomirx] Created ${info.type}: ${info.key ?? "anonymous"}`);
+    console.log(`[atomirx] Created ${info.type}: ${info.key ?? "anon"}`);
   });
 }
 ```
 
-## onErrorHook - Global Error Handling
+## onErrorHook
 
-Fires when errors occur in derived atoms or effects.
-
-### ErrorInfo Type
+Fires on derived/effect errors.
 
 ```typescript
 interface ErrorInfo {
-  source: CreateInfo; // The atom/effect that errored
-  error: unknown; // The thrown error
+  source: CreateInfo;
+  error: unknown;
 }
 ```
 
 ### Use Cases
 
-#### 1. Error Monitoring (Sentry, etc.)
+#### Sentry
 
 ```typescript
-import { onErrorHook } from "atomirx";
-import * as Sentry from "@sentry/browser";
-
 onErrorHook.override((prev) => (info) => {
   prev?.(info);
-
   Sentry.captureException(info.error, {
-    tags: {
-      source_type: info.source.type,
-      source_key: info.source.key ?? "anonymous",
-    },
-    extra: {
-      meta: info.source.meta,
-    },
+    tags: { source_type: info.source.type, source_key: info.source.key ?? "anon" },
+    extra: { meta: info.source.meta },
   });
 });
 ```
 
-#### 2. Console Logging
+#### Console
 
 ```typescript
-import { onErrorHook } from "atomirx";
-
 onErrorHook.override((prev) => (info) => {
   prev?.(info);
-
-  console.error(
-    `[atomirx] Error in ${info.source.type}: ${info.source.key ?? "anonymous"}`,
-    info.error
-  );
+  console.error(`[atomirx] Error in ${info.source.type}: ${info.source.key ?? "anon"}`, info.error);
 });
 ```
 
-#### 3. Error Toast Notifications
+#### Toast
 
 ```typescript
-import { onErrorHook } from "atomirx";
-import { toast } from "your-toast-library";
-
 onErrorHook.override((prev) => (info) => {
   prev?.(info);
-
-  // Only show toast for user-facing errors
-  if (info.error instanceof UserFacingError) {
-    toast.error(info.error.message);
-  }
+  if (info.error instanceof UserFacingError) toast.error(info.error.message);
 });
 ```
 
-#### 4. Error Aggregation
+## Custom Hooks
 
 ```typescript
-import { onErrorHook } from "atomirx";
-
-const errorLog: ErrorInfo[] = [];
-
-onErrorHook.override((prev) => (info) => {
-  prev?.(info);
-
-  errorLog.push(info);
-
-  // Keep last 100 errors
-  if (errorLog.length > 100) {
-    errorLog.shift();
-  }
-});
-
-// Export for devtools
-export const getErrorLog = () => [...errorLog];
-```
-
-## hook() - Creating Custom Hooks (Advanced)
-
-For advanced use cases, create custom hooks using `hook()`.
-
-### Basic Custom Hook
-
-```typescript
-import { hook } from "atomirx";
-
-// Create a debug mode hook
 const debugHook = hook(false);
-
-// Read current value
-console.log(debugHook.current); // false
-
-// Override value
+debugHook.current; // false
 debugHook.override(() => true);
-console.log(debugHook.current); // true
-
-// Reset to initial
+debugHook.current; // true
 debugHook.reset();
-console.log(debugHook.current); // false
+debugHook.current; // false
 ```
 
-### Temporary Hook Values with hook.use()
+### Temporary Hooks
 
 ```typescript
-import { hook } from "atomirx";
-
 const loggerHook = hook<(msg: string) => void>();
 
-// Temporarily set a logger
 const result = hook.use(
   [loggerHook(() => (msg) => console.log("[TEST]", msg))],
   () => {
@@ -357,53 +230,23 @@ const result = hook.use(
   }
 );
 
-// Outside hook.use(), logger is reset
-loggerHook.current?.("Outside"); // Does nothing (undefined)
+loggerHook.current?.("Outside"); // Does nothing
 ```
 
-### Composing Multiple Hooks
+## Testing (IMPORTANT)
+
+### Isolate Tests
 
 ```typescript
-import { hook } from "atomirx";
-
-const trackingHook = hook<(event: string) => void>();
-const metricsHook = hook<(name: string, value: number) => void>();
-
-// Run code with both hooks active
-hook.use(
-  [
-    trackingHook(() => (event) => analytics.track(event)),
-    metricsHook(() => (name, value) => metrics.record(name, value)),
-  ],
-  () => {
-    // Both hooks active here
-    trackingHook.current?.("button_click");
-    metricsHook.current?.("latency", 150);
-  }
-);
-```
-
-## Testing with Hooks (IMPORTANT)
-
-### MUST Isolate Tests - Reset Hooks in beforeEach/afterEach
-
-```typescript
-import { onCreateHook, onErrorHook } from "atomirx";
-
 describe("MyStore", () => {
-  const originalCreate = onCreateHook.current;
-  const originalError = onErrorHook.current;
-
   beforeEach(() => {
-    // Clear hooks for test isolation
     onCreateHook.reset();
     onErrorHook.reset();
   });
 
   afterEach(() => {
-    // Restore original hooks
-    onCreateHook.current = originalCreate;
-    onErrorHook.current = originalError;
+    onCreateHook.reset();
+    onErrorHook.reset();
   });
 
   it("should track created atoms", () => {
@@ -413,33 +256,22 @@ describe("MyStore", () => {
       if (info.key) created.push(info.key);
     });
 
-    // Test code that creates atoms...
+    myStore();
     expect(created).toContain("myStore.counter");
   });
 });
 ```
 
-### Verifying Error Handling
+### Verify Error Hook
 
 ```typescript
-it("should call error hook on derived error", async () => {
+it("should call error hook", async () => {
   const errors: ErrorInfo[] = [];
-  onErrorHook.override((prev) => (info) => {
-    prev?.(info);
-    errors.push(info);
-  });
+  onErrorHook.override((prev) => (info) => { prev?.(info); errors.push(info); });
 
-  const buggy$ = derived(
-    ({ read }) => {
-      throw new Error("test error");
-    },
-    { meta: { key: "buggy" } }
-  );
+  const buggy$ = derived(({ read }) => { throw new Error("test"); }, { meta: { key: "buggy" } });
 
-  // Trigger the derived computation
-  try {
-    await buggy$.get();
-  } catch {}
+  try { await buggy$.get(); } catch {}
 
   expect(errors).toHaveLength(1);
   expect(errors[0].source.key).toBe("buggy");
@@ -448,46 +280,43 @@ it("should call error hook on derived error", async () => {
 
 ## Initialization Order (CRITICAL)
 
-**MUST** set up hooks early in your app, **BEFORE** any atoms are created:
+**MUST** set up hooks BEFORE atoms are created:
 
 ```typescript
 // src/app/init.ts
 import { onCreateHook, onErrorHook } from "atomirx";
 
-// 1. DevTools (first - tracks everything)
+// 1. DevTools
 onCreateHook.override((prev) => (info) => {
   prev?.(info);
   window.__ATOMIRX_REGISTRY__?.add(info);
 });
 
-// 2. Error monitoring (catches all errors)
+// 2. Error monitoring
 onErrorHook.override((prev) => (info) => {
   prev?.(info);
   Sentry.captureException(info.error);
 });
 
-// 3. Persistence (after devtools)
+// 3. Persistence
 onCreateHook.override((prev) => (info) => {
   prev?.(info);
-  if (info.type === "mutable" && info.meta?.persisted) {
-    setupPersistence(info);
-  }
+  if (info.type === "mutable" && info.meta?.persisted) setupPersistence(info);
 });
 
 // src/app/main.tsx
-import "./init"; // Run hooks setup first
+import "./init"; // Run first
 import { App } from "./App";
 ```
 
-## Summary (MUST Follow These Patterns)
+## Summary
 
-| Task                    | Hook           | Pattern                                                       |
-| ----------------------- | -------------- | ------------------------------------------------------------- |
-| Track atom creation     | `onCreateHook` | **MUST** use `override((prev) => (info) => { prev?.(info) })` |
-| Global error logging    | `onErrorHook`  | **MUST** use `override((prev) => (info) => { prev?.(info) })` |
-| Persistence middleware  | `onCreateHook` | Check `info.meta?.persisted`                                  |
-| Validation middleware   | `onCreateHook` | Wrap `info.atom.set()`                                        |
-| Error monitoring        | `onErrorHook`  | Send to Sentry/etc                                            |
-| DevTools integration    | `onCreateHook` | Register in global registry                                   |
-| Reset all handlers      | Both           | **MUST** use `.reset()` in tests                              |
-| Temporary hooks (tests) | `hook.use()`   | `hook.use([setup], fn)`                                       |
+| Task                  | Hook           | Pattern                             |
+| --------------------- | -------------- | ----------------------------------- |
+| Track creation        | `onCreateHook` | `.override((prev) => (info) => {})` |
+| Global error logging  | `onErrorHook`  | `.override((prev) => (info) => {})` |
+| Persistence           | `onCreateHook` | Check `info.meta?.persisted`        |
+| Validation            | `onCreateHook` | Wrap `info.atom.set()`              |
+| DevTools              | `onCreateHook` | Register in global registry         |
+| Reset all             | Both           | `.reset()` in tests                 |
+| Temporary (tests)     | `hook.use()`   | `hook.use([setup], fn)`             |

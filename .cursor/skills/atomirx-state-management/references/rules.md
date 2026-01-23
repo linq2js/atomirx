@@ -1,44 +1,36 @@
 # Rules & Best Practices
 
-## Service vs Store Pattern (CRITICAL)
+## Service vs Store (CRITICAL)
 
-**All state and logic MUST use `define()`. Services are stateless, Stores contain atoms.**
+**All state/logic MUST use `define()`. Services = stateless. Stores = atoms.**
 
-| Type        | Purpose              | Variable Name | File Name         | Contains                |
-| ----------- | -------------------- | ------------- | ----------------- | ----------------------- |
-| **Service** | Stateless logic, I/O | `authService` | `auth.service.ts` | Pure functions only     |
-| **Store**   | Reactive state       | `authStore`   | `auth.store.ts`   | Atoms, derived, effects |
+| Type        | Purpose        | Variable      | File              | Contains            |
+| ----------- | -------------- | ------------- | ----------------- | ------------------- |
+| **Service** | Stateless I/O  | `authService` | `auth.service.ts` | Pure functions      |
+| **Store**   | Reactive state | `authStore`   | `auth.store.ts`   | Atoms, derived, effects |
 
-### Service Pattern
+### Service
 
 ```typescript
-// services/auth/auth.service.ts
-export const authService = define(
-  (): AuthService => ({
-    checkSupport: async () => {
-      /* WebAuthn API calls */
-    },
-    register: async (opts) => {
-      /* credential creation */
-    },
-    authenticate: async (opts) => {
-      /* credential assertion */
-    },
-  })
-);
+export const authService = define((): AuthService => ({
+  checkSupport: async () => { /* WebAuthn API */ },
+  register: async (opts) => { /* credential creation */ },
+  authenticate: async (opts) => { /* credential assertion */ },
+}));
 ```
 
-### Store Pattern
+### Store
 
 ```typescript
-// stores/auth.store.ts
 import { authService } from "@/services/auth/auth.service";
 
 export const authStore = define(() => {
-  const auth = authService(); // Inject service via module invocation
+  const auth = authService(); // Inject via invocation
 
-  const user$ = atom<User | null>(null);
-  const isAuthenticated$ = derived(({ read }) => read(user$) !== null);
+  const user$ = atom<User | null>(null, { meta: { key: "auth.user" } });
+  const isAuthenticated$ = derived(({ read }) => read(user$) !== null, {
+    meta: { key: "auth.isAuthenticated" },
+  });
 
   return {
     ...readonly({ user$, isAuthenticated$ }),
@@ -53,180 +45,125 @@ export const authStore = define(() => {
 ### FORBIDDEN: Factory Pattern
 
 ```typescript
-// ❌ FORBIDDEN - Factory function pattern
-// services/auth/index.ts
+// ❌ FORBIDDEN
 let instance: AuthService | null = null;
 export function getAuthService(): AuthService {
   if (!instance) instance = createAuthService();
   return instance;
 }
 
-// ❌ FORBIDDEN - Importing factories in stores
 import { getAuthService } from "@/services/auth";
-const authStore = define(() => {
-  const auth = getAuthService(); // WRONG! Factory pattern
-});
+const auth = getAuthService(); // WRONG
 
-// ✅ REQUIRED - Service as define() module
+// ✅ REQUIRED
 import { authService } from "@/services/auth/auth.service";
-const authStore = define(() => {
-  const auth = authService(); // Correct! Module invocation
-});
+const auth = authService(); // Module invocation
 ```
 
-**Detection Pattern for AI:**
+**Detection:** `get*Service()`, `create*Service()`, `*Factory()` → STOP, refactor to `define()`.
 
-- `get*Service()`, `create*Service()`, `*Factory()` → STOP, refactor to `define()`
-- `import { get* }` for services → WRONG pattern
-- Services should be imported as `*Service` and invoked with `()`
+| Factory Pattern | Module Pattern (`define()`) |
+| --------------- | --------------------------- |
+| Not mockable    | `service.override(mock)`    |
+| Hidden deps     | Explicit dependencies       |
+| No lazy control | Lazy singleton default      |
+| Breaks DI       | Uses atomirx DI             |
 
-**Why this matters:**
+## useSelector Grouping (CRITICAL)
 
-| Factory Pattern (`getService()`) | Module Pattern (`define()`)    |
-| -------------------------------- | ------------------------------ |
-| Not mockable for tests           | `serviceModule.override(mock)` |
-| Hidden dependencies              | Explicit module dependencies   |
-| No lazy initialization control   | Lazy singleton by default      |
-| Breaks atomirx DI system         | Uses atomirx DI system         |
-
-## useSelector Grouping Rule (CRITICAL)
-
-**MUST group multiple atom reads into a single `useSelector` call.**
+**MUST group multiple reads into single `useSelector`.**
 
 ```tsx
-// ✅ DO: Group multiple reads into single useSelector
+// ✅ DO
 const { count, user, settings } = useSelector(({ read }) => ({
   count: read(count$),
   user: read(user$),
   settings: read(settings$),
 }));
 
-// ❌ DON'T: Multiple separate useSelector calls
+// ❌ DON'T
 const count = useSelector(count$);
 const user = useSelector(user$);
 const settings = useSelector(settings$);
 ```
 
-**Why this matters:**
+| Multiple Calls     | Single Grouped     |
+| ------------------ | ------------------ |
+| N subscriptions    | 1 subscription     |
+| N checks per change| 1 check            |
+| Scattered values   | Related together   |
 
-| Issue             | Multiple Calls            | Single Grouped Call      |
-| ----------------- | ------------------------- | ------------------------ |
-| Subscriptions     | N subscriptions           | 1 subscription           |
-| Re-render checks  | N checks per state change | 1 check per state change |
-| Custom equality   | Must add to each call     | Single equality fn       |
-| Code organization | Values scattered          | Related values together  |
+**Single `useSelector(atom$)` OK when:** only one atom needed.
 
-**When single `useSelector(atom$)` is OK:**
+## useAction with Atom Deps
 
-- Only one atom needed in the component
-- The atom is the only reactive state source
-
-**When to group (MUST):**
-
-- Reading 2+ atoms → always group
-- Deriving values from multiple atoms → group and compute together
-
-## useAction with Atom Dependencies
-
-When using `useAction` with `lazy: false` for auto re-dispatch on atom changes, pass atoms to `deps` and use `.get()` inside.
+**Pass atoms to `deps`, use `.get()` inside for auto re-dispatch.**
 
 ```tsx
-// ✅ DO: Atoms in deps, .get() inside action
+// ✅ DO
 const load = useAction(
   async () => {
     const val1 = atom1$.get();
-    const val2 = await atom2$.get(); // await if contains Promise
+    const val2 = await atom2$.get();
     return val1 + val2;
   },
   { deps: [atom1$, atom2$], lazy: false }
 );
-// load() to call, load.loading, load.result, load.error for state
 
-// ❌ DON'T: useSelector values in deps
+// ❌ DON'T
 const { val1, val2 } = useSelector(({ read }) => ({
-  val1: read(atom1$),
-  val2: read(atom2$), // Suspends component before useAction
+  val1: read(atom1$), // Suspends before useAction
+  val2: read(atom2$),
 }));
-const load = useAction(async () => val1 + val2, {
-  deps: [val1, val2],
-  lazy: false,
-});
+const load = useAction(async () => val1 + val2, { deps: [val1, val2], lazy: false });
 ```
 
-**Why:** Using `useSelector` causes unnecessary Suspense, extra subscriptions, and stale closure risks.
+## define() Isolation (CRITICAL)
 
-## define() Isolation Rule (CRITICAL)
-
-**MUST use `define()` to encapsulate all state, logic, and mutable variables.**
-
-Global-level classes and pure utility functions are OK, but any stateful logic or variables MUST be inside `define()`.
+**MUST use `define()` for all state/logic.**
 
 ```typescript
-// ✅ DO: Encapsulate state and logic in define()
-import { define, atom, readonly } from "atomirx";
-
+// ✅ DO
 export const counterStore = define(() => {
-  const storage = storageService(); // Depend on services
-  const count$ = atom(0);
-
-  const increment = () => count$.set((x) => x + 1);
-  const save = () => storage.set("count", count$.get());
+  const storage = storageService();
+  const count$ = atom(0, { meta: { key: "counter.count" } });
 
   return {
-    ...readonly({ count$ }), // Export read-only atom, prevent external mutations
-    increment,
-    save,
+    ...readonly({ count$ }),
+    increment: () => count$.set((x) => x + 1),
+    save: () => storage.set("count", count$.get()),
   };
 });
 
-// ❌ DON'T: Global variables outside define()
-const count$ = atom(0); // Bad: not testable, not mockable
-const increment = () => count$.set((x) => x + 1);
+// ❌ DON'T
+const count$ = atom(0); // Global, not testable
 ```
 
-**Why define() is mandatory:**
-
-| Benefit              | Description                                    |
-| -------------------- | ---------------------------------------------- |
-| Testing/Mocking      | Override services/stores for unit tests        |
-| Lazy initialization  | Only initializes when first accessed           |
-| Dependency injection | Stores can depend on services and other stores |
-| Environment-specific | Override based on platform/feature flags       |
-| Encapsulation        | `readonly()` prevents external mutations       |
+| Benefit           | Description                      |
+| ----------------- | -------------------------------- |
+| Testing/Mocking   | Override for unit tests          |
+| Lazy init         | Only when first accessed         |
+| DI                | Depend on services/stores        |
+| Environment       | Override per platform            |
+| Encapsulation     | `readonly()` prevents mutations  |
 
 ### Override Pattern
 
-Use `override()` for environment-specific implementations or mocking:
-
 ```typescript
-// Define interface with placeholder
 const storageService = define((): StorageService => {
-  throw new Error("Not implemented yet");
+  throw new Error("Not implemented");
 });
 
-// Platform-specific implementations
-const webStorageService = define(
-  (): StorageService => ({
-    get: (key) => localStorage.getItem(key),
-    set: (key, val) => localStorage.setItem(key, val),
-  })
-);
-
-const nativeStorageService = define(
-  (): StorageService => ({
-    get: (key) => AsyncStorage.getItem(key),
-    set: (key, val) => AsyncStorage.setItem(key, val),
-  })
-);
+// Platform implementations
+const webStorage = define((): StorageService => ({
+  get: (key) => localStorage.getItem(key),
+  set: (key, val) => localStorage.setItem(key, val),
+}));
 
 // Override based on environment
-if (isWeb) {
-  storageService.override(webStorageService);
-} else {
-  storageService.override(nativeStorageService);
-}
+if (isWeb) storageService.override(webStorage);
 
-// In tests: mock the service
+// In tests
 storageService.override(() => ({
   get: jest.fn(),
   set: jest.fn(),
@@ -235,234 +172,144 @@ storageService.override(() => ({
 
 ## batch() for Multiple Updates
 
-**MUST wrap multiple atom updates in `batch()` for single notification.**
+**MUST wrap multiple updates in `batch()`.**
 
 ```typescript
-// ✅ DO: Batch multiple updates
+// ✅ DO
 batch(() => {
   user$.set(newUser);
   settings$.set(newSettings);
   lastUpdated$.set(Date.now());
-}); // Subscribers notified ONCE after all updates
+}); // Single notification
 
-// ❌ DON'T: Separate updates
-user$.set(newUser); // Notification 1
+// ❌ DON'T
+user$.set(newUser);       // Notification 1
 settings$.set(newSettings); // Notification 2
 lastUpdated$.set(Date.now()); // Notification 3
 ```
 
-**Why batch() matters:**
-
-| Without batch()          | With batch()          |
-| ------------------------ | --------------------- |
-| N notifications          | 1 notification        |
-| N re-render checks       | 1 re-render check     |
-| Intermediate states seen | Only final state seen |
-| Potential UI flicker     | Clean single update   |
-
-**When to use batch():**
-
-- Updating 2+ atoms together
-- Resetting multiple atoms
-- Any action that modifies multiple pieces of state
+| Without batch      | With batch         |
+| ------------------ | ------------------ |
+| N notifications    | 1 notification     |
+| Intermediate states| Only final state   |
+| UI flicker         | Clean update       |
 
 ## Single Effect, Single Workflow (CRITICAL)
 
-**Each effect handles ONE workflow. Split multiple workflows into separate effects.**
+**Each effect = ONE workflow. Split multiple workflows.**
 
 ```typescript
-// ❌ WRONG - Multiple workflows in one effect
+// ❌ WRONG
 effect(({ read }) => {
   const id = read(currentId$);
   const filter = read(filter$);
-
-  // Workflow 1: fetch entity
-  if (id && !cache[id]) {
-    fetchEntity(id).then((e) => cache$.set((c) => ({ ...c, [id]: e })));
-  }
-
-  // Workflow 2: save filter to localStorage
-  localStorage.setItem("filter", filter);
-
-  // Workflow 3: analytics
-  trackPageView(id);
+  fetchEntity(id); // Workflow 1
+  localStorage.setItem("filter", filter); // Workflow 2
+  trackPageView(id); // Workflow 3
 });
 
-// ✅ CORRECT - Separate effects for each workflow
+// ✅ CORRECT
 effect(({ read }) => {
   const id = read(currentId$);
-  const cache = read(cache$);
-  if (id && !cache[id]) {
-    fetchEntity(id).then((e) => cache$.set((c) => ({ ...c, [id]: e })));
-  }
-});
+  if (id) fetchEntity(id);
+}, { meta: { key: "fetch.entity" } });
 
 effect(({ read }) => {
-  const filter = read(filter$);
-  localStorage.setItem("filter", filter);
-});
+  localStorage.setItem("filter", read(filter$));
+}, { meta: { key: "persist.filter" } });
 
 effect(({ read }) => {
   const id = read(currentId$);
   if (id) trackPageView(id);
-});
+}, { meta: { key: "analytics.pageView" } });
 ```
 
-**Why single workflow per effect:**
+| Multiple Workflows | Single Workflow     |
+| ------------------ | ------------------- |
+| Hard to trace      | Clear cause → effect|
+| Combined triggers  | Independent         |
+| Hard to test       | Test in isolation   |
+| Hard to disable    | Comment one effect  |
 
-| Multiple Workflows            | Single Workflow               |
-| ----------------------------- | ----------------------------- |
-| Hard to trace data flow       | Clear cause → effect          |
-| Side effects trigger together | Independent triggers          |
-| Difficult to test             | Easy to test in isolation     |
-| Hard to disable one workflow  | Can comment out single effect |
+## meta.key (CRITICAL)
 
-## MUST Define meta.key for Debugging (CRITICAL)
-
-**All atoms, derived, and effects MUST define `meta.key` for debugging and maintenance.**
+**MUST define for ALL atoms, derived, effects.**
 
 ```typescript
-// ✅ CORRECT - meta.key defined for all reactive primitives
-const authStore = define(() => {
-  // Atoms
-  const user$ = atom<User | null>(null, {
-    meta: { key: "auth.user" },
-  });
-
-  const isLoading$ = atom(false, {
-    meta: { key: "auth.isLoading" },
-  });
-
-  // Derived
-  const isAuthenticated$ = derived(({ read }) => read(user$) !== null, {
-    meta: { key: "auth.isAuthenticated" },
-  });
-
-  // Effects
-  effect(
-    ({ read }) => {
-      const user = read(user$);
-      if (user) analytics.identify(user.id);
-    },
-    { meta: { key: "auth.identifyUser" } }
-  );
-
-  return { ... };
+// ✅ CORRECT
+const user$ = atom<User | null>(null, { meta: { key: "auth.user" } });
+const isAuth$ = derived(({ read }) => read(user$) !== null, {
+  meta: { key: "auth.isAuthenticated" },
+});
+effect(({ read }) => analytics.identify(read(user$)?.id), {
+  meta: { key: "auth.identifyUser" },
 });
 
-// ❌ WRONG - No meta.key defined
-const user$ = atom<User | null>(null);  // Hard to debug!
-const isAuthenticated$ = derived(({ read }) => read(user$) !== null);  // Which derived?
-effect(({ read }) => { ... });  // Which effect fired?
+// ❌ WRONG
+const user$ = atom<User | null>(null);
+const isAuth$ = derived(({ read }) => read(user$) !== null);
 ```
 
-**Key naming convention:**
+| Pattern             | Example                |
+| ------------------- | ---------------------- |
+| `store.atomName`    | `auth.user`            |
+| `store.derivedName` | `auth.isAuthenticated` |
+| `store.effectName`  | `sync.autoSave`        |
 
-| Pattern             | Example                              | Use Case                    |
-| ------------------- | ------------------------------------ | --------------------------- |
-| `store.atomName`    | `auth.user`, `todos.items`           | Standard atoms              |
-| `store.derivedName` | `auth.isAuthenticated`               | Derived values              |
-| `store.effectName`  | `auth.identifyUser`, `sync.autoSave` | Effects (describe workflow) |
+## Atom Storage
 
-**Why keys are mandatory:**
-
-| Without Keys              | With Keys                    |
-| ------------------------- | ---------------------------- |
-| "Some atom changed"       | "auth.user changed"          |
-| "Effect fired"            | "sync.autoSave effect fired" |
-| Hard to trace in DevTools | Clear identification         |
-| Debugging is guesswork    | Precise debugging            |
-
-## Atom Storage Rules
-
-**Never store atoms in component scope** - causes memory leaks:
+**NEVER store atoms in component scope.**
 
 ```typescript
-// ❌ BAD - atoms in component scope
+// ❌ BAD - memory leak
 function Component() {
-  const data$ = useRef(atom(0)).current; // Memory leak!
+  const data$ = useRef(atom(0)).current;
 }
 
-// ✅ GOOD - define() store (PREFERRED)
+// ✅ GOOD
 const dataStore = define(() => {
-  const data$ = atom(0);
-  return {
-    ...readonly({ data$ }),
-    update: (v) => data$.set(v),
-  };
+  const data$ = atom(0, { meta: { key: "data" } });
+  return { ...readonly({ data$ }), update: (v) => data$.set(v) };
 });
 ```
 
-**Why:**
+## Mutation Co-location
 
-- Atoms in components aren't properly disposed on unmount
-- Each render may create new atoms
-- Easy to forget cleanup logic
-
-## Mutation Co-location Rule
-
-**All atom mutations must be co-located in the store that owns the atom.**
+**All mutations MUST be in the store that owns the atom.**
 
 ```typescript
-// ✅ CORRECT - Mutations inside store
+// ✅ CORRECT
 const counterStore = define(() => {
-  const count$ = atom(0);
-
+  const count$ = atom(0, { meta: { key: "counter.count" } });
   return {
-    ...readonly({ count$ }), // Expose read-only
-    // All mutations co-located here
-    increment: () => count$.set((prev) => prev + 1),
-    decrement: () => count$.set((prev) => prev - 1),
+    ...readonly({ count$ }),
+    increment: () => count$.set((p) => p + 1),
+    decrement: () => count$.set((p) => p - 1),
     reset: () => count$.reset(),
   };
 });
 
-// ❌ WRONG - Mutations scattered outside store
+// ❌ WRONG
 const { count$ } = counterStore();
-count$.set(10); // Don't do this! Mutations should be in store
+count$.set(10); // External mutation
 ```
 
-**Why this matters:**
+## SelectContext: Sync Only
 
-| Benefit           | Description                                          |
-| ----------------- | ---------------------------------------------------- |
-| **Traceability**  | To find what mutates an atom, just look at its store |
-| **Encapsulation** | Store controls all valid state transitions           |
-| **Testing**       | Mock the store, not individual atoms                 |
-| **Refactoring**   | Change atom internals without hunting for usages     |
-
-**Finding mutation logic:**
+**All context methods MUST be called synchronously.**
 
 ```typescript
-// When you see this usage:
-const { count$ } = counterStore();
-// OR
-counterStore().count$;
-
-// → All mutations are in counterStore, search there
-// → Search: `define(() =>` to find the store definition
-// → All .set() calls for count$ will be inside that store
-```
-
-## SelectContext: Synchronous Only
-
-All context methods must be called **synchronously** during selector execution:
-
-```typescript
-// ❌ WRONG - read() in async callback
+// ❌ WRONG
 derived(({ read }) => {
-  setTimeout(() => {
-    read(atom$); // Error: called outside selection context
-  }, 100);
+  setTimeout(() => read(atom$), 100); // Error
   return "value";
 });
 
-// ✅ CORRECT - Use atom.get() for async access
+// ✅ CORRECT
 effect(({ read }) => {
   const config = read(config$);
-
-  setTimeout(async () => {
-    const data = myAtom$.get(); // Direct access, not tracked
+  setTimeout(() => {
+    const data = myAtom$.get(); // Use .get() for async
     console.log(data);
   }, 100);
 });
@@ -470,19 +317,19 @@ effect(({ read }) => {
 
 ## Error Handling: safe() Not try/catch
 
-**CRITICAL**: Never use try/catch with `read()` - it breaks Suspense!
+**NEVER try/catch with read() — breaks Suspense.**
 
 ```typescript
-// ❌ WRONG - Catches Promise (breaks Suspense)
+// ❌ WRONG
 derived(({ read }) => {
   try {
     return read(asyncAtom$);
   } catch (e) {
-    return null; // Catches loading Promise!
+    return null; // Catches Promise!
   }
 });
 
-// ✅ CORRECT - Use safe()
+// ✅ CORRECT
 derived(({ read, safe }) => {
   const [err, value] = safe(() => read(asyncAtom$));
   if (err) return { error: err.message };
@@ -490,22 +337,17 @@ derived(({ read, safe }) => {
 });
 ```
 
-See [error-handling.md](error-handling.md) for more details.
-
 ## Naming Conventions
 
 ```typescript
 // Atoms: $ suffix
 const count$ = atom(0);
-const user$ = atom<User | null>(null);
 
-// Services: camelCase, Service suffix (NO atoms)
+// Services: *Service (NO atoms)
 const authService = define((): AuthService => ...);
-const cryptoService = define((): CryptoService => ...);
 
-// Stores: camelCase, Store suffix (HAS atoms)
+// Stores: *Store (HAS atoms)
 const authStore = define(() => ...);
-const todosStore = define(() => ...);
 
 // Actions: verb-led
 navigateTo, invalidate, refresh, fetchUser, logout
@@ -515,14 +357,12 @@ navigateTo, invalidate, refresh, fetchUser, logout
 
 ```
 src/
-├── services/           # Stateless (no atoms)
+├── services/           # Stateless
 │   ├── auth/
-│   │   └── auth.service.ts      # authService
+│   │   └── auth.service.ts
 │   └── crypto/
-│       └── crypto.service.ts    # cryptoService
-│
-└── stores/             # Stateful (has atoms)
-    ├── auth.store.ts            # authStore
-    ├── todos.store.ts           # todosStore
-    └── sync.store.ts            # syncStore
+│       └── crypto.service.ts
+└── stores/             # Stateful
+    ├── auth.store.ts
+    └── todos.store.ts
 ```

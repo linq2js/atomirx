@@ -2,116 +2,72 @@
 
 ## Overview
 
-| Hook          | Purpose                                 | Creates Subscription |
-| ------------- | --------------------------------------- | -------------------- |
-| `useSelector` | Read atoms with automatic re-rendering  | Yes                  |
-| `rx`          | Inline reactive components              | Yes                  |
-| `useAction`   | Async operations with state management  | No (manual)          |
-| `useStable`   | Stable references for objects/callbacks | No                   |
+| Hook          | Purpose                      | Subscription |
+| ------------- | ---------------------------- | ------------ |
+| `useSelector` | Read atoms, auto re-render   | Yes          |
+| `rx`          | Inline reactive components   | Yes          |
+| `useAction`   | Async ops with state         | No (manual)  |
+| `useStable`   | Stable refs for callbacks    | No           |
 
-## useSelector Hook
+## useSelector
 
-Subscribe to atom values with automatic re-rendering.
+### CRITICAL: MUST Group
 
-### CRITICAL: MUST Group Multiple Selectors
-
-**MUST** group multiple atom reads into a single `useSelector` call. Each `useSelector` creates a separate subscription - grouping reduces re-renders and improves performance. **NEVER** use multiple separate `useSelector` calls for atoms that are used together.
+**MUST** group multiple reads. Each call = separate subscription.
 
 ```tsx
-// ✅ REQUIRED: Group multiple reads into single useSelector
+// ✅ REQUIRED
 const { count, user, settings } = useSelector(({ read }) => ({
   count: read(count$),
   user: read(user$),
   settings: read(settings$),
 }));
 
-// ❌ FORBIDDEN: Multiple separate useSelector calls
+// ❌ FORBIDDEN
 const count = useSelector(count$);
 const user = useSelector(user$);
 const settings = useSelector(settings$);
 ```
 
-**Why grouping matters:**
-
-- Each `useSelector` creates an independent subscription
-- Multiple subscriptions = multiple re-render checks per state change
-- Grouped selector computes all values in single subscription
-- Easier to add custom equality check for the entire result
-
-### Basic Usage
+### Basic
 
 ```tsx
-import { useSelector } from "atomirx/react";
-
-// Single atom shorthand (OK when only one atom needed)
-const count = useSelector(count$);
-
-// Selector: compute derived value
-const doubled = useSelector(({ read }) => read(count$) * 2);
-
-// Multiple atoms - ALWAYS use grouped form
-const display = useSelector(({ read }) => {
-  const count = read(count$);
-  const user = read(user$);
-  return user ? `${user.name}: ${count}` : `Anonymous: ${count}`;
-});
+const count = useSelector(count$);                           // Shorthand
+const doubled = useSelector(({ read }) => read(count$) * 2); // Computed
 ```
 
-### With Pool (from())
+### With Pool
 
 ```tsx
-// Access pool entries reactively
 const user = useSelector(({ read, from }) => {
   const user$ = from(userPool, userId);
   return read(user$);
 });
 ```
 
-### All Context Methods Available
+### All Context Methods
 
 ```tsx
-// all() - Wait for multiple atoms
 const [user, posts] = useSelector(({ all }) => all([user$, posts$]));
-
-// state() - Manual loading handling (no Suspense)
 const userState = useSelector(({ state }) => state(user$));
-// { status: "loading" | "ready" | "error", value, error }
-
-// safe() - Error handling preserving Suspense
 const result = useSelector(({ read, safe }) => {
   const [err, data] = safe(() => JSON.parse(read(rawJson$)));
   return err ? { error: err.message } : { data };
 });
-
-// any() - First ready
-const fastest = useSelector(({ any }) => any({ cache: cache$, api: api$ }));
-
-// settled() - All results
-const results = useSelector(({ settled }) => settled([a$, b$, c$]));
-
-// and()/or() - Boolean logic
 const canEdit = useSelector(({ and }) => and([isLoggedIn$, hasEditRole$]));
 ```
 
 ### Custom Equality
 
 ```tsx
-// Default equality is "shallow"
-const user = useSelector(({ read }) => read(user$));
-
-// Custom equality function
 const userName = useSelector(
   ({ read }) => read(user$)?.name,
-  (prev, next) => prev === next // Only re-render when name changes
+  (prev, next) => prev === next
 );
-
-// Equality shorthands
-const data = useSelector(({ read }) => read(data$), "deep"); // Deep comparison
+const data = useSelector(({ read }) => read(data$), "deep");
 ```
 
-## rx() - Inline Reactive Components
-
-For inline reactive rendering without separate components:
+## rx() — Inline Reactive
 
 ```tsx
 function Stats() {
@@ -119,138 +75,89 @@ function Stats() {
     <footer>
       {rx(({ read }) => {
         const { total, completed } = read(stats$);
-        return (
-          <span>
-            {completed} of {total} done
-          </span>
-        );
+        return <span>{completed} of {total}</span>;
       })}
     </footer>
   );
 }
 ```
 
-### With Loading and Error Handlers
+### With Loading/Error
 
 ```tsx
-{
-  rx(({ read }) => <UserCard user={read(user$)} />, {
-    loading: <Skeleton />,
-    error: (err) => <ErrorMessage error={err} />,
-  });
-}
+{rx(({ read }) => <UserCard user={read(user$)} />, {
+  loading: <Skeleton />,
+  error: (err) => <ErrorMessage error={err} />,
+})}
 ```
 
-### With deps for Memoization
+### With deps
 
 ```tsx
-{
-  rx(
-    ({ read }) => {
-      const user = read(user$);
-      return <ExpensiveComponent user={user} filter={filter} />;
-    },
-    { deps: [filter] } // Re-create when filter changes
-  );
-}
+{rx(({ read }) => {
+  const user = read(user$);
+  return <ExpensiveComponent user={user} filter={filter} />;
+}, { deps: [filter] })}
 ```
 
-## useAction Hook
+## useAction
 
-Handle async operations with loading/error states. Returns a callable function with state properties attached.
+Async ops with loading/error state.
 
-### Basic Usage
+### Basic
 
 ```tsx
-import { useAction } from "atomirx/react";
+const save = useAction(async ({ signal }) => {
+  await saveData(data$.get(), { signal });
+});
 
-function SaveButton() {
-  const save = useAction(async ({ signal }) => {
-    await saveData(data$.get(), { signal });
-  });
-
-  return (
-    <button onClick={save} disabled={save.status === "loading"}>
-      {save.status === "loading" ? "Saving..." : "Save"}
-    </button>
-  );
-}
+return (
+  <button onClick={save} disabled={save.status === "loading"}>
+    {save.status === "loading" ? "Saving..." : "Save"}
+  </button>
+);
 ```
 
-### Action API
+### API
 
 ```tsx
 const action = useAction(async ({ signal }) => fetchData({ signal }));
 
-// Call like a function - returns AbortablePromise
-const promise = action();
-await promise;
-promise.abort(); // Abort this specific request
+action();            // Call, returns AbortablePromise
+await action();
+action.abort();      // Abort current
 
-// Access state via properties
-action.status; // "idle" | "loading" | "success" | "error"
-action.result; // TResult | undefined
-action.error; // unknown
-
-// Control methods
-action.abort(); // Abort current request
-action.reset(); // Reset to idle state
-```
-
-### State Machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> idle
-    idle --> loading: dispatch()
-    loading --> success: success
-    loading --> error: error
+action.status;       // "idle" | "loading" | "success" | "error"
+action.result;       // TResult | undefined
+action.error;        // unknown
+action.reset();      // Reset to idle
 ```
 
 ### Options
 
-```tsx
+```typescript
 interface UseActionOptions {
-  /**
-   * If true (default), waits for manual call.
-   * If false, executes on mount and when deps change.
-   */
-  lazy?: boolean;
-
-  /**
-   * If true (default), aborts previous request on re-call/unmount.
-   * If false, allows concurrent requests.
-   */
-  exclusive?: boolean;
-
-  /**
-   * Dependencies. When lazy: false, re-executes when deps change.
-   * Atoms are automatically tracked via useSelector.
-   */
-  deps?: unknown[];
+  lazy?: boolean;       // true = manual call, false = auto on mount/deps
+  exclusive?: boolean;  // true = abort previous, false = concurrent
+  deps?: unknown[];     // Re-execute when changed (lazy: false)
 }
 ```
 
-### Auto-execute on Mount (lazy: false)
+### Auto-execute (lazy: false)
 
 ```tsx
 const fetchUser = useAction(
-  async ({ signal }) => {
-    const res = await fetch(`/api/users/${userId}`, { signal });
-    return res.json();
-  },
+  async ({ signal }) => (await fetch(`/api/users/${userId}`, { signal })).json(),
   { lazy: false, deps: [userId] }
 );
-// Executes immediately, re-fetches when userId changes
-// Previous request is aborted when userId changes
 ```
 
-### Auto Re-dispatch with Atom Dependencies (IMPORTANT)
+### Atom Deps (IMPORTANT)
 
-When using `lazy: false` and you want the action to re-dispatch when atoms change, **MUST** pass atoms directly to `deps` and use `.get()` inside the action.
+**Pass atoms to `deps`, use `.get()` inside:**
 
 ```tsx
-// ✅ REQUIRED: Pass atoms to deps, use .get() inside action
+// ✅ REQUIRED
 const loadData = useAction(
   async ({ signal }) => {
     const filter = filterAtom$.get();
@@ -259,38 +166,15 @@ const loadData = useAction(
   },
   { deps: [filterAtom$, configAtom$], lazy: false }
 );
-// Action auto re-dispatches when filterAtom$ or configAtom$ changes
 
-// ❌ FORBIDDEN: Use useSelector + pass values to deps
+// ❌ FORBIDDEN
 const { filter, config } = useSelector(({ read }) => ({
-  filter: read(filterAtom$),
-  config: read(configAtom$), // BREAKS - Suspends HERE before useAction runs
+  filter: read(filterAtom$),  // Suspends BEFORE useAction
+  config: read(configAtom$),
 }));
 const loadData = useAction(async () => fetchData(filter, config), {
-  deps: [filter, config],
-  lazy: false,
+  deps: [filter, config], lazy: false,
 });
-```
-
-**Why pass atoms to deps:**
-
-| Approach                | Behavior                                                         |
-| ----------------------- | ---------------------------------------------------------------- |
-| Atoms in deps           | Action reads latest values, no extra Suspense                    |
-| Values from useSelector | Component suspends first, extra subscription, stale closure risk |
-
-### Exclusive Mode (default: true)
-
-```tsx
-// Default: exclusive mode - only one request at a time
-const search = useAction(async ({ signal }) => searchAPI(query, { signal }));
-// Calling search() again aborts previous request
-
-// Non-exclusive: allow concurrent
-const search = useAction(async ({ signal }) => searchAPI(query, { signal }), {
-  exclusive: false,
-});
-// Manual abort via search.abort() or promise.abort()
 ```
 
 ### Error Handling
@@ -302,66 +186,55 @@ const submit = useAction(async ({ signal }) => {
   return res.json();
 });
 
-// In JSX
-{
-  submit.status === "error" && (
-    <div className="error">
-      {submit.error instanceof Error ? submit.error.message : "Unknown error"}
-    </div>
-  );
-}
+{submit.status === "error" && <div className="error">{submit.error.message}</div>}
 ```
 
-### Pattern: Form Submission
+### Form Pattern
 
 ```tsx
 function ContactForm() {
-  const [formData, setFormData] = useState({ name: '', email: '' });
+  const [formData, setFormData] = useState({ name: "", email: "" });
 
   const submit = useAction(async ({ signal }) => {
-    if (!formData.name) throw new Error('Name required');
-
-    const response = await fetch('/api/contact', {
-      method: 'POST',
+    if (!formData.name) throw new Error("Name required");
+    const res = await fetch("/api/contact", {
+      method: "POST",
       body: JSON.stringify(formData),
       signal,
     });
-
-    if (!response.ok) throw new Error('Submission failed');
-    return response.json();
+    if (!res.ok) throw new Error("Failed");
+    return res.json();
   });
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
       <input value={formData.name} onChange={...} />
-      <input value={formData.email} onChange={...} />
-      <button disabled={submit.status === 'loading'}>
-        {submit.status === 'loading' ? 'Submitting...' : 'Submit'}
+      <button disabled={submit.status === "loading"}>
+        {submit.status === "loading" ? "Submitting..." : "Submit"}
       </button>
-      {submit.status === 'error' && <p className="error">{submit.error.message}</p>}
-      {submit.status === 'success' && <p className="success">Submitted!</p>}
+      {submit.status === "error" && <p className="error">{submit.error.message}</p>}
     </form>
   );
 }
 ```
 
-## useStable Hook (CRITICAL)
+## useStable (CRITICAL)
 
-Provides stable references for objects, arrays, and callbacks. **MUST use instead of React's useCallback/useMemo. NEVER use React's useCallback/useMemo for callbacks or objects.**
+**MUST use instead of React's useCallback/useMemo. NEVER use useCallback/useMemo.**
 
-### Why useStable?
+### Why
 
-In React, inline objects, arrays, and callbacks create new references every render:
+Inline objects/callbacks create new refs every render:
 
 ```tsx
-// ❌ Problem: new references every render
+// ❌ Problem: new refs every render
 function Parent() {
-  const config = { theme: "dark" }; // New object every render!
-  const onClick = () => doSomething(); // New function every render!
+  const config = { theme: "dark" };        // New object!
+  const onClick = () => doSomething();     // New function!
   return <Child config={config} onClick={onClick} />;
 }
 
-// ✅ Solution: stable references
+// ✅ Solution
 function Parent() {
   const stable = useStable({
     config: { theme: "dark" },
@@ -373,147 +246,85 @@ function Parent() {
 
 ### How It Works
 
-Each property is independently stabilized based on type:
+| Type       | Equality    | Behavior                         |
+| ---------- | ----------- | -------------------------------- |
+| Functions  | N/A         | Stable ref, calls latest impl    |
+| Arrays     | shallow     | Stable if items equal            |
+| Dates      | timestamp   | Stable if same time              |
+| Objects    | shallow     | Stable if keys have equal values |
+| Primitives | strict      | Stable if same value             |
 
-| Type           | Default Equality | Behavior                                   |
-| -------------- | ---------------- | ------------------------------------------ |
-| **Functions**  | N/A (wrapped)    | Reference never changes, calls latest impl |
-| **Arrays**     | shallow          | Stable if items are reference-equal        |
-| **Dates**      | timestamp        | Stable if same time value                  |
-| **Objects**    | shallow          | Stable if keys have reference-equal values |
-| **Primitives** | strict           | Stable if same value                       |
-
-### Basic Usage
+### Basic
 
 ```tsx
 const stable = useStable({
-  // Callbacks - stable reference, always fresh closure
   onSubmit: () => auth.register(username),
   onLogin: () => auth.login(),
-  onCancel: () => setView("idle"),
-
-  // Config objects - stable if shallow equal
-  config: {
-    timeout: 5000,
-    retries: 3,
-  },
-
-  // Arrays - stable if items are reference-equal
-  columns: [
-    { key: "name", label: "Name" },
-    { key: "email", label: "Email" },
-  ],
-
-  // Dates - stable if same timestamp
-  startDate: new Date(),
+  config: { timeout: 5000, retries: 3 },
+  columns: [{ key: "name", label: "Name" }],
 });
 
-// Usage
 stable.onSubmit();
 <Table columns={stable.columns} />
-<Settings config={stable.config} />
 ```
 
-### Custom Equality per Property
+### Custom Equality
 
 ```tsx
 const stable = useStable(
-  {
-    user: { id: 1, profile: { name: "John", avatar: "..." } },
-    tags: ["react", "typescript"],
-    settings: { theme: "dark" },
-  },
-  {
-    user: "deep", // Deep compare nested objects
-    tags: "strict", // Override default shallow for arrays
-    settings: "shallow", // Explicit (same as default)
-  }
+  { user: { id: 1, profile: { name: "John" } } },
+  { user: "deep" }
+);
+
+const stable2 = useStable(
+  { user: { id: 1, updatedAt: new Date() } },
+  { user: (a, b) => a?.id === b?.id }
 );
 ```
 
-### Custom Equality Function
-
-```tsx
-const stable = useStable(
-  { user: { id: 1, name: "John", updatedAt: new Date() } },
-  {
-    // Only compare by id - ignore name and updatedAt changes
-    user: (a, b) => a?.id === b?.id,
-  }
-);
-// stable.user reference only changes when id changes
-```
-
-### Pattern: Logic Hook
+### Logic Hook Pattern
 
 ```tsx
 export function useAuthPageLogic() {
   const auth = authStore();
-  const [view, setView] = useState<AuthView>("checking");
+  const [view, setView] = useState("checking");
   const [username, setUsername] = useState("");
 
   const stable = useStable({
-    // Callbacks
-    onRegister: async () => {
-      if (!username.trim()) return;
-      await auth.register(username.trim());
-    },
-    onLogin: async () => {
-      await auth.login();
-    },
-    onSwitchToRegister: () => {
-      auth.clearError();
-      setView("register");
-    },
-    onSwitchToLogin: () => {
-      auth.clearError();
-      setView("login");
-    },
-
-    // Config
-    formOptions: {
-      validateOnBlur: true,
-      validateOnChange: false,
-    },
+    onRegister: async () => username.trim() && auth.register(username.trim()),
+    onLogin: async () => auth.login(),
+    onSwitchToRegister: () => { auth.clearError(); setView("register"); },
+    formOptions: { validateOnBlur: true },
   });
 
-  return {
-    view,
-    username,
-    setUsername,
-    ...stable,
-  };
+  return { view, username, setUsername, ...stable };
 }
 ```
 
-### useStable vs useCallback/useMemo (CRITICAL)
+### useStable vs useCallback
 
-| Use Case                       | Use                                 |
-| ------------------------------ | ----------------------------------- |
-| Callbacks/handlers             | `useStable` (**ALWAYS**)            |
-| Config objects passed as props | `useStable` (**REQUIRED**)          |
-| Arrays passed as props         | `useStable` (**REQUIRED**)          |
-| Expensive computed values      | `useMemo` (computation > stability) |
-| Derived data from state        | `useMemo` or compute inline         |
+| Use Case               | Use                       |
+| ---------------------- | ------------------------- |
+| Callbacks/handlers     | `useStable` (ALWAYS)      |
+| Config objects         | `useStable` (REQUIRED)    |
+| Arrays as props        | `useStable` (REQUIRED)    |
+| Expensive computations | `useMemo`                 |
 
 ```tsx
-// ❌ FORBIDDEN: React useCallback/useMemo for callbacks/objects
-const handleSubmit = useCallback(() => {
-  auth.register(username);
-}, [auth, username]);
-
+// ❌ FORBIDDEN
+const handleSubmit = useCallback(() => auth.register(username), [auth, username]);
 const config = useMemo(() => ({ timeout: 5000 }), []);
 
-// ✅ REQUIRED: useStable - MUST use for ALL callbacks and objects
+// ✅ REQUIRED
 const stable = useStable({
   handleSubmit: () => auth.register(username),
   config: { timeout: 5000 },
 });
 ```
 
-## Suspense Integration (RECOMMENDED)
+## Suspense (REQUIRED)
 
-atomirx is designed for React Suspense. **MUST** wrap components using async atoms with `Suspense` and `ErrorBoundary`:
+**MUST** wrap async atoms with `Suspense` and `ErrorBoundary`:
 
 ```tsx
 function App() {
@@ -527,20 +338,18 @@ function App() {
 }
 
 function Dashboard() {
-  // Suspends automatically when user$ is loading
-  const user = useSelector(user$);
+  const user = useSelector(user$); // Suspends when loading
   return <h1>Welcome, {user.name}</h1>;
 }
 ```
 
-### Nested Suspense Boundaries
+### Nested Boundaries
 
 ```tsx
 function ArticlePage() {
   return (
     <Suspense fallback={<PageSkeleton />}>
       <ArticleHeader />
-
       <Suspense fallback={<CommentsSkeleton />}>
         <ArticleComments />
       </Suspense>
@@ -549,7 +358,7 @@ function ArticlePage() {
 }
 ```
 
-### Non-Suspense Mode with state()
+### Non-Suspense with state()
 
 ```tsx
 function UserCard() {
@@ -561,20 +370,20 @@ function UserCard() {
 }
 ```
 
-## Comparison with Other Libraries
+## Comparison
 
-| Use Case       | atomirx                                    | Jotai                          | Recoil                          |
-| -------------- | ------------------------------------------ | ------------------------------ | ------------------------------- |
-| Single atom    | `useSelector(atom$)`                       | `useAtomValue(atom)`           | `useRecoilValue(atom)`          |
-| Derived value  | `useSelector(({ read }) => ...)`           | `useAtomValue(derivedAtom)`    | `useRecoilValue(selector)`      |
-| Multiple atoms | `useSelector(({ all }) => all([a$, b$]))`  | Multiple `useAtomValue` calls  | Multiple `useRecoilValue` calls |
-| Loadable mode  | `useSelector(({ state }) => state(atom$))` | `useAtomValue(loadable(atom))` | `useRecoilValueLoadable(atom)`  |
+| Use Case       | atomirx                                  | Jotai                       |
+| -------------- | ---------------------------------------- | --------------------------- |
+| Single atom    | `useSelector(atom$)`                     | `useAtomValue(atom)`        |
+| Derived        | `useSelector(({ read }) => ...)`         | `useAtomValue(derivedAtom)` |
+| Multiple atoms | `useSelector(({ all }) => all([a$,b$]))` | Multiple hooks              |
+| Loadable       | `useSelector(({ state }) => state(a$))`  | `useAtomValue(loadable(a))` |
 
-### Key Advantages
+### Advantages
 
-1. **Single unified hook** - No need to choose between different hooks
-2. **Composable selectors** - Combine atoms, derive values, handle errors in one selector
-3. **Flexible async modes** - Switch between Suspense and loadable without changing atoms
-4. **Built-in utilities** - `all()`, `any()`, `race()`, `settled()`, `safe()`, `state()`, `and()`, `or()`
-5. **Type-safe** - Full TypeScript inference
-6. **useStable** - Stable references without dependency array footguns
+1. Single unified hook
+2. Composable selectors
+3. Flexible async modes
+4. Built-in utilities: `all`, `any`, `race`, `settled`, `safe`, `state`, `and`, `or`
+5. Type-safe
+6. useStable — no dependency array footguns

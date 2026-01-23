@@ -1,125 +1,122 @@
----
-name: vercel-react-best-practices
-description: React and Next.js performance optimization guidelines from Vercel Engineering. This skill should be used when writing, reviewing, or refactoring React/Next.js code to ensure optimal performance patterns. Triggers on tasks involving React components, Next.js pages, data fetching, bundle optimization, or performance improvements.
-license: MIT
-metadata:
-  author: vercel
-  version: "1.0.0"
----
-
 # Vercel React Best Practices
 
-Comprehensive performance optimization guide for React and Next.js applications, maintained by Vercel. Contains 45 rules across 8 categories, prioritized by impact to guide automated refactoring and code generation.
+## Trigger
 
-## When to Apply
+Use when writing, reviewing, or optimizing React/Next.js code. Focus on performance, bundle size, and rendering efficiency.
 
-Reference these guidelines when:
-- Writing new React components or Next.js pages
-- Implementing data fetching (client or server-side)
-- Reviewing code for performance issues
-- Refactoring existing React/Next.js code
-- Optimizing bundle size or load times
+## Overview
 
-## Rule Categories by Priority
-
-| Priority | Category | Impact | Prefix |
-|----------|----------|--------|--------|
-| 1 | Eliminating Waterfalls | CRITICAL | `async-` |
-| 2 | Bundle Size Optimization | CRITICAL | `bundle-` |
-| 3 | Server-Side Performance | HIGH | `server-` |
-| 4 | Client-Side Data Fetching | MEDIUM-HIGH | `client-` |
-| 5 | Re-render Optimization | MEDIUM | `rerender-` |
-| 6 | Rendering Performance | MEDIUM | `rendering-` |
-| 7 | JavaScript Performance | LOW-MEDIUM | `js-` |
-| 8 | Advanced Patterns | LOW | `advanced-` |
+Performance rules from Vercel Engineering. Organized by impact.
 
 ## Quick Reference
 
-### 1. Eliminating Waterfalls (CRITICAL)
+| Priority  | Category                  | Key Techniques                        |
+| --------- | ------------------------- | ------------------------------------- |
+| Critical  | Eliminating Waterfalls    | `Promise.all`, parallel fetches       |
+| High      | Bundle Size               | Dynamic imports, tree shaking         |
+| High      | Server Performance        | `React.cache`, `after()`, no blocking |
+| Medium    | Client Data Fetching      | SWR, passive listeners                |
+| Medium    | Re-render Optimization    | `memo`, `useMemo`, stable refs        |
+| Low       | Rendering Performance     | `startTransition`, lazy init          |
+| Low       | JavaScript Performance    | Early returns, cached calls           |
 
-- `async-defer-await` - Move await into branches where actually used
-- `async-parallel` - Use Promise.all() for independent operations
-- `async-dependencies` - Use better-all for partial dependencies
-- `async-api-routes` - Start promises early, await late in API routes
-- `async-suspense-boundaries` - Use Suspense to stream content
+## Rules
 
-### 2. Bundle Size Optimization (CRITICAL)
+Read `AGENTS.md` for complete rules with code examples.
 
-- `bundle-barrel-imports` - Import directly, avoid barrel files
-- `bundle-dynamic-imports` - Use next/dynamic for heavy components
-- `bundle-defer-third-party` - Load analytics/logging after hydration
-- `bundle-conditional` - Load modules only when feature is activated
-- `bundle-preload` - Preload on hover/focus for perceived speed
+## Key Patterns
 
-### 3. Server-Side Performance (HIGH)
+### Parallel Fetching
 
-- `server-cache-react` - Use React.cache() for per-request deduplication
-- `server-cache-lru` - Use LRU cache for cross-request caching
-- `server-serialization` - Minimize data passed to client components
-- `server-parallel-fetching` - Restructure components to parallelize fetches
-- `server-after-nonblocking` - Use after() for non-blocking operations
+```typescript
+// ❌ SLOW
+const user = await fetchUser(id);
+const posts = await fetchPosts(id);
 
-### 4. Client-Side Data Fetching (MEDIUM-HIGH)
-
-- `client-swr-dedup` - Use SWR for automatic request deduplication
-- `client-event-listeners` - Deduplicate global event listeners
-
-### 5. Re-render Optimization (MEDIUM)
-
-- `rerender-defer-reads` - Don't subscribe to state only used in callbacks
-- `rerender-memo` - Extract expensive work into memoized components
-- `rerender-dependencies` - Use primitive dependencies in effects
-- `rerender-derived-state` - Subscribe to derived booleans, not raw values
-- `rerender-functional-setstate` - Use functional setState for stable callbacks
-- `rerender-lazy-state-init` - Pass function to useState for expensive values
-- `rerender-transitions` - Use startTransition for non-urgent updates
-
-### 6. Rendering Performance (MEDIUM)
-
-- `rendering-animate-svg-wrapper` - Animate div wrapper, not SVG element
-- `rendering-content-visibility` - Use content-visibility for long lists
-- `rendering-hoist-jsx` - Extract static JSX outside components
-- `rendering-svg-precision` - Reduce SVG coordinate precision
-- `rendering-hydration-no-flicker` - Use inline script for client-only data
-- `rendering-activity` - Use Activity component for show/hide
-- `rendering-conditional-render` - Use ternary, not && for conditionals
-
-### 7. JavaScript Performance (LOW-MEDIUM)
-
-- `js-batch-dom-css` - Group CSS changes via classes or cssText
-- `js-index-maps` - Build Map for repeated lookups
-- `js-cache-property-access` - Cache object properties in loops
-- `js-cache-function-results` - Cache function results in module-level Map
-- `js-cache-storage` - Cache localStorage/sessionStorage reads
-- `js-combine-iterations` - Combine multiple filter/map into one loop
-- `js-length-check-first` - Check array length before expensive comparison
-- `js-early-exit` - Return early from functions
-- `js-hoist-regexp` - Hoist RegExp creation outside loops
-- `js-min-max-loop` - Use loop for min/max instead of sort
-- `js-set-map-lookups` - Use Set/Map for O(1) lookups
-- `js-tosorted-immutable` - Use toSorted() for immutability
-
-### 8. Advanced Patterns (LOW)
-
-- `advanced-event-handler-refs` - Store event handlers in refs
-- `advanced-use-latest` - useLatest for stable callback refs
-
-## How to Use
-
-Read individual rule files for detailed explanations and code examples:
-
-```
-rules/async-parallel.md
-rules/bundle-barrel-imports.md
-rules/_sections.md
+// ✅ FAST
+const [user, posts] = await Promise.all([fetchUser(id), fetchPosts(id)]);
 ```
 
-Each rule file contains:
-- Brief explanation of why it matters
-- Incorrect code example with explanation
-- Correct code example with explanation
-- Additional context and references
+### Dynamic Imports
 
-## Full Compiled Document
+```typescript
+// ❌ Bloated bundle
+import { Chart } from "chart.js";
 
-For the complete guide with all rules expanded: `AGENTS.md`
+// ✅ Code split
+const Chart = dynamic(() => import("./Chart"), { loading: () => <Skeleton /> });
+```
+
+### Memoization
+
+```tsx
+// ❌ Re-renders on every parent render
+function List({ items }) { return items.map(...); }
+
+// ✅ Skips re-render if items unchanged
+const List = memo(function List({ items }) { return items.map(...); });
+```
+
+### Stable References
+
+```tsx
+// ❌ New function every render
+<Button onClick={() => handleClick(id)} />
+
+// ✅ Stable reference (atomirx)
+const stable = useStable({ onClick: () => handleClick(id) });
+<Button onClick={stable.onClick} />
+```
+
+### Non-blocking Operations
+
+```typescript
+// ❌ Blocks response
+export async function POST(req) {
+  const data = await req.json();
+  await saveToDb(data);
+  await sendAnalytics(data); // Blocks!
+  return Response.json({ ok: true });
+}
+
+// ✅ Non-blocking
+import { after } from "next/server";
+
+export async function POST(req) {
+  const data = await req.json();
+  await saveToDb(data);
+  after(() => sendAnalytics(data)); // Runs after response
+  return Response.json({ ok: true });
+}
+```
+
+## Categories
+
+### Critical Impact
+
+- Parallel data fetching
+- Avoid request waterfalls
+- `Promise.all` / `Promise.allSettled`
+
+### High Impact
+
+- Dynamic imports for large components
+- Tree shaking (named exports)
+- `React.cache` for request deduplication
+- `after()` for non-blocking operations
+
+### Medium Impact
+
+- SWR for client-side data
+- Passive event listeners
+- `memo()` for expensive components
+- `useMemo` for expensive computations
+- Functional `setState`
+
+### Low Impact
+
+- `startTransition` for non-urgent updates
+- Lazy state initialization
+- Early returns
+- Cached storage calls
+- Index maps for O(1) lookup
