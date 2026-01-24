@@ -145,8 +145,8 @@ function fullPublish(versionType) {
   // Post-publish steps
   console.log("\n4️⃣  Creating git commit and tag...");
   exec("git add package.json");
-  exec(`git commit -m "chore: release v${newVersion}"`);
-  exec(`git tag v${newVersion}`);
+  exec(`git commit -m "chore: release v${newVersion}"`, { allowFail: true });
+  exec(`git tag v${newVersion}`, { allowFail: true });
 
   // Push to git (skip if no remote)
   if (hasGitRemote()) {
