@@ -1,4 +1,6 @@
 // Core
+export { abortable, isAbortError, createAbortError } from "./core/abortable";
+export type { AbortableOptions, AbortablePromise } from "./core/abortable";
 export { atom, readonly } from "./core/atom";
 export { batch } from "./core/batch";
 export { define } from "./core/define";
