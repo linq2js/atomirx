@@ -1,5 +1,5 @@
 ---
-name: atomirx-state-management
+name: atomirx
 description: Guide for atomirx reactive state management. Use for atom, derived, effect, select, pool, define(), ready(), React hooks (useSelector, rx, useAction, useStable), and debugging reactive flows.
 ---
 
@@ -9,11 +9,11 @@ description: Guide for atomirx reactive state management. Use for atom, derived,
 
 **Atomirx abstracts away the async/sync distinction.** In reactive contexts, you write sync code regardless of whether atoms contain sync values or Promises.
 
-| Context | Your Code | Async Handling |
-|---------|-----------|----------------|
-| `useSelector`, `derived`, `effect` | **Sync** — just `read()` | Suspense handles it |
-| Services | Receive values as **parameters** | Don't read atoms |
-| Outside reactive context | `await .get()` | Explicit when needed |
+| Context                            | Your Code                        | Async Handling       |
+| ---------------------------------- | -------------------------------- | -------------------- |
+| `useSelector`, `derived`, `effect` | **Sync** — just `read()`         | Suspense handles it  |
+| Services                           | Receive values as **parameters** | Don't read atoms     |
+| Outside reactive context           | `await .get()`                   | Explicit when needed |
 
 ```typescript
 // You don't care if user$ contains sync value or Promise
@@ -58,6 +58,7 @@ main();
 ```
 
 **Why this order matters:**
+
 - `onCreateHook` must be set up before atoms are created
 - DevTools uses `onCreateHook` to track atom/derived/effect creation
 - If atoms are imported before devtools, they won't appear in the panel
@@ -116,21 +117,21 @@ main();
 
 **Works identically in `derived()`, `effect()`, `useSelector()`, `rx()`.** Learn once, use everywhere.
 
-| Method      | Signature                 | Behavior                          |
-| ----------- | ------------------------- | --------------------------------- |
-| `read()`    | `read(atom$)`             | Read + track dependency           |
-| `ready()`   | `ready(atom$)` or with fn | Wait for non-null (suspends)      |
-| `from()`    | `from(pool, params)`      | Get ScopedAtom from pool          |
-| `track()`   | `track(atom$)`            | Track without reading             |
-| `untrack()` | `untrack(atom$)` or fn    | Read/exec without tracking        |
-| `safe()`    | `safe(() => expr)`        | Catch errors, preserve Suspense   |
-| `all()`     | `all([a$, b$])`           | Wait for all (Promise.all)        |
-| `any()`     | `any({ a: a$, b: b$ })`   | First ready (Promise.any)         |
-| `race()`    | `race({ a: a$, b: b$ })` | First settled (Promise.race)      |
-| `settled()` | `settled([a$, b$])`       | All results (Promise.allSettled)  |
-| `state()`   | `state(atom$)`            | Get state without throwing        |
-| `and()`     | `and([cond1, cond2])`     | Logical AND, short-circuit        |
-| `or()`      | `or([cond1, cond2])`      | Logical OR, short-circuit         |
+| Method      | Signature                 | Behavior                         |
+| ----------- | ------------------------- | -------------------------------- |
+| `read()`    | `read(atom$)`             | Read + track dependency          |
+| `ready()`   | `ready(atom$)` or with fn | Wait for non-null (suspends)     |
+| `from()`    | `from(pool, params)`      | Get ScopedAtom from pool         |
+| `track()`   | `track(atom$)`            | Track without reading            |
+| `untrack()` | `untrack(atom$)` or fn    | Read/exec without tracking       |
+| `safe()`    | `safe(() => expr)`        | Catch errors, preserve Suspense  |
+| `all()`     | `all([a$, b$])`           | Wait for all (Promise.all)       |
+| `any()`     | `any({ a: a$, b: b$ })`   | First ready (Promise.any)        |
+| `race()`    | `race({ a: a$, b: b$ })`  | First settled (Promise.race)     |
+| `settled()` | `settled([a$, b$])`       | All results (Promise.allSettled) |
+| `state()`   | `state(atom$)`            | Get state without throwing       |
+| `and()`     | `and([cond1, cond2])`     | Logical AND, short-circuit       |
+| `or()`      | `or([cond1, cond2])`      | Logical OR, short-circuit        |
 
 ```typescript
 // Same pattern works everywhere
@@ -143,16 +144,18 @@ const pattern = ({ read, all, safe }) => {
 const combined$ = derived(pattern);
 const data = useSelector(pattern);
 effect(pattern);
-{rx(pattern)}
+{
+  rx(pattern);
+}
 ```
 
 ## read() vs ready() vs state()
 
-| Method    | On null/undefined | On loading     | Use Case              |
-| --------- | ----------------- | -------------- | --------------------- |
-| `read()`  | Returns null      | Throws Promise | Always need value     |
-| `ready()` | Suspends          | Throws Promise | Wait for data         |
-| `state()` | Returns state obj | Returns state  | Manual loading/error  |
+| Method    | On null/undefined | On loading     | Use Case             |
+| --------- | ----------------- | -------------- | -------------------- |
+| `read()`  | Returns null      | Throws Promise | Always need value    |
+| `ready()` | Suspends          | Throws Promise | Wait for data        |
+| `state()` | Returns state obj | Returns state  | Manual loading/error |
 
 ## Key Rules
 
@@ -210,7 +213,10 @@ const load = useAction(async () => atom1$.get() + (await atom2$.get()), {
 });
 
 // ❌ DON'T: useSelector values in deps
-const { v1, v2 } = useSelector(({ read }) => ({ v1: read(atom1$), v2: read(atom2$) }));
+const { v1, v2 } = useSelector(({ read }) => ({
+  v1: read(atom1$),
+  v2: read(atom2$),
+}));
 const load = useAction(async () => v1 + v2, { deps: [v1, v2], lazy: false });
 ```
 
@@ -235,7 +241,10 @@ settings$.set(newSettings);
 
 ```tsx
 // ❌ FORBIDDEN
-const handleSubmit = useCallback(() => auth.register(username), [auth, username]);
+const handleSubmit = useCallback(
+  () => auth.register(username),
+  [auth, username]
+);
 
 // ✅ REQUIRED
 const stable = useStable({
@@ -250,7 +259,10 @@ const stable = useStable({
 
 ```tsx
 // ✅ DO: Use pool
-const userPool = pool((id: string) => fetchUser(id), { gcTime: 60_000, meta: { key: "users" } });
+const userPool = pool((id: string) => fetchUser(id), {
+  gcTime: 60_000,
+  meta: { key: "users" },
+});
 userPool.get("user-1");
 userPool.set("user-1", newUser);
 
@@ -272,13 +284,17 @@ const canEdit$ = derived(({ and }) => and([isLoggedIn$, hasPermission$]));
 const hasData$ = derived(({ or }) => or([cacheData$, apiData$]));
 
 // Lazy evaluation
-const canDelete$ = derived(({ and }) => and([
-  isLoggedIn$,
-  () => hasDeletePermission$, // Only evaluated if logged in
-]));
+const canDelete$ = derived(({ and }) =>
+  and([
+    isLoggedIn$,
+    () => hasDeletePermission$, // Only evaluated if logged in
+  ])
+);
 
 // ❌ DON'T: Manual logic
-const canEdit$ = derived(({ read }) => read(isLoggedIn$) && read(hasPermission$));
+const canEdit$ = derived(
+  ({ read }) => read(isLoggedIn$) && read(hasPermission$)
+);
 ```
 
 ### untrack() for Non-Reactive Reads
@@ -286,14 +302,14 @@ const canEdit$ = derived(({ read }) => read(isLoggedIn$) && read(hasPermission$)
 ```tsx
 // ✅ DO: Use untrack() when you need to read without re-computing
 const combined$ = derived(({ read, untrack }) => {
-  const count = read(count$);       // Tracks count$ - re-computes on change
-  const config = untrack(config$);  // Does NOT track - no re-compute on change
+  const count = read(count$); // Tracks count$ - re-computes on change
+  const config = untrack(config$); // Does NOT track - no re-compute on change
   return count * config.multiplier;
 });
 
 // Also works with functions for multiple reads
 const snapshot$ = derived(({ read, untrack }) => {
-  const liveData = read(liveData$);  // Tracked
+  const liveData = read(liveData$); // Tracked
   const snapshot = untrack(() => {
     // None of these are tracked
     return { a: read(a$), b: read(b$), c: read(c$) };
@@ -315,10 +331,12 @@ export const counterStore = define(() => {
 });
 
 // ✅ SERVICE (stateless)
-export const storageService = define((): StorageService => ({
-  get: (key) => localStorage.getItem(key),
-  set: (key, val) => localStorage.setItem(key, val),
-}));
+export const storageService = define(
+  (): StorageService => ({
+    get: (key) => localStorage.getItem(key),
+    set: (key, val) => localStorage.setItem(key, val),
+  })
+);
 
 // ❌ FORBIDDEN: Factory pattern
 import { getAuthService } from "@/services/auth";
@@ -349,19 +367,19 @@ onErrorHook.override((prev) => (info) => {
 
 ## Finding Things
 
-| To Find            | Search Pattern                                               |
-| ------------------ | ------------------------------------------------------------ |
-| Atom definitions   | `atom<` or `atom(`                                           |
-| Derived atoms      | `derived((`                                                  |
-| Effects            | `effect((`                                                   |
-| Pools              | `pool((`                                                     |
-| Stores             | `define(() =>` in `*.store.ts`                               |
-| Services           | `define(() =>` in `*.service.ts`                             |
-| Atom usages        | `read(`, `ready(`, `all([`, `any({`, `race({`, `settled([`   |
-| Non-reactive reads | `untrack(`                                                   |
-| Pool usages        | `from(poolName,`                                             |
-| Mutations          | Find store owner, check return statement                     |
-| Hook setup         | `onCreateHook.override`, `onErrorHook.override`              |
+| To Find            | Search Pattern                                             |
+| ------------------ | ---------------------------------------------------------- |
+| Atom definitions   | `atom<` or `atom(`                                         |
+| Derived atoms      | `derived((`                                                |
+| Effects            | `effect((`                                                 |
+| Pools              | `pool((`                                                   |
+| Stores             | `define(() =>` in `*.store.ts`                             |
+| Services           | `define(() =>` in `*.service.ts`                           |
+| Atom usages        | `read(`, `ready(`, `all([`, `any({`, `race({`, `settled([` |
+| Non-reactive reads | `untrack(`                                                 |
+| Pool usages        | `from(poolName,`                                           |
+| Mutations          | Find store owner, check return statement                   |
+| Hook setup         | `onCreateHook.override`, `onErrorHook.override`            |
 
 ## Debugging "Why doesn't X update?"
 
@@ -373,25 +391,25 @@ onErrorHook.override((prev) => (info) => {
 
 ## Common Issues
 
-| Symptom                | Likely Cause               | Fix                             |
-| ---------------------- | -------------------------- | ------------------------------- |
-| Derived never updates  | No active subscription     | Use `useSelector` in component  |
-| Effect runs infinitely | Setting atom it reads      | Use `select()` for non-reactive |
-| ready() never resolves | Value never becomes non-null| Check data flow                 |
-| Stale closure          | Reading atom in callback   | Use `.get()` in callbacks       |
-| Suspense not working   | try/catch around read()    | Use `safe()` instead            |
-| Hook not firing        | Direct `.current` assign   | Use `.override()` instead       |
-| Missing hook calls     | Hook chain broken          | Always call `prev?.(info)`      |
-| Pool entry missing     | GC'd before access         | Increase gcTime                 |
-| ScopedAtom error       | Used outside context       | Only use from() inside derived  |
-| Too many re-computes   | Tracking unnecessary deps  | Use `untrack()` for config      |
-| DevTools missing atoms | Atoms created before hook  | Use bootstrap pattern (see above)|
+| Symptom                | Likely Cause                 | Fix                               |
+| ---------------------- | ---------------------------- | --------------------------------- |
+| Derived never updates  | No active subscription       | Use `useSelector` in component    |
+| Effect runs infinitely | Setting atom it reads        | Use `select()` for non-reactive   |
+| ready() never resolves | Value never becomes non-null | Check data flow                   |
+| Stale closure          | Reading atom in callback     | Use `.get()` in callbacks         |
+| Suspense not working   | try/catch around read()      | Use `safe()` instead              |
+| Hook not firing        | Direct `.current` assign     | Use `.override()` instead         |
+| Missing hook calls     | Hook chain broken            | Always call `prev?.(info)`        |
+| Pool entry missing     | GC'd before access           | Increase gcTime                   |
+| ScopedAtom error       | Used outside context         | Only use from() inside derived    |
+| Too many re-computes   | Tracking unnecessary deps    | Use `untrack()` for config        |
+| DevTools missing atoms | Atoms created before hook    | Use bootstrap pattern (see above) |
 
 ## Naming Conventions
 
-| Type        | Variable      | File              | Contains            |
-| ----------- | ------------- | ----------------- | ------------------- |
-| **Service** | `authService` | `auth.service.ts` | Pure functions only |
+| Type        | Variable      | File              | Contains                |
+| ----------- | ------------- | ----------------- | ----------------------- |
+| **Service** | `authService` | `auth.service.ts` | Pure functions only     |
 | **Store**   | `authStore`   | `auth.store.ts`   | Atoms, derived, effects |
 
 | Type                 | Suffix    | Example                        |

@@ -302,6 +302,27 @@ function App() {
 
 ---
 
+## CLI
+
+### Install AI Skills (Cursor IDE)
+
+atomirx includes AI skills for Cursor IDE to help you write better code with AI assistance.
+
+```bash
+npx atomirx add-skill
+```
+
+This installs atomirx best practices, patterns, and API documentation to `.cursor/skills/atomirx/`, enabling your AI assistant to understand atomirx conventions.
+
+**What's included:**
+- Core patterns (atoms, derived, effects, pools)
+- React integration (useSelector, rx, useAction, useStable)
+- Service/Store architecture templates
+- Testing patterns
+- Error handling with `safe()`
+
+---
+
 ## Links
 
 - [GitHub](https://github.com/linq2js/atomirx) - Source code & issues
