@@ -177,13 +177,13 @@ describe("devtools", () => {
 
       // Create an atom - should trigger notification (async via queueMicrotask)
       const count$ = atom(0);
-      await new Promise((r) => queueMicrotask(r));
+      await new Promise<void>((r) => queueMicrotask(r));
       expect(listener).toHaveBeenCalled();
 
       // Change value - should trigger notification
       listener.mockClear();
       count$.set(1);
-      await new Promise((r) => queueMicrotask(r));
+      await new Promise<void>((r) => queueMicrotask(r));
       expect(listener).toHaveBeenCalled();
 
       unsubscribe();
