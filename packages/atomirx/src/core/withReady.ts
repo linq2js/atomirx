@@ -1,7 +1,8 @@
 import { isPromiseLike } from "./isPromiseLike";
+import { isAtom } from "./isAtom";
 import { trackPromise } from "./promiseCache";
 import { SelectContext } from "./select";
-import { AnyFunc, Atom } from "./types";
+import { Atom, KeyedResult, NonNullableKeyedResult } from "./types";
 
 /**
  * Extension interface that adds `ready()` method to SelectContext.
@@ -60,53 +61,61 @@ export interface WithReadyContext {
   ): R extends PromiseLike<any> ? never : Exclude<R, null | undefined>;
 
   /**
-   * Execute a function and wait for its result to be non-null/non-undefined.
+   * Wait for a KeyedResult (from race/any) to have non-null/non-undefined value.
    *
-   * If the function returns null/undefined, the computation suspends until
-   * re-executed with a non-null result.
+   * If the value is null/undefined, the computation suspends until
+   * re-executed with a non-null value. Preserves discriminated union behavior.
    *
    * **IMPORTANT: Only use in `derived()` or `effect()` context**
    *
-   * **NOTE:** This overload is designed for use with async combinators like
-   * `all()`, `race()`, `any()`, `settled()` where promises come from stable
-   * atom sources. It does NOT support dynamic promise creation (returning a
-   * new Promise from the callback). For async selectors that return promises,
-   * use `ready(atom$, selector?)` instead.
-   *
-   * @param fn - Synchronous function to execute and wait for
-   * @returns The non-null result (excludes null | undefined)
-   * @throws {Error} If the callback returns a Promise
+   * @param result - KeyedResult from race() or any()
+   * @returns KeyedResult with value guaranteed non-null, narrowing preserved
    *
    * @example
    * ```ts
-   * // Wait for a computed value to be ready
-   * const result$ = derived(({ ready, read }) => {
-   *   const value = ready(() => computeExpensiveValue(read(input$)));
-   *   return `Result: ${value}`;
-   * });
-   * ```
-   *
-   * @example
-   * ```ts
-   * // Use with async combinators (all, race, any, settled)
-   * const combined$ = derived(({ ready, all }) => {
-   *   const [user, posts] = ready(() => all(user$, posts$));
-   *   return { user, posts };
-   * });
-   * ```
-   *
-   * @example
-   * ```ts
-   * // For async selectors, use ready(atom$, selector?) instead:
-   * const data$ = derived(({ ready }) => {
-   *   const data = ready(source$, (val) => fetchData(val.id));
-   *   return data;
+   * // Use with race() - suspend if winning value is null/undefined
+   * const winner$ = derived(({ ready, race }) => {
+   *   const result = ready(race({ cache: cache$, api: api$ }));
+   *   // result.value is guaranteed non-null
+   *   // Type narrowing still works:
+   *   if (result.key === "cache") {
+   *     result.value; // narrowed to cache type (non-null)
+   *   }
+   *   return { source: result.key, data: result.value };
    * });
    * ```
    */
-  ready<T>(
-    fn: () => T
-  ): T extends PromiseLike<any> ? never : Exclude<Awaited<T>, null | undefined>;
+  ready<T extends Record<string, unknown>>(
+    result: KeyedResult<T>
+  ): NonNullableKeyedResult<T>;
+
+  /**
+   * Wait for all values in a tuple to be non-null/non-undefined.
+   *
+   * If any value is null/undefined, the computation suspends until
+   * re-executed with all non-null values.
+   *
+   * **IMPORTANT: Only use in `derived()` or `effect()` context**
+   *
+   * This overload is designed for use with async combinators like `all()`
+   * to ensure all returned values are ready.
+   *
+   * @param values - Tuple of values to check (typically from all())
+   * @returns The same tuple with null/undefined excluded from each element type
+   *
+   * @example
+   * ```ts
+   * // Use with all() - suspend if any atom value is null/undefined
+   * const combined$ = derived(({ ready, all }) => {
+   *   const [user, posts] = ready(all([user$, posts$]));
+   *   // user and posts are guaranteed non-null
+   *   return { user, posts };
+   * });
+   * ```
+   */
+  ready<const A extends readonly unknown[]>(
+    values: A
+  ): { [K in keyof A]: Exclude<A[K], null | undefined> };
 }
 
 /**
@@ -161,6 +170,19 @@ function waitForValue<T>(value: T): any {
  * const { result } = select((context) => fn(context.use(withReady())));
  * ```
  */
+/**
+ * Check if all values in array are non-null/non-undefined.
+ * Throws never-resolve promise if any value is null/undefined.
+ */
+function waitForAllValues<A extends readonly unknown[]>(values: A): A {
+  for (const value of values) {
+    if (value === undefined || value === null) {
+      throw new Promise(() => {});
+    }
+  }
+  return values;
+}
+
 export function withReady() {
   return <TContext extends SelectContext>(
     context: TContext
@@ -168,19 +190,24 @@ export function withReady() {
     return {
       ...context,
       ready: (
-        atomOrFn: Atom<any> | AnyFunc,
+        atomOrValues: Atom<any> | readonly unknown[],
         selector?: (current: any) => any
       ): any => {
-        if (typeof atomOrFn === "function") {
-          const value = atomOrFn();
-          if (isPromiseLike(value)) {
-            throw new Error(
-              "ready(callback) overload does not support async callbacks. Use ready(atom, selector?) instead."
-            );
-          }
-          return waitForValue(value);
+        // Array overload: check each element for null/undefined
+        if (Array.isArray(atomOrValues)) {
+          return waitForAllValues(atomOrValues);
         }
-        const value = context.read(atomOrFn);
+
+        // Must be an atom at this point
+        if (!isAtom(atomOrValues)) {
+          throw new Error(
+            "ready() expects an Atom or an array of values. " +
+              "Use ready(atom$) or ready(atom$, selector) for atoms, " +
+              "or ready(values) for arrays from all()/race()/any()."
+          );
+        }
+
+        const value = context.read(atomOrValues);
         // we allow selector to return a promise, and wait for that promise if it is not resolved yet
         const selected = selector ? selector(value) : value;
 

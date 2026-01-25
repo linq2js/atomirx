@@ -106,6 +106,7 @@ main();
 | `atom<T>(initial)` | Mutable state                  | No           |
 | `derived(fn)`      | Computed value                 | Yes (lazy)   |
 | `effect(fn)`       | Side effects on changes        | Yes (eager)  |
+| `event<T>(opts)`   | Block until fired              | Yes          |
 | `select(fn)`       | One-time read, no subscription | No           |
 | `pool(fn, opts)`   | Parameterized atoms with GC    | Per-entry    |
 | `batch(fn)`        | Group updates, single notify   | No           |
@@ -113,25 +114,70 @@ main();
 | `onCreateHook`     | Track atom/effect creation     | No           |
 | `onErrorHook`      | Global error handling          | No           |
 
+## Events (Block Until Fired)
+
+Events block computation until `fire()` is called. Useful for user-driven workflows.
+
+```typescript
+import { event, derived, effect } from "atomirx";
+
+// Create event
+const submitEvent = event<FormData>({ meta: { key: "form.submit" } });
+const cancelEvent = event({ meta: { key: "form.cancel" } }); // void payload
+
+// In derived - suspends until fire()
+const result$ = derived(({ read }) => {
+  const data = read(submitEvent); // Blocks until submitEvent.fire(data)
+  return processForm(data);
+});
+
+// In effect - suspends until fire()
+effect(({ read }) => {
+  const data = read(submitEvent);
+  console.log("Form submitted:", data);
+});
+
+// Race multiple events
+const outcome$ = derived(({ race }) => {
+  const { key, value } = race({
+    submit: submitEvent,
+    cancel: cancelEvent,
+  });
+  return key === "cancel" ? null : processForm(value);
+});
+
+// Fire the event (from user action)
+function handleSubmit(data: FormData) {
+  submitEvent.fire(data);
+}
+```
+
+**Key Points:**
+- `read(event)` suspends until `fire()` is called (like waiting for staleValue)
+- Works with `race()`, `all()` for waiting on multiple user actions
+- Each `fire()` after the first creates a new promise → triggers reactive updates
+- Use `equals` option to dedupe identical payloads
+- **NOT for promise flow control** (timeouts, retries) — use `abortable()` for those
+
 ## SelectContext Methods
 
 **Works identically in `derived()`, `effect()`, `useSelector()`, `rx()`.** Learn once, use everywhere.
 
-| Method      | Signature                 | Behavior                         |
-| ----------- | ------------------------- | -------------------------------- |
-| `read()`    | `read(atom$)`             | Read + track dependency          |
-| `ready()`   | `ready(atom$)` or with fn | Wait for non-null (suspends)     |
-| `from()`    | `from(pool, params)`      | Get ScopedAtom from pool         |
-| `track()`   | `track(atom$)`            | Track without reading            |
-| `untrack()` | `untrack(atom$)` or fn    | Read/exec without tracking       |
-| `safe()`    | `safe(() => expr)`        | Catch errors, preserve Suspense  |
-| `all()`     | `all([a$, b$])`           | Wait for all (Promise.all)       |
-| `any()`     | `any({ a: a$, b: b$ })`   | First ready (Promise.any)        |
-| `race()`    | `race({ a: a$, b: b$ })`  | First settled (Promise.race)     |
-| `settled()` | `settled([a$, b$])`       | All results (Promise.allSettled) |
-| `state()`   | `state(atom$)`            | Get state without throwing       |
-| `and()`     | `and([cond1, cond2])`     | Logical AND, short-circuit       |
-| `or()`      | `or([cond1, cond2])`      | Logical OR, short-circuit        |
+| Method      | Signature                        | Behavior                                  |
+| ----------- | -------------------------------- | ----------------------------------------- |
+| `read()`    | `read(atom$)`                    | Read + track dependency                   |
+| `ready()`   | `ready(atom$)` or `ready(array)` | Wait for non-null (suspends)              |
+| `from()`    | `from(pool, params)`             | Get ScopedAtom from pool                  |
+| `track()`   | `track(atom$)`                   | Track without reading                     |
+| `untrack()` | `untrack(atom$)` or fn           | Read/exec without tracking                |
+| `safe()`    | `safe(() => expr)`               | Catch errors, preserve Suspense           |
+| `all()`     | `all([a$, b$])`                  | Wait for all (Promise.all)                |
+| `any()`     | `any({ a: a$, b: b$ })`          | First ready (discriminated union)         |
+| `race()`    | `race({ a: a$, b: b$ })`         | First settled (discriminated union)       |
+| `settled()` | `settled([a$, b$])`              | All results (Promise.allSettled)          |
+| `state()`   | `state(atom$)`                   | Get state without throwing                |
+| `and()`     | `and([cond1, cond2])`            | Logical AND, short-circuit                |
+| `or()`      | `or([cond1, cond2])`             | Logical OR, short-circuit                 |
 
 ```typescript
 // Same pattern works everywhere
@@ -146,6 +192,38 @@ const data = useSelector(pattern);
 effect(pattern);
 {
   rx(pattern);
+}
+```
+
+### race()/any() Discriminated Union
+
+`race()` and `any()` return discriminated unions — checking `key` narrows `value` type:
+
+```typescript
+const result = race({ num: numAtom$, str: strAtom$ });
+
+if (result.key === "num") {
+  result.value; // narrowed to number
+} else {
+  result.value; // narrowed to string
+}
+
+// Tuple destructuring also works
+const [winner, value] = result;
+```
+
+### ready() with Async Utilities
+
+Use `ready()` to ensure values from `all()`, `race()`, or `any()` are non-null:
+
+```typescript
+// ready() + all() — suspend if any value is null/undefined
+const [user, posts] = ready(all([user$, posts$]));
+
+// ready() + race() — suspend if winning value is null, preserves narrowing
+const result = ready(race({ cache: cache$, api: api$ }));
+if (result.key === "cache") {
+  result.value; // narrowed to cache type (non-null)
 }
 ```
 

@@ -94,6 +94,23 @@ describe("select", () => {
 
       const { result } = select(({ race }) => race({ a: a$, b: b$ }));
 
+      // Object access
+      expect(result.value?.key).toBe("a");
+      expect(result.value?.value).toBe(1);
+      // Tuple access
+      expect(result.value?.[0]).toBe("a");
+      expect(result.value?.[1]).toBe(1);
+    });
+
+    it("should support tuple destructuring", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+
+      const { result } = select(({ race }) => {
+        const [key, value] = race({ a: a$, b: b$ });
+        return { key, value };
+      });
+
       expect(result.value).toEqual({ key: "a", value: 1 });
     });
 
@@ -131,6 +148,23 @@ describe("select", () => {
 
       const { result } = select(({ any }) => any({ a: a$, b: b$ }));
 
+      // Object access
+      expect(result.value?.key).toBe("a");
+      expect(result.value?.value).toBe(1);
+      // Tuple access
+      expect(result.value?.[0]).toBe("a");
+      expect(result.value?.[1]).toBe(1);
+    });
+
+    it("should support tuple destructuring", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+
+      const { result } = select(({ any }) => {
+        const [key, value] = any({ a: a$, b: b$ });
+        return { key, value };
+      });
+
       expect(result.value).toEqual({ key: "a", value: 1 });
     });
 
@@ -148,7 +182,12 @@ describe("select", () => {
 
       const { result } = select(({ any }) => any({ a: a$, b: b$ }));
 
-      expect(result.value).toEqual({ key: "b", value: 2 });
+      // Object access
+      expect(result.value?.key).toBe("b");
+      expect(result.value?.value).toBe(2);
+      // Tuple access
+      expect(result.value?.[0]).toBe("b");
+      expect(result.value?.[1]).toBe(2);
     });
 
     it("should throw AggregateError if all rejected", async () => {
@@ -844,7 +883,8 @@ describe("select", () => {
 
       // Race should return second value (first to resolve) with key
       const { result: result2 } = select(({ race }) => race({ a: a$, b: b$ }));
-      expect(result2.value).toEqual({ key: "b", value: 20 });
+      expect(result2.value?.key).toBe("b");
+      expect(result2.value?.value).toBe(20);
 
       // Clean up: resolve first promise
       resolve1!(10);
@@ -889,7 +929,8 @@ describe("select", () => {
 
       // any() should return second value (first to resolve) with key
       const { result: result2 } = select(({ any }) => any({ a: a$, b: b$ }));
-      expect(result2.value).toEqual({ key: "b", value: 20 });
+      expect(result2.value?.key).toBe("b");
+      expect(result2.value?.value).toBe(20);
 
       // Clean up
       resolve1!(10);

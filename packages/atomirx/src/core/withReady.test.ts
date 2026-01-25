@@ -220,58 +220,31 @@ describe("withReady", () => {
     });
   });
 
-  describe("ready() with function", () => {
-    it("should return value when function returns non-null value", () => {
+  describe("ready() with array", () => {
+    it("should return array when all values are non-null", () => {
       const { result } = select((context) => {
         const ctx = context.use(withReady());
-        return ctx.ready(() => 42);
+        return ctx.ready([1, "hello", true]);
       });
 
-      expect(result.value).toBe(42);
+      expect(result.value).toEqual([1, "hello", true]);
       expect(result.error).toBeUndefined();
       expect(result.promise).toBeUndefined();
     });
 
-    it("should return zero from function", () => {
+    it("should return array with zero values", () => {
       const { result } = select((context) => {
         const ctx = context.use(withReady());
-        return ctx.ready(() => 0);
+        return ctx.ready([0, "", false]);
       });
 
-      expect(result.value).toBe(0);
+      expect(result.value).toEqual([0, "", false]);
     });
 
-    it("should return false from function", () => {
+    it("should throw never-resolve promise when any value is null", () => {
       const { result } = select((context) => {
         const ctx = context.use(withReady());
-        return ctx.ready(() => false);
-      });
-
-      expect(result.value).toBe(false);
-    });
-
-    it("should return empty string from function", () => {
-      const { result } = select((context) => {
-        const ctx = context.use(withReady());
-        return ctx.ready(() => "");
-      });
-
-      expect(result.value).toBe("");
-    });
-
-    it("should return object from function", () => {
-      const { result } = select((context) => {
-        const ctx = context.use(withReady());
-        return ctx.ready(() => ({ name: "test" }));
-      });
-
-      expect(result.value).toEqual({ name: "test" });
-    });
-
-    it("should throw never-resolve promise when function returns null", () => {
-      const { result } = select((context) => {
-        const ctx = context.use(withReady());
-        return ctx.ready(() => null);
+        return ctx.ready([1, null, 3]);
       });
 
       expect(result.value).toBeUndefined();
@@ -279,10 +252,10 @@ describe("withReady", () => {
       expect(result.promise).toBeInstanceOf(Promise);
     });
 
-    it("should throw never-resolve promise when function returns undefined", () => {
+    it("should throw never-resolve promise when any value is undefined", () => {
       const { result } = select((context) => {
         const ctx = context.use(withReady());
-        return ctx.ready(() => undefined);
+        return ctx.ready([1, 2, undefined]);
       });
 
       expect(result.value).toBeUndefined();
@@ -290,107 +263,113 @@ describe("withReady", () => {
       expect(result.promise).toBeInstanceOf(Promise);
     });
 
-    it("should throw error when function returns a pending promise", () => {
-      const pendingPromise = new Promise<string>(() => {
-        // Never resolves - stays pending
+    it("should throw never-resolve promise when first value is null", () => {
+      const { result } = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready([null, 2, 3]);
       });
+
+      expect(result.promise).toBeInstanceOf(Promise);
+    });
+
+    it("should throw never-resolve promise when last value is undefined", () => {
+      const { result } = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready([1, 2, undefined]);
+      });
+
+      expect(result.promise).toBeInstanceOf(Promise);
+    });
+
+    it("should work with empty array", () => {
+      const { result } = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready([]);
+      });
+
+      expect(result.value).toEqual([]);
+    });
+
+    it("should work with single element array", () => {
+      const { result } = select((context) => {
+        const ctx = context.use(withReady());
+        return ctx.ready([42]);
+      });
+
+      expect(result.value).toEqual([42]);
+    });
+
+    it("should work with all() result", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
 
       const { result } = select((context) => {
         const ctx = context.use(withReady());
-        return ctx.ready(() => pendingPromise);
+        const values = ctx.all([a$, b$]);
+        return ctx.ready(values);
       });
 
-      expect(result.value).toBeUndefined();
+      expect(result.value).toEqual([1, 2]);
+    });
+
+    it("should suspend when all() contains null atom value", () => {
+      const a$ = atom<number | null>(null);
+      const b$ = atom(2);
+
+      const { result } = select((context) => {
+        const ctx = context.use(withReady());
+        const values = ctx.all([a$, b$]);
+        return ctx.ready(values);
+      });
+
+      expect(result.promise).toBeInstanceOf(Promise);
+    });
+
+    it("should work with race() result", () => {
+      const a$ = atom(1);
+      const b$ = atom(2);
+
+      const { result } = select((context) => {
+        const ctx = context.use(withReady());
+        const raceResult = ctx.race({ a: a$, b: b$ });
+        // race returns [key, value] & { key, value }
+        return ctx.ready(raceResult);
+      });
+
+      // Should return the hybrid tuple with key/value properties
+      expect(result.value?.[0]).toBe("a");
+      expect(result.value?.[1]).toBe(1);
+      // Hybrid type also has key/value properties
+      expect((result.value as any)?.key).toBe("a");
+      expect((result.value as any)?.value).toBe(1);
+    });
+
+    it("should suspend when race() winner value is null", () => {
+      const a$ = atom<number | null>(null);
+      const b$ = atom(new Promise<number>(() => {})); // pending
+
+      const { result } = select((context) => {
+        const ctx = context.use(withReady());
+        const raceResult = ctx.race({ a: a$, b: b$ });
+        return ctx.ready(raceResult);
+      });
+
+      // race returns [key, value] where value is null
+      // ready() should suspend because value (index 1) is null
+      expect(result.promise).toBeInstanceOf(Promise);
+    });
+
+    it("should throw error for invalid input", () => {
+      const { result } = select((context) => {
+        const ctx = context.use(withReady());
+        // @ts-expect-error - testing invalid input
+        return ctx.ready("not an atom or array");
+      });
+
       expect(result.error).toBeInstanceOf(Error);
-      expect((result.error as Error).message).toBe(
-        "ready(callback) overload does not support async callbacks. Use ready(atom, selector?) instead."
+      expect((result.error as Error).message).toContain(
+        "ready() expects an Atom or an array of values"
       );
-    });
-
-    it("should throw error when function returns a resolved promise", () => {
-      const resolvedPromise = Promise.resolve("async result");
-
-      const { result } = select((context) => {
-        const ctx = context.use(withReady());
-        return ctx.ready(() => resolvedPromise);
-      });
-
-      expect(result.value).toBeUndefined();
-      expect(result.error).toBeInstanceOf(Error);
-      expect((result.error as Error).message).toBe(
-        "ready(callback) overload does not support async callbacks. Use ready(atom, selector?) instead."
-      );
-    });
-
-    it("should throw error when function returns a rejected promise", () => {
-      const testError = new Error("async error");
-      const rejectedPromise = Promise.reject(testError);
-
-      // Prevent unhandled rejection warning
-      rejectedPromise.catch(() => {});
-
-      const { result } = select((context) => {
-        const ctx = context.use(withReady());
-        return ctx.ready(() => rejectedPromise);
-      });
-
-      // Should throw the "async not supported" error, not the rejection error
-      expect(result.value).toBeUndefined();
-      expect(result.error).toBeInstanceOf(Error);
-      expect((result.error as Error).message).toBe(
-        "ready(callback) overload does not support async callbacks. Use ready(atom, selector?) instead."
-      );
-    });
-
-    it("should throw error when function returns a promise-like object", () => {
-      // Custom thenable (promise-like)
-      const thenable = {
-        then(resolve: (value: string) => void) {
-          resolve("thenable result");
-        },
-      };
-
-      const { result } = select((context) => {
-        const ctx = context.use(withReady());
-        return ctx.ready(() => thenable);
-      });
-
-      expect(result.value).toBeUndefined();
-      expect(result.error).toBeInstanceOf(Error);
-      expect((result.error as Error).message).toBe(
-        "ready(callback) overload does not support async callbacks. Use ready(atom, selector?) instead."
-      );
-    });
-
-    it("should propagate error when function throws synchronously", () => {
-      const testError = new Error("sync error");
-
-      const { result } = select((context) => {
-        const ctx = context.use(withReady());
-        return ctx.ready(() => {
-          throw testError;
-        });
-      });
-
-      expect(result.value).toBeUndefined();
-      expect(result.error).toBe(testError);
-      expect(result.promise).toBeUndefined();
-    });
-
-    it("should work with function that reads atoms", () => {
-      const count$ = atom(10);
-      const multiplier$ = atom(2);
-
-      const { result } = select((context) => {
-        const ctx = context.use(withReady());
-        return ctx.ready(() => {
-          const count = ctx.read(count$);
-          const mult = ctx.read(multiplier$);
-          return count * mult;
-        });
-      });
-
-      expect(result.value).toBe(20);
     });
   });
 

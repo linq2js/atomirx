@@ -10,9 +10,14 @@ import { WithReadyContext } from "./withReady";
 /**
  * Context object passed to effect functions.
  * Extends `SelectContext` with cleanup utilities.
+ *
+ * Note: Events now implement Atom<Promise<T>> and work directly with
+ * `read()`, `race()`, `all()` - no special `wait()` method needed.
  */
 export interface EffectContext
-  extends SelectContext, WithReadyContext, WithAbortContext {
+  extends SelectContext,
+    WithReadyContext,
+    WithAbortContext {
   /**
    * Register a cleanup function that runs before the next execution or on dispose.
    * Multiple cleanup functions can be registered; they run in FIFO order.

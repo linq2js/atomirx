@@ -5,6 +5,7 @@ import { isAtom } from "./isAtom";
 import {
   Atom,
   AtomValue,
+  createKeyedResult,
   KeyedResult,
   MutableAtom,
   Pipeable,
@@ -148,7 +149,9 @@ export interface SelectContext extends Pipeable {
    * const [user, posts] = all([user$, posts$]);
    * ```
    */
-  all<A extends Atom<unknown>[]>(atoms: A): { [K in keyof A]: AtomValue<A[K]> };
+  all<const A extends readonly Atom<unknown>[]>(
+    atoms: A
+  ): { [K in keyof A]: AtomValue<A[K]> };
 
   /**
    * Return the first settled value (like Promise.race).
@@ -159,22 +162,24 @@ export interface SelectContext extends Pipeable {
    * - If all atoms are loading → throws first Promise
    *
    * The `key` in the result identifies which atom won the race.
+   * Returns a discriminated union - checking `key` narrows `value` type.
    *
    * Note: race() does NOT use fallback - it's meant for first "real" settled value.
    *
    * @param atoms - Record of atoms to race
-   * @returns KeyedResult with winning key and value
+   * @returns KeyedResult discriminated union with winning key and value
    *
    * @example
    * ```ts
    * const result = race({ cache: cache$, api: api$ });
-   * console.log(result.key);   // "cache" or "api"
-   * console.log(result.value); // The winning value
+   * if (result.key === "cache") {
+   *   result.value; // narrowed to cache atom's type
+   * }
    * ```
    */
   race<T extends Record<string, Atom<unknown>>>(
     atoms: T
-  ): KeyedResult<keyof T & string, AtomValue<T[keyof T]>>;
+  ): KeyedResult<{ [K in keyof T & string]: AtomValue<T[K]> }>;
 
   /**
    * Return the first ready value (like Promise.any).
@@ -185,22 +190,24 @@ export interface SelectContext extends Pipeable {
    * - If any loading (not all errored) → throws Promise
    *
    * The `key` in the result identifies which atom resolved first.
+   * Returns a discriminated union - checking `key` narrows `value` type.
    *
    * Note: any() does NOT use fallback - it waits for a real ready value.
    *
    * @param atoms - Record of atoms to check
-   * @returns KeyedResult with winning key and value
+   * @returns KeyedResult discriminated union with winning key and value
    *
    * @example
    * ```ts
    * const result = any({ primary: primaryApi$, fallback: fallbackApi$ });
-   * console.log(result.key);   // "primary" or "fallback"
-   * console.log(result.value); // The winning value
+   * if (result.key === "primary") {
+   *   result.value; // narrowed to primary atom's type
+   * }
    * ```
    */
   any<T extends Record<string, Atom<unknown>>>(
     atoms: T
-  ): KeyedResult<keyof T & string, AtomValue<T[keyof T]>>;
+  ): KeyedResult<{ [K in keyof T & string]: AtomValue<T[K]> }>;
 
   /**
    * Get all atom statuses when all are settled (like Promise.allSettled).
@@ -218,7 +225,7 @@ export interface SelectContext extends Pipeable {
    * const [userResult, postsResult] = settled([user$, posts$]);
    * ```
    */
-  settled<A extends Atom<unknown>[]>(
+  settled<const A extends readonly Atom<unknown>[]>(
     atoms: A
   ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> };
 
@@ -789,7 +796,7 @@ export function select<T>(
   /**
    * all() - like Promise.all
    */
-  const all = <A extends Atom<unknown>[]>(
+  const all = <const A extends readonly Atom<unknown>[]>(
     atoms: A
   ): { [K in keyof A]: AtomValue<A[K]> } => {
     assertSelecting("all");
@@ -826,7 +833,7 @@ export function select<T>(
    */
   const race = <R extends Record<string, Atom<unknown>>>(
     atoms: R
-  ): KeyedResult<keyof R & string, AtomValue<R[keyof R]>> => {
+  ): KeyedResult<{ [K in keyof R & string]: AtomValue<R[K]> }> => {
     assertSelecting("race");
 
     const loadingPromises: Promise<unknown>[] = [];
@@ -839,10 +846,9 @@ export function select<T>(
 
       switch (state.status) {
         case "ready":
-          return {
-            key: key as keyof R & string,
-            value: state.value as AtomValue<R[keyof R]>,
-          };
+          return createKeyedResult(key, state.value) as KeyedResult<{
+            [K in keyof R & string]: AtomValue<R[K]>;
+          }>;
         case "error":
           throw state.error;
         case "loading":
@@ -863,7 +869,7 @@ export function select<T>(
    */
   const any = <R extends Record<string, Atom<unknown>>>(
     atoms: R
-  ): KeyedResult<keyof R & string, AtomValue<R[keyof R]>> => {
+  ): KeyedResult<{ [K in keyof R & string]: AtomValue<R[K]> }> => {
     assertSelecting("any");
 
     const errors: unknown[] = [];
@@ -877,10 +883,9 @@ export function select<T>(
 
       switch (state.status) {
         case "ready":
-          return {
-            key: key as keyof R & string,
-            value: state.value as AtomValue<R[keyof R]>,
-          };
+          return createKeyedResult(key, state.value) as KeyedResult<{
+            [K in keyof R & string]: AtomValue<R[K]>;
+          }>;
         case "error":
           errors.push(state.error);
           break;
@@ -900,7 +905,7 @@ export function select<T>(
   /**
    * settled() - like Promise.allSettled
    */
-  const settled = <A extends Atom<unknown>[]>(
+  const settled = <const A extends readonly Atom<unknown>[]>(
     atoms: A
   ): { [K in keyof A]: SettledResult<AtomValue<A[K]>> } => {
     assertSelecting("settled");

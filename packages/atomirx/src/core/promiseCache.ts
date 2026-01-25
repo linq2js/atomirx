@@ -248,6 +248,53 @@ export function isRejected<T>(value: T | PromiseLike<T>): boolean {
 }
 
 /**
+ * Creates a Promise that is immediately resolved AND pre-cached as fulfilled.
+ * This avoids the loading→resolved flicker when trackPromise() is called.
+ *
+ * Use this instead of `Promise.resolve(value)` when you need the promise
+ * to be recognized as already-resolved by the promise tracking system.
+ *
+ * @param value - The resolved value
+ * @returns A resolved Promise with pre-populated cache state
+ *
+ * @example
+ * ```ts
+ * const promise = createResolvedPromise(42);
+ * const state = trackPromise(promise);
+ * // state.status === 'fulfilled' immediately (no loading flicker)
+ * ```
+ */
+export function createResolvedPromise<T>(value: T): Promise<T> {
+  const promise = Promise.resolve(value);
+  promiseCache.set(promise, { status: "fulfilled", value });
+  return promise;
+}
+
+/**
+ * Creates a Promise that is immediately rejected AND pre-cached as rejected.
+ * This avoids the loading→rejected flicker when trackPromise() is called.
+ *
+ * Note: Attaches a no-op catch to prevent unhandled rejection warnings.
+ *
+ * @param error - The rejection error
+ * @returns A rejected Promise with pre-populated cache state
+ *
+ * @example
+ * ```ts
+ * const promise = createRejectedPromise(new Error('Failed'));
+ * const state = trackPromise(promise);
+ * // state.status === 'rejected' immediately (no loading flicker)
+ * ```
+ */
+export function createRejectedPromise<T = never>(error: unknown): Promise<T> {
+  const promise = Promise.reject(error) as Promise<T>;
+  // Prevent unhandled rejection warning
+  promise.catch(() => {});
+  promiseCache.set(promise, { status: "rejected", error });
+  return promise;
+}
+
+/**
  * Gets the resolved value of a Promise if fulfilled, otherwise undefined.
  *
  * @param value - The value to check

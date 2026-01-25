@@ -4,22 +4,23 @@ SelectContext provides methods for `derived`, `effect`, `useSelector`, and `rx`.
 
 ## Methods
 
-| Method          | Returns                    | Description                    |
-| --------------- | -------------------------- | ------------------------------ |
-| `read(atom)`    | `T`                        | Get value, suspends if loading |
-| `ready(atom)`   | `T` (non-nullable)         | Block until truthy             |
-| `state(atom)`   | `AtomState<T>`             | Get state without suspending   |
-| `untrack(atom)` | `T`                        | Read without tracking dep      |
-| `untrack(fn)`   | `T`                        | Execute fn without tracking    |
-| `safe(fn)`      | `[error?, value?]`         | Catch errors, rethrow Promise  |
-| `all(atoms)`    | `T[]`                      | Wait for all                   |
-| `any(record)`   | `{ key, value }`           | First to resolve               |
-| `race(record)`  | `{ key, value }`           | First to settle                |
-| `settled()`     | `SettledResult<T>[]`       | All with status                |
-| `from(pool)`    | `ScopedAtom<T>`            | Get atom from pool             |
-| `track(atom)`   | `void`                     | Track without reading          |
-| `and(conds)`    | `boolean`                  | Logical AND                    |
-| `or(conds)`     | `boolean`                  | Logical OR                     |
+| Method          | Returns                        | Description                           |
+| --------------- | ------------------------------ | ------------------------------------- |
+| `read(atom)`    | `T`                            | Get value, suspends if loading        |
+| `ready(atom)`   | `T` (non-nullable)             | Block until truthy                    |
+| `ready(values)` | `T[]` (non-nullable elements)  | Block until all elements truthy       |
+| `state(atom)`   | `AtomState<T>`                 | Get state without suspending          |
+| `untrack(atom)` | `T`                            | Read without tracking dep             |
+| `untrack(fn)`   | `T`                            | Execute fn without tracking           |
+| `safe(fn)`      | `[error?, value?]`             | Catch errors, rethrow Promise         |
+| `all(atoms)`    | `T[]`                          | Wait for all                          |
+| `any(record)`   | `KeyedResult` (discriminated)  | First to resolve, narrows on key      |
+| `race(record)`  | `KeyedResult` (discriminated)  | First to settle, narrows on key       |
+| `settled()`     | `SettledResult<T>[]`           | All with status                       |
+| `from(pool)`    | `ScopedAtom<T>`                | Get atom from pool                    |
+| `track(atom)`   | `void`                         | Track without reading                 |
+| `and(conds)`    | `boolean`                      | Logical AND                           |
+| `or(conds)`     | `boolean`                      | Logical OR                            |
 
 ## CRITICAL Rules
 
@@ -137,19 +138,31 @@ untrack(input)
 interface SelectContext {
   read<T>(atom: ReadableAtom<T>): T;
   ready<T>(atom: ReadableAtom<T | undefined | null>): T;
+  ready<T extends Record<string, unknown>>(result: KeyedResult<T>): NonNullableKeyedResult<T>;
+  ready<A extends readonly unknown[]>(values: A): { [K in keyof A]: Exclude<A[K], null | undefined> };
   state<T>(atom: ReadableAtom<T>): AtomState<T>;
   untrack<T>(atom: ReadableAtom<T>): T;
   untrack<T>(fn: () => T): T;
   safe<T>(fn: () => T): [unknown, undefined] | [undefined, T];
   all<T extends readonly ReadableAtom<unknown>[]>(atoms: T): MapAtomValues<T>;
-  any<T extends Record<string, ReadableAtom<unknown>>>(atoms: T): { key: keyof T; value: T[keyof T] };
-  race<T extends Record<string, ReadableAtom<unknown>>>(atoms: T): { key: keyof T; value: T[keyof T] };
+  any<T extends Record<string, ReadableAtom<unknown>>>(atoms: T): KeyedResult<MapAtomValues<T>>;
+  race<T extends Record<string, ReadableAtom<unknown>>>(atoms: T): KeyedResult<MapAtomValues<T>>;
   settled<T extends readonly ReadableAtom<unknown>[]>(atoms: T): MapSettledResults<T>;
   from<P, T>(pool: Pool<P, T>, params: P): ScopedAtom<T>;
   track(atom: ReadableAtom<unknown>): void;
   and(conditions: Condition[]): boolean;
   or(conditions: Condition[]): boolean;
 }
+
+// KeyedResult is a discriminated union - checking key narrows value
+type KeyedResult<T extends Record<string, unknown>> = {
+  [K in keyof T & string]: KeyedResultEntry<K, T[K]>;
+}[keyof T & string];
+
+type KeyedResultEntry<K extends string, V> = readonly [K, V] & { key: K; value: V };
+
+type NonNullableKeyedResult<T extends Record<string, unknown>> =
+  KeyedResult<{ [K in keyof T]: Exclude<T[K], null | undefined> }>;
 
 type AtomState<T> =
   | { status: "ready"; value: T }

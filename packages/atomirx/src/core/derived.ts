@@ -35,10 +35,13 @@ export interface DerivedInternalOptions {
 
 /**
  * Context object passed to derived atom selector functions.
- * Provides utilities for reading atoms: `{ read, all, any, race, settled }`.
+ * Provides utilities for reading atoms.
  *
- * Currently identical to `SelectContext`, but defined separately to allow
- * future derived-specific extensions without breaking changes.
+ * Extends SelectContext with:
+ * - `ready()` - Wait for non-null values (from WithReadyContext)
+ *
+ * Note: Events now implement Atom<Promise<T>> and work directly with
+ * `read()`, `race()`, `all()` - no special `wait()` method needed.
  */
 export interface DerivedContext extends SelectContext, WithReadyContext {}
 
@@ -306,7 +309,10 @@ export function derived<T>(
         // Check if superseded by newer computation
         if (version !== computeVersion) return;
 
-        const { result } = select((context) => fn(context.use(withReady())));
+        const { result } = select((context) => {
+          const extendedContext = context.use(withReady());
+          return fn(extendedContext);
+        });
         updateSubscriptions(result);
 
         if (result.promise) {

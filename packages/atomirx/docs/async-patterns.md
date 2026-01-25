@@ -127,35 +127,87 @@ Behavior:
 
 ### race() - First Settled
 
-Like `Promise.race`:
+Like `Promise.race`. Uses object input for key identification.
+Returns a **discriminated union** — checking `key` narrows `value` type.
 
 ```ts
 const fastest$ = derived(({ race }) => {
-  return race(primaryApi$, fallbackApi$);
+  const result = race({ primary: primaryApi$, fallback: fallbackApi$ });
+  
+  // Type narrowing works!
+  if (result.key === "primary") {
+    result.value; // narrowed to primaryApi$ type
+  }
+  
+  // Tuple destructuring also works
+  const [source, data] = result;
+  
+  return result.value;
 });
 ```
 
 Behavior:
 
-- Returns first ready value
+- Returns `KeyedResult` discriminated union (first ready value)
 - Throws first error
 - All loading → throws Promise
 
 ### any() - First Success
 
-Like `Promise.any`:
+Like `Promise.any`. Uses object input for key identification.
+Returns a **discriminated union** — checking `key` narrows `value` type.
 
 ```ts
 const anySuccess$ = derived(({ any }) => {
-  return any(source1$, source2$, source3$);
+  const result = any({ source1: source1$, source2: source2$, source3: source3$ });
+  
+  // Type narrowing works!
+  if (result.key === "source1") {
+    result.value; // narrowed to source1$ type
+  }
+  
+  return result.value;
 });
 ```
 
 Behavior:
 
-- Returns first ready value (ignores errors)
+- Returns `KeyedResult` discriminated union (first ready value, ignores errors)
 - All loading → throws Promise
 - All errored → throws AggregateError
+
+### KeyedResult Type
+
+`race()` and `any()` return a `KeyedResult<T>` discriminated union:
+
+```ts
+// For race({ num: numAtom$, str: strAtom$ })
+// Returns: KeyedResultEntry<"num", number> | KeyedResultEntry<"str", string>
+
+type KeyedResultEntry<K, V> = readonly [K, V] & { key: K; value: V };
+
+// Both access patterns work:
+const result = race({ num: numAtom$, str: strAtom$ });
+result.key;    // "num" | "str"
+result.value;  // number | string (narrowed when key checked)
+result[0];     // same as key
+result[1];     // same as value
+```
+
+### ready() with Async Utilities
+
+Use `ready()` to ensure values are non-null/non-undefined:
+
+```ts
+// ready() + all() — suspend if any value is null/undefined
+const [user, posts] = ready(all([user$, posts$]));
+
+// ready() + race() — suspend if winning value is null, preserves narrowing
+const result = ready(race({ cache: cache$, api: api$ }));
+if (result.key === "cache") {
+  result.value; // narrowed to cache type (non-null)
+}
+```
 
 ### settled() - All with Status
 
@@ -179,13 +231,14 @@ Behavior:
 
 ### Summary Table
 
-| Method      | Returns           | On Error            | On Loading     |
-| ----------- | ----------------- | ------------------- | -------------- |
-| `read()`    | Single value      | Throws              | Throws Promise |
-| `all()`     | Array of values   | Throws first        | Throws Promise |
-| `race()`    | First value       | Throws first        | Throws Promise |
-| `any()`     | First success     | Throws if all error | Throws Promise |
-| `settled()` | Array with status | Captures in result  | Throws Promise |
+| Method      | Returns                       | On Error            | On Loading     |
+| ----------- | ----------------------------- | ------------------- | -------------- |
+| `read()`    | Single value                  | Throws              | Throws Promise |
+| `all()`     | Array of values               | Throws first        | Throws Promise |
+| `race()`    | KeyedResult (discriminated)   | Throws first        | Throws Promise |
+| `any()`     | KeyedResult (discriminated)   | Throws if all error | Throws Promise |
+| `settled()` | Array with status             | Captures in result  | Throws Promise |
+| `ready()`   | Non-nullable (atom or array)  | Throws              | Throws Promise |
 
 ---
 

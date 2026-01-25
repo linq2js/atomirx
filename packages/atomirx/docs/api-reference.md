@@ -8,6 +8,7 @@ Complete API documentation for atomirx.
   - [atom](#atom)
   - [derived](#derived)
   - [effect](#effect)
+  - [event](#event)
   - [pool](#pool)
   - [batch](#batch)
   - [define](#define)
@@ -28,6 +29,7 @@ Complete API documentation for atomirx.
 - [Type Guards](#type-guards)
   - [isAtom](#isatom)
   - [isDerived](#isderived)
+  - [isEvent](#isevent)
   - [isPool](#ispool)
   - [isScopedAtom](#isvirtualatom)
 - [Hooks](#hooks)
@@ -185,6 +187,85 @@ effect(({ read, signal }) => {
     .then(r => r.json())
     .then(user => user$.set(user));
 });
+```
+
+---
+
+### event
+
+Creates an event - a reactive signal that blocks computation until fired.
+
+```ts
+function event<T = void>(options?: EventOptions<T>): Event<T>
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `options.meta` | `EventMeta` | Metadata for debugging |
+| `options.equals` | `Equality<T>` | Equality function for payload deduplication |
+
+#### Event<T>
+
+| Property/Method | Type | Description |
+|-----------------|------|-------------|
+| `get()` | `Promise<T>` | Get current promise |
+| `on(listener)` | `() => void` | Subscribe to promise changes |
+| `fire(payload)` | `void` | Fire event with payload |
+| `last()` | `T \| undefined` | Get last fired payload |
+| `meta` | `EventMeta \| undefined` | Metadata |
+
+#### Behavior
+
+- **Before first fire**: `get()` returns a pending promise
+- **First fire**: Resolves the pending promise
+- **Subsequent fires**: Creates new resolved promise (if payload differs per `equals`)
+- **Default equals**: `() => false` - every fire creates new promise
+
+#### Use Case
+
+Events are for **user-driven signals** that gate computation (like waiting for `staleValue`).
+
+**NOT for promise flow control** (timeouts, retries, cancellation) — use `abortable()` for those.
+
+#### Example
+
+```ts
+// Create events
+const submitEvent = event<FormData>({ meta: { key: "form.submit" } });
+const cancelEvent = event({ meta: { key: "form.cancel" } }); // void
+
+// Fire event
+submitEvent.fire(formData);
+cancelEvent.fire();
+
+// In derived - blocks until fire
+const result$ = derived(({ read }) => {
+  const data = read(submitEvent); // Suspends until fire()
+  return processForm(data);
+});
+
+// In effect - blocks until fire
+effect(({ read }) => {
+  const data = read(submitEvent);
+  console.log("Submitted:", data);
+});
+
+// Race multiple events
+const outcome$ = derived(({ race }) => {
+  const { key, value } = race({
+    submit: submitEvent,
+    cancel: cancelEvent,
+  });
+  return key === "cancel" ? null : processForm(value);
+});
+
+// With equals (dedupe)
+const searchEvent = event<string>({ equals: "shallow" });
+searchEvent.fire("hello"); // Promise resolves
+searchEvent.fire("hello"); // Skipped (same value)
+searchEvent.fire("world"); // New promise created
 ```
 
 ---
@@ -604,6 +685,12 @@ function isAtom<T = unknown>(value: unknown): value is Atom<T>
 
 ```ts
 function isDerived<T = unknown>(value: unknown): value is DerivedAtom<T>
+```
+
+### isEvent
+
+```ts
+function isEvent<T = unknown>(value: unknown): value is Event<T>
 ```
 
 ### isPool

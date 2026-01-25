@@ -2,14 +2,14 @@
 
 ## Summary
 
-| Utility     | Input           | Output                 | Behavior                   |
-| ----------- | --------------- | ---------------------- | -------------------------- |
-| `all()`     | Array of atoms  | Array of values        | Waits for all              |
-| `any()`     | Record of atoms | `{ key, value }`       | First to resolve           |
-| `race()`    | Record of atoms | `{ key, value }`       | First to settle            |
-| `settled()` | Array of atoms  | Array of SettledResult | Waits for all settled      |
-| `and()`     | Array of conds  | boolean                | AND with short-circuit     |
-| `or()`      | Array of conds  | boolean                | OR with short-circuit      |
+| Utility     | Input           | Output                        | Behavior                   |
+| ----------- | --------------- | ----------------------------- | -------------------------- |
+| `all()`     | Array of atoms  | Array of values               | Waits for all              |
+| `any()`     | Record of atoms | `KeyedResult` (discriminated) | First to resolve           |
+| `race()`    | Record of atoms | `KeyedResult` (discriminated) | First to settle            |
+| `settled()` | Array of atoms  | Array of SettledResult        | Waits for all settled      |
+| `and()`     | Array of conds  | boolean                       | AND with short-circuit     |
+| `or()`      | Array of conds  | boolean                       | OR with short-circuit      |
 
 ## all() — Promise.all
 
@@ -27,11 +27,20 @@ const dashboard$ = derived(({ all }) => {
 ## any() — Promise.any
 
 Returns first resolved. Uses object for key identification.
+Returns a **discriminated union** — checking `key` narrows `value` type.
 
 ```typescript
 const data$ = derived(({ any }) => {
   const result = any({ primary: primaryApi$, fallback: fallbackApi$ });
-  // result: { key: "primary" | "fallback", value: T }
+  
+  // Type narrowing works!
+  if (result.key === "primary") {
+    result.value; // narrowed to primaryApi$ type
+  }
+  
+  // Tuple destructuring also works
+  const [winner, value] = result;
+  
   return result.value;
 });
 ```
@@ -41,15 +50,43 @@ const data$ = derived(({ any }) => {
 ## race() — Promise.race
 
 Returns first settled (ready OR error). Uses object.
+Returns a **discriminated union** — checking `key` narrows `value` type.
 
 ```typescript
 const data$ = derived(({ race }) => {
   const result = race({ cache: cache$, api: api$ });
+  
+  // Type narrowing works!
+  if (result.key === "cache") {
+    result.value; // narrowed to cache$ type
+  }
+  
+  // Tuple destructuring also works
+  const [source, value] = result;
+  
   return result.value;
 });
 ```
 
 **Use when:** Show whatever resolves first.
+
+### KeyedResult Type
+
+`race()` and `any()` return a `KeyedResult<T>` discriminated union:
+
+```typescript
+// For race({ num: numAtom$, str: strAtom$ })
+// Returns: KeyedResultEntry<"num", number> | KeyedResultEntry<"str", string>
+
+type KeyedResultEntry<K, V> = readonly [K, V] & { key: K; value: V };
+
+// Both access patterns work:
+const result = race({ num: numAtom$, str: strAtom$ });
+result.key;    // "num" | "str"
+result.value;  // number | string (narrowed when key checked)
+result[0];     // same as key
+result[1];     // same as value
+```
 
 ## settled() — Promise.allSettled
 
@@ -96,6 +133,52 @@ type AtomState<T> =
   | { status: "ready"; value: T }
   | { status: "error"; error: unknown }
   | { status: "loading"; promise: Promise<T> };
+```
+
+## ready() with Async Utilities
+
+Use `ready()` to ensure values from `all()`, `race()`, or `any()` are non-null/non-undefined:
+
+### ready() + all()
+
+Suspend if ANY atom value is null/undefined:
+
+```typescript
+const dashboard$ = derived(({ ready, all }) => {
+  // Suspends if user$ or posts$ value is null/undefined
+  const [user, posts] = ready(all([user$, posts$]));
+  // user and posts are guaranteed non-null
+  return { user, posts };
+});
+```
+
+### ready() + race()
+
+Suspend if winning value is null/undefined. Preserves discriminated union:
+
+```typescript
+const data$ = derived(({ ready, race }) => {
+  const result = ready(race({ cache: cache$, api: api$ }));
+  
+  // Type narrowing still works!
+  if (result.key === "cache") {
+    result.value; // narrowed to cache type (non-null)
+  }
+  
+  return { source: result.key, data: result.value };
+});
+```
+
+### ready() + any()
+
+Same pattern as race():
+
+```typescript
+const data$ = derived(({ ready, any }) => {
+  const [winner, value] = ready(any({ primary: primary$, fallback: fallback$ }));
+  // value is guaranteed non-null
+  return { source: winner, data: value };
+});
 ```
 
 ## Combining Patterns

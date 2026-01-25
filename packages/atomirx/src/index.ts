@@ -7,6 +7,8 @@ export { define } from "./core/define";
 export { derived, type DerivedContext } from "./core/derived";
 export { effect, type EffectContext } from "./core/effect";
 export { emitter } from "./core/emitter";
+export { event, isEvent } from "./core/event";
+export type { EventOptions } from "./core/event";
 export { isAtom, isDerived } from "./core/isAtom";
 export { pool, isPool } from "./core/pool";
 export {
@@ -24,6 +26,8 @@ export {
   isRejected,
   trackPromise,
   unwrap,
+  createResolvedPromise,
+  createRejectedPromise,
 } from "./core/promiseCache";
 
 // Types
@@ -40,6 +44,8 @@ export type {
   EffectOptions,
   Equality,
   EqualityShorthand,
+  Event,
+  EventMeta,
   Getter,
   KeyedResult,
   MutableAtom,
@@ -60,6 +66,7 @@ export type {
   MutableInfo,
   DerivedInfo,
   EffectInfo,
+  EventInfo,
   ModuleInfo,
 } from "./core/onCreateHook";
 

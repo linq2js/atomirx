@@ -9,6 +9,8 @@ import {
   EffectMeta,
   PoolMeta,
   Pool,
+  EventMeta,
+  Event,
 } from "./types";
 
 /**
@@ -54,9 +56,28 @@ export interface EffectInfo {
 }
 
 /**
- * Union type for atom/derived/effect creation info.
+ * Information provided when an event is created.
  */
-export type CreateInfo = MutableInfo | DerivedInfo | EffectInfo | PoolInfo;
+export interface EventInfo {
+  /** Discriminator for events */
+  type: "event";
+  /** Optional key from event options (for debugging/devtools) */
+  key: string | undefined;
+  /** Optional metadata from event options */
+  meta: EventMeta | undefined;
+  /** The created event instance */
+  instance: Event<unknown>;
+}
+
+/**
+ * Union type for atom/derived/effect/event creation info.
+ */
+export type CreateInfo =
+  | MutableInfo
+  | DerivedInfo
+  | EffectInfo
+  | PoolInfo
+  | EventInfo;
 
 /**
  * Information provided when a module (via define()) is created.

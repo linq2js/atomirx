@@ -7,6 +7,7 @@ This guide covers the fundamental building blocks of atomirx.
 - [Atoms](#atoms)
 - [Derived Atoms](#derived-atoms)
 - [Effects](#effects)
+- [Events](#events)
 - [Pools](#pools)
 - [Batching](#batching)
 - [Modules (define)](#modules-define)
@@ -469,6 +470,169 @@ flowchart TB
     Dispose --> FinalCleanup
     FinalCleanup --> Stopped
 ```
+
+---
+
+## Events
+
+Events are reactive signals that block computation until fired. They're useful for user-driven workflows where you want to suspend processing until a specific action occurs.
+
+### Creating Events
+
+```ts
+import { event } from "atomirx";
+
+// Typed event with payload
+const submitEvent = event<FormData>({ meta: { key: "form.submit" } });
+
+// Void event (no payload)
+const cancelEvent = event({ meta: { key: "form.cancel" } });
+
+// With equality (dedupe identical payloads)
+const searchEvent = event<string>({
+  equals: "shallow",
+  meta: { key: "search.query" },
+});
+```
+
+### Firing Events
+
+```ts
+// Fire with payload
+submitEvent.fire(formData);
+
+// Fire void event
+cancelEvent.fire();
+
+// Get last fired payload
+submitEvent.last(); // FormData | undefined
+```
+
+### Events in Derived (Block Until Fire)
+
+Events work directly with `read()` - computation suspends until `fire()` is called:
+
+```ts
+const result$ = derived(({ read }) => {
+  const data = read(submitEvent); // Suspends until fire()
+  return processForm(data);
+});
+
+// Initially loading
+result$.state().status; // "loading"
+
+// After fire
+submitEvent.fire(formData);
+await result$.get(); // processForm result
+```
+
+### Events in Effect
+
+Effects also suspend until events fire:
+
+```ts
+effect(({ read }) => {
+  const data = read(submitEvent); // Suspends until fire()
+  console.log("Form submitted:", data);
+  localStorage.setItem("lastSubmission", JSON.stringify(data));
+});
+```
+
+### Race Multiple Events
+
+Use `race()` to respond to whichever event fires first:
+
+```ts
+const outcome$ = derived(({ race }) => {
+  const { key, value } = race({
+    submit: submitEvent,
+    cancel: cancelEvent,
+  });
+
+  if (key === "cancel") {
+    return { cancelled: true, data: null };
+  }
+  return { cancelled: false, data: processForm(value) };
+});
+```
+
+### Wait for Multiple Events
+
+Use `all()` to wait for all events to fire:
+
+```ts
+const combined$ = derived(({ all }) => {
+  const [user, settings] = all([userSelectedEvent, settingsLoadedEvent]);
+  return { user, settings };
+});
+```
+
+### Reactive Updates
+
+After the first fire, subsequent fires trigger reactive updates:
+
+```ts
+const clickEvent = event<{ x: number; y: number }>();
+
+const lastClick$ = derived(({ read }) => {
+  return read(clickEvent); // Re-computes on each fire
+});
+
+clickEvent.fire({ x: 100, y: 200 }); // First fire - resolves
+clickEvent.fire({ x: 150, y: 250 }); // Second fire - derived re-computes
+```
+
+### Equality Option
+
+Use `equals` to skip duplicate payloads:
+
+```ts
+const searchEvent = event<string>({ equals: "shallow" });
+
+searchEvent.fire("hello"); // Creates promise, resolves
+searchEvent.fire("hello"); // Skipped (same value)
+searchEvent.fire("world"); // New promise, triggers updates
+```
+
+**Default equals is `() => false`** - every fire triggers an update. This is important for void events where multiple fires should all be meaningful.
+
+### Event API
+
+| Method/Property | Description |
+|-----------------|-------------|
+| `fire(payload)` | Fire the event with payload |
+| `get()` | Get current promise |
+| `on(listener)` | Subscribe to promise changes |
+| `last()` | Get last fired payload |
+| `meta` | Optional metadata |
+
+### Mental Model: staleValue for User Actions
+
+Think of events like atoms where you're waiting for the `staleValue` to become available:
+
+```ts
+// Event is like: "wait for user to provide a value"
+const submitEvent = event<FormData>();
+
+// read(event) = "give me the value once user fires it"
+const result$ = derived(({ read }) => {
+  const data = read(submitEvent); // Like waiting for staleValue
+  return processForm(data);
+});
+```
+
+### When to Use Events
+
+| Scenario | Use Event? | Why |
+|----------|------------|-----|
+| Block until user clicks | ✅ Yes | Suspend until action |
+| Form submission gating | ✅ Yes | Wait for submit |
+| Cancel/confirm dialogs | ✅ Yes | Race submit vs cancel |
+| Timeout a fetch request | ❌ No | Use `abortable()` or Promise patterns |
+| Retry logic | ❌ No | Use async atoms |
+| Continuous data stream | ❌ No | Use atom instead |
+
+**Events are NOT for promise flow control** (timeouts, retries, cancellation). They're specifically for **user-driven signals** that gate computation.
 
 ---
 

@@ -26,6 +26,11 @@ export const SYMBOL_SCOPED = Symbol.for("atomirx.scoped");
 export const SYMBOL_POOL = Symbol.for("atomirx.pool");
 
 /**
+ * Symbol to identify event instances.
+ */
+export const SYMBOL_EVENT = Symbol.for("atomirx.event");
+
+/**
  * Interface for objects that support the `.use()` plugin pattern.
  *
  * The `.use()` method enables chainable transformations via plugins.
@@ -256,17 +261,66 @@ export type SelectStateResult<T> =
   | { status: "loading"; value: undefined; error: undefined };
 
 /**
- * Result type for race() and any() - includes winning key.
- *
- * @template K - The key type (string literal union)
- * @template V - The value type
+ * Single entry in a KeyedResult - hybrid tuple + object for one key-value pair.
+ * @internal
  */
-export type KeyedResult<K extends string, V> = {
-  /** The key that won the race/any */
-  key: K;
-  /** The resolved value */
-  value: V;
+export type KeyedResultEntry<K extends string, V> = readonly [K, V] & {
+  readonly key: K;
+  readonly value: V;
 };
+
+/**
+ * Result type for race() and any() - discriminated union of hybrid tuple + object.
+ * Supports both destructuring patterns:
+ * - Object: `const { key, value } = race(...)`
+ * - Tuple: `const [key, value] = race(...)`
+ *
+ * The type preserves key-value correlation from the input record, enabling
+ * TypeScript to narrow the `value` type when you check `key`.
+ *
+ * @template T - Record of key to value types (preserves correlation)
+ *
+ * @example
+ * ```ts
+ * const result = race({ num: numAtom$, bool: boolAtom$ });
+ *
+ * // Discriminated union narrowing
+ * if (result.key === "num") {
+ *   result.value; // narrowed to number
+ * } else {
+ *   result.value; // narrowed to boolean
+ * }
+ *
+ * // Tuple destructuring
+ * const [winner, data] = result;
+ *
+ * // Works with ready()
+ * const r = ready(race({ num: numAtom$, bool: boolAtom$ }));
+ * ```
+ */
+export type KeyedResult<T extends Record<string, unknown>> = {
+  [K in keyof T & string]: KeyedResultEntry<K, T[K]>;
+}[keyof T & string];
+
+/**
+ * Helper type to exclude null/undefined from KeyedResult values.
+ * Preserves discriminated union behavior.
+ * @internal
+ */
+export type NonNullableKeyedResult<T extends Record<string, unknown>> =
+  KeyedResult<{ [K in keyof T]: Exclude<T[K], null | undefined> }>;
+
+/**
+ * Creates a KeyedResultEntry with both tuple and object access patterns.
+ * @internal
+ */
+export function createKeyedResult<K extends string, V>(
+  key: K,
+  value: V
+): KeyedResultEntry<K, V> {
+  const tuple = [key, value] as const;
+  return Object.assign(tuple, { key, value }) as KeyedResultEntry<K, V>;
+}
 
 export type AtomPlugin = <T extends Atom<any>>(atom: T) => T | void;
 
@@ -640,4 +694,117 @@ export interface Pool<P, T> {
    * @internal - Used by SelectContext for automatic recomputation.
    */
   _onRemove(params: P, listener: VoidFunction): VoidFunction;
+}
+
+// ============================================================================
+// Event Types
+// ============================================================================
+
+/**
+ * Metadata for event instances.
+ */
+export interface EventMeta extends AtomirxMeta {
+  key?: string;
+}
+
+/**
+ * An event is an ephemeral signal that can be fired with a payload.
+ * Unlike atoms which hold state, events represent occurrences.
+ *
+ * Events implement the `Atom<Promise<T>>` interface, so they work directly
+ * with `read()`, `race()`, `all()` - no `wait()` wrapper needed.
+ *
+ * ## Behavior
+ *
+ * - Created with a **pending** promise (suspends until first fire)
+ * - `fire(payload)` resolves the pending promise OR creates new resolved promise
+ * - Subsequent fires create new promises, triggering reactive updates
+ * - Use `equals` option to dedupe identical payloads
+ *
+ * @template T - The type of payload (void for no payload)
+ *
+ * @example Basic usage
+ * ```ts
+ * const submitEvent = event<FormData>();
+ * const cancelEvent = event(); // void payload
+ *
+ * // Fire events
+ * submitEvent.fire(formData);
+ * cancelEvent.fire();
+ * ```
+ *
+ * @example In derived - works directly with read()
+ * ```ts
+ * const result$ = derived(({ read }) => {
+ *   const data = read(submitEvent); // suspends until fire
+ *   return processSubmit(data);
+ * });
+ * ```
+ *
+ * @example Race multiple events
+ * ```ts
+ * const result$ = derived(({ race }) => {
+ *   const { key, value } = race({
+ *     submit: submitEvent,
+ *     cancel: cancelEvent,
+ *   });
+ *   return key === 'cancel' ? null : processSubmit(value);
+ * });
+ * ```
+ *
+ * @example With equals (dedupe)
+ * ```ts
+ * const searchEvent = event<string>({ equals: "shallow" });
+ * searchEvent.fire("hello");  // Promise1 resolves
+ * searchEvent.fire("hello");  // No-op (same value)
+ * searchEvent.fire("world");  // Promise2 created
+ * ```
+ */
+export interface Event<T = void> extends Atom<Promise<T>> {
+  /** Symbol marker to identify event instances */
+  readonly [SYMBOL_EVENT]: true;
+
+  /** Symbol marker to identify as atom (for isAtom() compatibility) */
+  readonly [SYMBOL_ATOM]: true;
+
+  /** Optional metadata for the event */
+  readonly meta?: EventMeta;
+
+  /**
+   * Get the current promise.
+   * - Before first fire: returns pending promise
+   * - After fire: returns resolved promise
+   *
+   * Does NOT create a new promise - just returns current state.
+   */
+  get(): Promise<T>;
+
+  /**
+   * Subscribe to promise changes.
+   * Listener is called when `fire()` creates a new promise (after first fire).
+   *
+   * @param listener - Callback invoked when promise changes
+   * @returns Unsubscribe function
+   */
+  on(listener: VoidFunction): VoidFunction;
+
+  /**
+   * Fire the event with a payload.
+   *
+   * - First fire: resolves the initial pending promise
+   * - Subsequent fires: creates new resolved promise (if payload changed)
+   *
+   * Use `equals` option in event() to control when payloads are considered equal.
+   * Default equals is `() => false`, meaning every fire creates a new promise.
+   *
+   * @param payload - The payload to emit (omit for void events)
+   */
+  fire: T extends void ? () => void : (payload: T) => void;
+
+  /**
+   * Get the last fired payload.
+   *
+   * @returns The last payload, or undefined if never fired
+   */
+  last(): T | undefined;
 }
