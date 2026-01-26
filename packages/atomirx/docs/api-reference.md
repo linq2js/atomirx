@@ -216,6 +216,8 @@ function event<T = void>(options?: EventOptions<T>): Event<T>
 | `on(listener)` | `() => void` | Subscribe to promise changes |
 | `fire(payload)` | `void` | Fire event with payload |
 | `last()` | `T \| undefined` | Get last fired payload |
+| `fireCount` | `number` | Count of meaningful fires |
+| `sealed()` | `boolean` | True if `once` and already fired |
 | `meta` | `EventMeta \| undefined` | Metadata |
 
 #### Behavior

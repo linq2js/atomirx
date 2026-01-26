@@ -406,6 +406,83 @@ describe("event", () => {
     });
   });
 
+  describe("fireCount", () => {
+    it("should start at 0", () => {
+      const e = event<number>();
+      expect(e.fireCount).toBe(0);
+    });
+
+    it("should increment on each meaningful fire", () => {
+      const e = event<number>();
+      expect(e.fireCount).toBe(0);
+
+      e.fire(1);
+      expect(e.fireCount).toBe(1);
+
+      e.fire(2);
+      expect(e.fireCount).toBe(2);
+
+      e.fire(3);
+      expect(e.fireCount).toBe(3);
+    });
+
+    it("should not increment for skipped fires (equals)", () => {
+      const e = event<string>({ equals: "shallow" });
+      expect(e.fireCount).toBe(0);
+
+      e.fire("hello");
+      expect(e.fireCount).toBe(1);
+
+      e.fire("hello"); // skipped
+      expect(e.fireCount).toBe(1);
+
+      e.fire("world");
+      expect(e.fireCount).toBe(2);
+    });
+
+    it("should not increment for skipped fires (once)", () => {
+      const e = event<number>({ once: true });
+      expect(e.fireCount).toBe(0);
+
+      e.fire(1);
+      expect(e.fireCount).toBe(1);
+
+      e.fire(2); // skipped
+      expect(e.fireCount).toBe(1);
+
+      e.fire(3); // skipped
+      expect(e.fireCount).toBe(1);
+    });
+  });
+
+  describe("sealed()", () => {
+    it("should return false for non-once events", () => {
+      const e = event<number>();
+      expect(e.sealed()).toBe(false);
+
+      e.fire(1);
+      expect(e.sealed()).toBe(false);
+    });
+
+    it("should return false for once event before fire", () => {
+      const e = event<number>({ once: true });
+      expect(e.sealed()).toBe(false);
+    });
+
+    it("should return true for once event after fire", () => {
+      const e = event<number>({ once: true });
+      e.fire(1);
+      expect(e.sealed()).toBe(true);
+    });
+
+    it("should work with void once event", () => {
+      const e = event({ once: true });
+      expect(e.sealed()).toBe(false);
+      e.fire();
+      expect(e.sealed()).toBe(true);
+    });
+  });
+
   describe("with derived - direct read()", () => {
     it("should suspend derived until event fires", async () => {
       const submitEvent = event<string>();

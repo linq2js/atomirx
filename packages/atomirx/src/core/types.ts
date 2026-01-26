@@ -842,4 +842,36 @@ export interface Event<T = void> extends Atom<Promise<T>> {
    * @returns The last payload, or undefined if never fired
    */
   last(): T | undefined;
+
+  /**
+   * Number of meaningful fires (not skipped by equals or once).
+   *
+   * @example
+   * ```ts
+   * const e = event<string>({ equals: "shallow" });
+   * e.fireCount; // 0
+   * e.fire("hello");
+   * e.fireCount; // 1
+   * e.fire("hello"); // skipped by equals
+   * e.fireCount; // 1
+   * e.fire("world");
+   * e.fireCount; // 2
+   * ```
+   */
+  readonly fireCount: number;
+
+  /**
+   * Check if the event is sealed (once: true and already fired).
+   *
+   * @returns true if once option is set and event has fired
+   *
+   * @example
+   * ```ts
+   * const initEvent = event<Config>({ once: true });
+   * initEvent.sealed(); // false
+   * initEvent.fire(config);
+   * initEvent.sealed(); // true
+   * ```
+   */
+  sealed(): boolean;
 }

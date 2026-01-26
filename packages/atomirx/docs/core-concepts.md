@@ -605,6 +605,8 @@ searchEvent.fire("world"); // New promise, triggers updates
 | `next()`        | Get pending promise for next meaningful fire |
 | `on(listener)`  | Subscribe to promise changes                 |
 | `last()`        | Get last fired payload                       |
+| `fireCount`     | Count of meaningful fires                    |
+| `sealed()`      | True if `once` and already fired             |
 | `meta`          | Optional metadata                            |
 
 ### get() vs next()

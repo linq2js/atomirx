@@ -155,6 +155,9 @@ export function event<T = void>(options: EventOptions<T> = {}): Event<T> {
   // Using { data: T } wrapper to distinguish "never fired" from "fired with undefined"
   let last: { data: T } | undefined = undefined;
 
+  // Count of meaningful fires (not skipped by equals or once)
+  let count = 0;
+
   // Pending promise - created lazily by next(), serves as both initial and subsequent
   // Cleared after fire(), recreated on demand by next()
   let nextPromise: Promise<T> | undefined = undefined;
@@ -204,6 +207,7 @@ export function event<T = void>(options: EventOptions<T> = {}): Event<T> {
     if (!last || !eq(last.data, data)) {
       const isSubsequentFire = !!last;
       last = { data };
+      count++;
       // for subsequent fires with different data, create new pre-cached resolved promise
       if (isSubsequentFire) {
         internalAtom.set(createResolvedPromise(data));
@@ -248,6 +252,10 @@ export function event<T = void>(options: EventOptions<T> = {}): Event<T> {
     fire: fire as Event<T>["fire"],
     next,
     last: lastFn,
+    get fireCount() {
+      return count;
+    },
+    sealed: () => !!(options.once && last),
   };
 
   // Notify devtools/plugins of event creation

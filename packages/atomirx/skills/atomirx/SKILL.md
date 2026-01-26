@@ -137,6 +137,8 @@ Events block computation until `fire()` is called. Useful for user-driven workfl
 | `next()` | Pending promise for next meaningful fire |
 | `on(listener)` | Subscribe to changes |
 | `last()` | Last fired payload |
+| `fireCount` | Count of meaningful fires |
+| `sealed()` | True if `once` and already fired |
 
 ### get() vs next()
 
