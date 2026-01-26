@@ -598,13 +598,94 @@ searchEvent.fire("world"); // New promise, triggers updates
 
 ### Event API
 
-| Method/Property | Description |
-|-----------------|-------------|
-| `fire(payload)` | Fire the event with payload |
-| `get()` | Get current promise |
-| `on(listener)` | Subscribe to promise changes |
-| `last()` | Get last fired payload |
-| `meta` | Optional metadata |
+| Method/Property | Description                                  |
+| --------------- | -------------------------------------------- |
+| `fire(payload)` | Fire the event with payload                  |
+| `get()`         | Get current promise (may be resolved)        |
+| `next()`        | Get pending promise for next meaningful fire |
+| `on(listener)`  | Subscribe to promise changes                 |
+| `last()`        | Get last fired payload                       |
+| `meta`          | Optional metadata                            |
+
+### get() vs next()
+
+|            | `get()`                  | `next()`            |
+| ---------- | ------------------------ | ------------------- |
+| Returns    | Current promise          | New pending promise |
+| After fire | Resolved promise         | New pending promise |
+| Use case   | Reactive (read/race/all) | Imperative awaiting |
+
+`next()` respects `equals` - duplicate fires will NOT resolve the promise.
+
+```ts
+submitEvent.fire("first");
+
+submitEvent.get(); // Resolved promise ("first")
+submitEvent.next(); // New pending promise (waits for next fire)
+
+submitEvent.fire("second");
+// next() promise resolves with "second"
+```
+
+### once Option (One-Time Events)
+
+Use `once: true` for events that should only fire once:
+
+```ts
+const initEvent = event<Config>({ once: true });
+
+initEvent.fire(config); // Promise resolved
+initEvent.fire(config2); // No-op (already fired)
+initEvent.get(); // Same resolved promise
+initEvent.next(); // Same resolved promise
+```
+
+| Behavior            | `once: false` (default) | `once: true`          |
+| ------------------- | ----------------------- | --------------------- |
+| Multiple `fire()`   | Creates new promises    | First fire only       |
+| `next()` after fire | New pending promise     | Same resolved promise |
+| `on()` after fire   | Normal subscription     | Triggers immediately  |
+
+**Use cases for `once: true`:**
+
+- Initialization events
+- Login/authentication events
+- One-time data load gates
+
+### event vs atom\<Promise\<T\>\>
+
+| Aspect                 | `atom<Promise<T>>`      | `event<T>`                       |
+| ---------------------- | ----------------------- | -------------------------------- |
+| **Initial state**      | Promise you provide     | Pending promise (no data)        |
+| **How to set value**   | `.set(promise)`         | `.fire(data)`                    |
+| **First update**       | Replaces promise        | Resolves pending promise         |
+| **Subsequent updates** | Replaces promise        | Creates new resolved promise     |
+| **Get last value**     | Must track yourself     | `.last()` built-in               |
+| **Deduplication**      | `equals` on promise ref | `equals` on payload data         |
+| **Use case**           | Async data fetching     | User-driven signals              |
+| **Reactive updates**   | Every `.set()`          | Every `.fire()` (unless deduped) |
+
+```ts
+// atom<Promise<T>> - for async data
+const userData$ = atom(fetchUser(userId));
+// Later: refetch
+userData$.set(fetchUser(newUserId));
+
+// event<T> - for user signals
+const submitEvent = event<FormData>();
+// User action triggers
+submitEvent.fire(formData);
+```
+
+**When to use which:**
+
+| Scenario                | Use                      |
+| ----------------------- | ------------------------ |
+| Fetch data on mount     | `atom<Promise<T>>`       |
+| Refetch on param change | `atom<Promise<T>>`       |
+| Wait for user click     | `event<T>`               |
+| Form submission gating  | `event<T>`               |
+| Cancel/confirm dialog   | `event<T>` with `race()` |
 
 ### Mental Model: staleValue for User Actions
 
@@ -623,14 +704,14 @@ const result$ = derived(({ read }) => {
 
 ### When to Use Events
 
-| Scenario | Use Event? | Why |
-|----------|------------|-----|
-| Block until user clicks | ✅ Yes | Suspend until action |
-| Form submission gating | ✅ Yes | Wait for submit |
-| Cancel/confirm dialogs | ✅ Yes | Race submit vs cancel |
-| Timeout a fetch request | ❌ No | Use `abortable()` or Promise patterns |
-| Retry logic | ❌ No | Use async atoms |
-| Continuous data stream | ❌ No | Use atom instead |
+| Scenario                | Use Event? | Why                                   |
+| ----------------------- | ---------- | ------------------------------------- |
+| Block until user clicks | ✅ Yes     | Suspend until action                  |
+| Form submission gating  | ✅ Yes     | Wait for submit                       |
+| Cancel/confirm dialogs  | ✅ Yes     | Race submit vs cancel                 |
+| Timeout a fetch request | ❌ No      | Use `abortable()` or Promise patterns |
+| Retry logic             | ❌ No      | Use async atoms                       |
+| Continuous data stream  | ❌ No      | Use atom instead                      |
 
 **Events are NOT for promise flow control** (timeouts, retries, cancellation). They're specifically for **user-driven signals** that gate computation.
 

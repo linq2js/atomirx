@@ -205,12 +205,14 @@ function event<T = void>(options?: EventOptions<T>): Event<T>
 |-----------|------|-------------|
 | `options.meta` | `EventMeta` | Metadata for debugging |
 | `options.equals` | `Equality<T>` | Equality function for payload deduplication |
+| `options.once` | `boolean` | If true, event can only fire once (one-time events) |
 
 #### Event<T>
 
 | Property/Method | Type | Description |
 |-----------------|------|-------------|
-| `get()` | `Promise<T>` | Get current promise |
+| `get()` | `Promise<T>` | Get current promise (may be resolved) |
+| `next()` | `Promise<T>` | Get pending promise for next meaningful fire |
 | `on(listener)` | `() => void` | Subscribe to promise changes |
 | `fire(payload)` | `void` | Fire event with payload |
 | `last()` | `T \| undefined` | Get last fired payload |
@@ -222,6 +224,26 @@ function event<T = void>(options?: EventOptions<T>): Event<T>
 - **First fire**: Resolves the pending promise
 - **Subsequent fires**: Creates new resolved promise (if payload differs per `equals`)
 - **Default equals**: `() => false` - every fire creates new promise
+
+#### get() vs next()
+
+| Method | Returns | After fire |
+|--------|---------|------------|
+| `get()` | Current promise | Same resolved promise |
+| `next()` | Pending promise for next fire | New pending promise |
+
+`next()` respects `equals` - duplicate fires (where eq returns true) will NOT resolve the promise.
+
+#### once Option
+
+When `once: true`, the event can only fire once (like a one-time gate):
+
+| Behavior | `once: false` (default) | `once: true` |
+|----------|------------------------|--------------|
+| Multiple `fire()` | Creates new promises | First fire only |
+| `next()` after fire | New pending promise | Same resolved promise |
+| `on()` after fire | Normal subscription | Triggers immediately, returns no-op |
+| Use case | Repeated events | One-time events (init, login) |
 
 #### Use Case
 
@@ -266,6 +288,30 @@ const searchEvent = event<string>({ equals: "shallow" });
 searchEvent.fire("hello"); // Promise resolves
 searchEvent.fire("hello"); // Skipped (same value)
 searchEvent.fire("world"); // New promise created
+
+// next() for imperative awaiting
+submitEvent.fire("first");
+const nextData = await submitEvent.next(); // Pending promise for NEXT fire
+submitEvent.fire("second");
+// nextData = "second"
+
+// Loop pattern with next()
+async function processClicks() {
+  while (true) {
+    const coords = await clickEvent.next();
+    handleClick(coords);
+  }
+}
+
+// once: true - one-time events
+const initEvent = event<Config>({ once: true });
+initEvent.fire(config);   // Promise resolved
+initEvent.fire(config2);  // No-op (already fired)
+initEvent.get();          // Same resolved promise
+initEvent.next();         // Same resolved promise
+
+// Late subscriber to once event - triggers immediately
+initEvent.on(() => console.log("init done")); // Logs immediately
 ```
 
 ---

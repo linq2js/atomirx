@@ -111,6 +111,114 @@ describe("event", () => {
     });
   });
 
+  describe("next()", () => {
+    it("should return a pending promise", () => {
+      const e = event<number>();
+      const promise = e.next();
+      expect(promise).toBeInstanceOf(Promise);
+    });
+
+    it("should return same pending promise until fire", () => {
+      const e = event<number>();
+      const p1 = e.next();
+      const p2 = e.next();
+      expect(p1).toBe(p2);
+    });
+
+    it("should resolve when fire is called", async () => {
+      const e = event<number>();
+      const promise = e.next();
+      e.fire(42);
+      await expect(promise).resolves.toBe(42);
+    });
+
+    it("should create new pending promise after fire resolves it", async () => {
+      const e = event<number>();
+      const p1 = e.next();
+      e.fire(1);
+      await p1;
+
+      // New pending promise after fire
+      const p2 = e.next();
+      expect(p1).not.toBe(p2);
+
+      // Should also resolve
+      e.fire(2);
+      await expect(p2).resolves.toBe(2);
+    });
+
+    it("should be independent from get()", async () => {
+      const e = event<number>();
+
+      // get() returns initial pending promise
+      const getPromise = e.get();
+
+      // next() creates separate pending promise
+      const nextPromise = e.next();
+
+      // First fire resolves both
+      e.fire(1);
+      await expect(getPromise).resolves.toBe(1);
+      await expect(nextPromise).resolves.toBe(1);
+
+      // After first fire, get() returns resolved, next() creates new pending
+      const getPromise2 = e.get();
+      const nextPromise2 = e.next();
+
+      expect(getPromise2).toBe(getPromise); // Same resolved promise
+      expect(nextPromise2).not.toBe(nextPromise); // New pending promise
+
+      e.fire(2);
+      await expect(nextPromise2).resolves.toBe(2);
+    });
+
+    it("should work for imperative loop pattern", async () => {
+      const e = event<number>();
+      const received: number[] = [];
+
+      // Simulate loop processing
+      const processNext = async () => {
+        const value = await e.next();
+        received.push(value);
+      };
+
+      // Start waiting
+      const p1 = processNext();
+      e.fire(1);
+      await p1;
+
+      const p2 = processNext();
+      e.fire(2);
+      await p2;
+
+      expect(received).toEqual([1, 2]);
+    });
+
+    it("should respect equals - not resolve for duplicate fires", async () => {
+      const e = event<number>({ equals: "shallow" });
+
+      // First fire
+      e.fire(1);
+
+      // Wait for next meaningful fire
+      const nextPromise = e.next();
+      let resolved = false;
+      nextPromise.then(() => {
+        resolved = true;
+      });
+
+      // Fire same value - should NOT resolve next()
+      e.fire(1);
+      await Promise.resolve(); // Let microtasks run
+      expect(resolved).toBe(false);
+
+      // Fire different value - should resolve next()
+      e.fire(2);
+      await expect(nextPromise).resolves.toBe(2);
+      expect(resolved).toBe(true);
+    });
+  });
+
   describe("fire()", () => {
     it("should fire void event without payload", () => {
       const e = event();
@@ -212,6 +320,89 @@ describe("event", () => {
       e.fire({ id: 2, name: "charlie" }); // Different id - new promise
 
       expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("once option", () => {
+    it("should only fire once", async () => {
+      const e = event<number>({ once: true });
+      const listener = vi.fn();
+      e.on(listener);
+
+      e.fire(1); // First fire
+      e.fire(2); // No-op
+      e.fire(3); // No-op
+
+      // Only first fire should work
+      expect(e.last()).toBe(1);
+      await expect(e.get()).resolves.toBe(1);
+      // No listener calls (no new promises created after first)
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("should return same promise for get() after first fire", async () => {
+      const e = event<number>({ once: true });
+
+      const p1 = e.get();
+      e.fire(1);
+      const p2 = e.get();
+      e.fire(2); // No-op
+      const p3 = e.get();
+
+      expect(p1).toBe(p2);
+      expect(p2).toBe(p3);
+      await expect(p1).resolves.toBe(1);
+    });
+
+    it("should return same resolved promise for next() after first fire", async () => {
+      const e = event<number>({ once: true });
+
+      e.fire(1);
+      const n1 = e.next();
+      const n2 = e.next();
+
+      expect(n1).toBe(n2);
+      await expect(n1).resolves.toBe(1);
+    });
+
+    it("should work with void event", async () => {
+      const e = event({ once: true });
+
+      e.fire();
+      e.fire(); // No-op
+
+      await expect(e.get()).resolves.toBe(undefined);
+    });
+
+    it("should trigger on() immediately for late subscribers", () => {
+      const e = event<number>({ once: true });
+      e.fire(1);
+
+      // Late subscriber
+      const listener = vi.fn();
+      const unsubscribe = e.on(listener);
+
+      // Should be called immediately
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      // Unsubscribe should be no-op (nothing to unsubscribe from)
+      expect(unsubscribe).toBeDefined();
+    });
+
+    it("should not trigger on() immediately if not yet fired", () => {
+      const e = event<number>({ once: true });
+
+      const listener = vi.fn();
+      e.on(listener);
+
+      // Not fired yet, should not be called
+      expect(listener).not.toHaveBeenCalled();
+
+      // Now fire
+      e.fire(1);
+
+      // Still not called (on() doesn't trigger on first fire, only on atom change)
+      expect(listener).not.toHaveBeenCalled();
     });
   });
 

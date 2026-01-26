@@ -118,6 +118,36 @@ main();
 
 Events block computation until `fire()` is called. Useful for user-driven workflows.
 
+### event vs atom\<Promise\<T\>\>
+
+| Aspect | `atom<Promise<T>>` | `event<T>` |
+|--------|-------------------|------------|
+| Initial state | Promise you provide | Pending (no data) |
+| Set value | `.set(promise)` | `.fire(data)` |
+| First update | Replaces promise | Resolves pending |
+| Get last value | Track yourself | `.last()` built-in |
+| Use case | Async data fetching | User signals |
+
+### Event API
+
+| Method | Description |
+|--------|-------------|
+| `fire(payload)` | Fire event with payload |
+| `get()` | Current promise (may be resolved) |
+| `next()` | Pending promise for next meaningful fire |
+| `on(listener)` | Subscribe to changes |
+| `last()` | Last fired payload |
+
+### get() vs next()
+
+| | `get()` | `next()` |
+|--|---------|----------|
+| Returns | Current promise | Pending promise |
+| After fire | Same resolved | New pending |
+| Use case | Reactive | Imperative |
+
+`next()` respects `equals` - duplicate fires won't resolve.
+
 ```typescript
 import { event, derived, effect } from "atomirx";
 
@@ -150,13 +180,42 @@ const outcome$ = derived(({ race }) => {
 function handleSubmit(data: FormData) {
   submitEvent.fire(data);
 }
+
+// Imperative awaiting with next()
+async function processClicks() {
+  while (true) {
+    const data = await clickEvent.next();
+    handleClick(data);
+  }
+}
 ```
+
+### once Option (One-Time Events)
+
+```typescript
+const initEvent = event<Config>({ once: true });
+
+initEvent.fire(config);   // Promise resolved
+initEvent.fire(config2);  // No-op (already fired)
+initEvent.get();          // Same resolved promise
+initEvent.next();         // Same resolved promise
+
+// Late subscriber - triggers immediately
+initEvent.on(() => console.log("init done")); // Logs immediately
+```
+
+| Behavior | `once: false` | `once: true` |
+|----------|--------------|--------------|
+| Multiple `fire()` | New promises | First only |
+| `next()` after fire | New pending | Same resolved |
+| `on()` after fire | Normal | Triggers immediately |
 
 **Key Points:**
 - `read(event)` suspends until `fire()` is called (like waiting for staleValue)
 - Works with `race()`, `all()` for waiting on multiple user actions
 - Each `fire()` after the first creates a new promise → triggers reactive updates
 - Use `equals` option to dedupe identical payloads
+- Use `once: true` for one-time events (init, login)
 - **NOT for promise flow control** (timeouts, retries) — use `abortable()` for those
 
 ## SelectContext Methods

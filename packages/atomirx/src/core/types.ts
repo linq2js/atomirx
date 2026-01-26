@@ -802,6 +802,41 @@ export interface Event<T = void> extends Atom<Promise<T>> {
   fire: T extends void ? () => void : (payload: T) => void;
 
   /**
+   * Get a promise for the next meaningful fire.
+   * Creates a new pending promise lazily if none exists.
+   *
+   * Unlike `get()` which returns the current promise (may be resolved),
+   * `next()` always returns a pending promise that resolves on the next `fire()`.
+   *
+   * **Respects `equals` option** - duplicate fires (where eq returns true) will NOT resolve this promise.
+   * This ensures `next()` only triggers for actual data changes, consistent with reactive subscribers.
+   *
+   * Useful for imperative awaiting outside reactive context.
+   *
+   * @returns Promise that resolves on the next meaningful fire
+   *
+   * @example
+   * ```ts
+   * submitEvent.fire("first");
+   *
+   * // Wait for the NEXT fire (not the current resolved value)
+   * const data = await submitEvent.next();
+   * submitEvent.fire("second");
+   * // data = "second"
+   * ```
+   *
+   * @example With equals - skips duplicate fires
+   * ```ts
+   * const e = event<number>({ equals: "shallow" });
+   * e.fire(1);
+   * const p = e.next();
+   * e.fire(1);  // Skipped - same value
+   * e.fire(2);  // p resolves with 2
+   * ```
+   */
+  next(): Promise<T>;
+
+  /**
    * Get the last fired payload.
    *
    * @returns The last payload, or undefined if never fired
