@@ -1,10 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  abortable,
-  isAbortError,
-  createAbortError,
-  AbortablePromise,
-} from "./abortable";
+import { describe, it, expect, vi } from "vitest";
+import { abortable, isAbortError, createAbortError } from "./abortable";
 
 // Helper to create a delay promise
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -420,7 +415,6 @@ describe("abortable", () => {
 
     it("real-world: component unmount cancellation pattern", async () => {
       const onAbort = vi.fn();
-      const effects: VoidFunction[] = [];
 
       // Simulate component mount
       const unmountController = new AbortController();
